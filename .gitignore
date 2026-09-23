@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.pyc
+.venv*/
+venv/
+
+# Model weights / checkpoints -- never commit these (see docs/roadmap.md sections 1.9, 3, 12)
+*.pt
+*.onnx
+*.engine
+
+# Training run outputs
+runs/
+trained_models/
+
+# Spike/throwaway work (docs/roadmap.md Phase 0) -- venv, downloaded checkpoints, run output
+spikes/.venv312/
+spikes/output/
+spikes/*.pt
+
+# Local datasets -- never commit real user datasets (see docs/roadmap.md section 22)
+# example_ready_dataset/ is intentionally NOT ignored: it's a small, deliberate fixture,
+# not a real user dataset -- see docs/roadmap.md section 3 for the reasoning.
+
+# IDE / tooling
+.idea/
+.claude/
