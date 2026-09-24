@@ -40,7 +40,19 @@ Decimal phases appear between their surrounding integers in numeric order.
   3. After a CLI training run, `git status` is clean: weights, `runs/`, datasets, and app data are ignored, and binaries committed earlier are untracked (the real `trained_models/best.pt` stays on disk)
   4. On the CPU-only dev machine, one `docker compose up` starts the service; the user opens the web UI, creates a project with a name and a fixed task type (`detect` or `segment`), and can list, open, rename, and delete projects
   5. Projects survive `docker compose down`/`up` and image rebuilds, and database migrations apply automatically on startup
-**Plans**: TBD
+**Plans:** 10 plans (5 waves; walking skeleton in `SKELETON.md`)
+
+Plans:
+- [ ] 01-01-PLAN.md — Walking skeleton (tracer): create and list projects through SPA -> nginx -> FastAPI -> migrated SQLite on `./data`, compose smoke test, pytest harness (wave 1)
+- [ ] 01-02-PLAN.md — Deployment hardening: WAL tuning/checkpoint, SQLITE_JOURNAL_MODE escape hatch, DATA_DIR validation, host allow-list, rebuild + integrity smoke stage (wave 2)
+- [ ] 01-03-PLAN.md — Create-project edges (empty, Unicode, case, repeats, races) with plain-English errors, Vitest harness, create-modal validation (wave 2)
+- [ ] 01-04-PLAN.md — Shared `yolo_trainer_common` module + pinned torch 2.14.0 CPU / ultralytics 8.4.159 env; legacy scripts import it (wave 2)
+- [ ] 01-05-PLAN.md — Repo hygiene: ignore rules, untrack weights/runs without deleting them, automated CLI-run git-clean check, roadmap dataset correction (wave 3)
+- [ ] 01-06-PLAN.md — Worker service on the real CPU ML image with heartbeat; api image proven torch-free (wave 3)
+- [ ] 01-07-PLAN.md — Language switcher (en/ru), browser-based default, key-parity guard (wave 3)
+- [ ] 01-08-PLAN.md — Open a project: detail API, sidebar shell, Overview, not-found states (wave 3)
+- [ ] 01-09-PLAN.md — Manage a project: rename/description (PATCH), typed-name delete (DELETE), Settings page (wave 4)
+- [ ] 01-10-PLAN.md — README (en) + README.ru.md, fresh-clone and full-suite scripts, final phase run (wave 5)
 **UI hint**: yes
 **Notes**:
 - Re-verify the version pins at implementation time (phase-0 §1). Do not inherit them silently.
@@ -255,7 +267,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Runnable Skeleton & Projects | 0/TBD | Not started | - |
+| 1. Runnable Skeleton & Projects | 0/10 | Planned | - |
 | 2. Image Upload & Classes | 0/TBD | Not started | - |
 | 3. Box Annotation Editor | 0/TBD | Not started | - |
 | 4. Train & Download | 0/TBD | Not started | - |
