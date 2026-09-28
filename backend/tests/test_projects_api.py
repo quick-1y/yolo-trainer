@@ -57,3 +57,28 @@ def test_invalid_task_type_rejected(client: TestClient) -> None:
     response = client.post("/api/projects", json={"name": "X", "task_type": "obb"})
     assert response.status_code == 422
     assert isinstance(response.json()["detail"], str)
+
+
+def test_get_project_by_id_returns_same_body_as_list(client: TestClient) -> None:
+    created = client.post("/api/projects", json={"name": "Cars", "task_type": "detect"})
+    assert created.status_code == 201
+    project_id = created.json()["id"]
+
+    listed = client.get("/api/projects")
+    [listed_project] = [p for p in listed.json() if p["id"] == project_id]
+
+    fetched = client.get(f"/api/projects/{project_id}")
+    assert fetched.status_code == 200
+    assert fetched.json() == listed_project
+
+
+def test_get_project_unknown_id_returns_404(client: TestClient) -> None:
+    response = client.get("/api/projects/999999")
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Project not found."
+
+
+def test_get_project_non_integer_id_returns_422(client: TestClient) -> None:
+    response = client.get("/api/projects/abc")
+    assert response.status_code == 422
+    assert isinstance(response.json()["detail"], str)

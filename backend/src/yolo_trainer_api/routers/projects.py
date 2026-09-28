@@ -21,6 +21,23 @@ async def list_projects(session: AsyncSession = Depends(get_session)) -> list[Pr
     return list(result.scalars().all())
 
 
+async def get_project_or_404(session: AsyncSession, project_id: int) -> Project:
+    """Fetch a project by primary key or raise a plain-English 404 (D-05).
+
+    Shared by the read route here and by Plan 09's PATCH/DELETE routes so
+    every project-scoped endpoint reports the same "not found" wording.
+    """
+    project = await session.get(Project, project_id)
+    if project is None:
+        raise HTTPException(status_code=404, detail="Project not found.")
+    return project
+
+
+@router.get("/{project_id}", response_model=ProjectRead)
+async def get_project(project_id: int, session: AsyncSession = Depends(get_session)) -> Project:
+    return await get_project_or_404(session, project_id)
+
+
 @router.post("", response_model=ProjectRead, status_code=201)
 async def create_project(
     payload: ProjectCreate, session: AsyncSession = Depends(get_session)
