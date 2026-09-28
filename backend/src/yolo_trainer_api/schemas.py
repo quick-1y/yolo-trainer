@@ -6,7 +6,7 @@ import unicodedata
 from datetime import UTC, datetime
 from typing import Annotated, Literal
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, field_serializer
+from pydantic import AfterValidator, BaseModel, ConfigDict, field_serializer, model_validator
 
 TaskType = Literal["detect", "segment"]
 
@@ -54,6 +54,31 @@ class ProjectCreate(BaseModel):
     name: ProjectName
     task_type: TaskType
     description: ProjectDescription = None
+
+
+class ProjectUpdate(BaseModel):
+    """Partial update: only `name` and `description` may change (D-09).
+
+    `task_type` is refused outright (fixed at creation, D-09). `name` cannot
+    be explicitly cleared to `null` - a project always needs a name - but an
+    omitted `name` key leaves the current name untouched (distinguished via
+    `model_fields_set` in the router, not via this schema's defaults).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: ProjectName | None = None
+    description: ProjectDescription = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _reject_task_type_and_null_name(cls, data: object) -> object:
+        if isinstance(data, dict):
+            if "task_type" in data:
+                raise ValueError("The task type cannot be changed after a project is created.")
+            if "name" in data and data["name"] is None:
+                raise ValueError("name must not be null")
+        return data
 
 
 class ProjectRead(BaseModel):

@@ -1,8 +1,15 @@
-"""API-level tests for project create/list behavior (PROJ-01, PROJ-02)."""
+"""API-level tests for project create/list/update/delete behavior (PROJ-01, PROJ-02)."""
 
 from __future__ import annotations
 
+import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy import create_engine, select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
+
+from yolo_trainer_api.models import Project
+from yolo_trainer_api.settings import Settings
 
 
 def test_health_ok(client: TestClient) -> None:
@@ -82,3 +89,161 @@ def test_get_project_non_integer_id_returns_422(client: TestClient) -> None:
     response = client.get("/api/projects/abc")
     assert response.status_code == 422
     assert isinstance(response.json()["detail"], str)
+
+
+def test_patch_rename_to_own_case_variant_succeeds(client: TestClient) -> None:
+    created = client.post("/api/projects", json={"name": "cars", "task_type": "detect"})
+    project_id = created.json()["id"]
+
+    response = client.patch(f"/api/projects/{project_id}", json={"name": "Cars"})
+    assert response.status_code == 200
+    assert response.json()["name"] == "Cars"
+
+
+def test_patch_rename_to_case_variant_of_other_project_conflicts(client: TestClient) -> None:
+    client.post("/api/projects", json={"name": "Cars", "task_type": "detect"})
+    boats = client.post("/api/projects", json={"name": "Boats", "task_type": "detect"})
+    boats_id = boats.json()["id"]
+
+    response = client.patch(f"/api/projects/{boats_id}", json={"name": "CARS"})
+    assert response.status_code == 409
+    assert response.json()["detail"] == 'A project named "Cars" already exists.'
+
+    unchanged = client.get(f"/api/projects/{boats_id}")
+    assert unchanged.json()["name"] == "Boats"
+
+
+def test_patch_empty_body_leaves_project_unchanged(client: TestClient) -> None:
+    created = client.post("/api/projects", json={"name": "Untouched", "task_type": "detect"})
+    body = created.json()
+    project_id = body["id"]
+
+    response = client.patch(f"/api/projects/{project_id}", json={})
+    assert response.status_code == 200
+    assert response.json() == body
+
+
+def test_patch_task_type_rejected(client: TestClient) -> None:
+    created = client.post("/api/projects", json={"name": "Locked Type", "task_type": "detect"})
+    project_id = created.json()["id"]
+
+    response = client.patch(f"/api/projects/{project_id}", json={"task_type": "segment"})
+    assert response.status_code == 422
+    assert (
+        response.json()["detail"] == "The task type cannot be changed after a project is created."
+    )
+
+    unchanged = client.get(f"/api/projects/{project_id}")
+    assert unchanged.json()["task_type"] == "detect"
+
+
+def test_patch_empty_name_rejected(client: TestClient) -> None:
+    created = client.post("/api/projects", json={"name": "Has Name", "task_type": "detect"})
+    project_id = created.json()["id"]
+
+    response = client.patch(f"/api/projects/{project_id}", json={"name": ""})
+    assert response.status_code == 422
+
+
+def test_patch_null_name_rejected(client: TestClient) -> None:
+    created = client.post("/api/projects", json={"name": "Has Name Too", "task_type": "detect"})
+    project_id = created.json()["id"]
+
+    response = client.patch(f"/api/projects/{project_id}", json={"name": None})
+    assert response.status_code == 422
+
+
+def test_patch_null_description_clears_it(client: TestClient) -> None:
+    created = client.post(
+        "/api/projects",
+        json={"name": "Has Desc", "task_type": "detect", "description": "notes"},
+    )
+    project_id = created.json()["id"]
+
+    response = client.patch(f"/api/projects/{project_id}", json={"description": None})
+    assert response.status_code == 200
+    assert response.json()["description"] is None
+
+
+def test_patch_blank_description_clears_it(client: TestClient) -> None:
+    created = client.post(
+        "/api/projects",
+        json={"name": "Has Desc Too", "task_type": "detect", "description": "notes"},
+    )
+    project_id = created.json()["id"]
+
+    response = client.patch(f"/api/projects/{project_id}", json={"description": "  "})
+    assert response.status_code == 200
+    assert response.json()["description"] is None
+
+
+def test_patch_rename_bumps_updated_at_and_moves_project_first(client: TestClient) -> None:
+    first = client.post("/api/projects", json={"name": "First", "task_type": "detect"})
+    client.post("/api/projects", json={"name": "Second", "task_type": "detect"})
+    first_id = first.json()["id"]
+    first_updated_at = first.json()["updated_at"]
+
+    response = client.patch(f"/api/projects/{first_id}", json={"name": "First Renamed"})
+    assert response.status_code == 200
+    assert response.json()["updated_at"] != first_updated_at
+
+    listed = client.get("/api/projects").json()
+    assert listed[0]["name"] == "First Renamed"
+
+
+def test_patch_unknown_id_returns_404(client: TestClient) -> None:
+    response = client.patch("/api/projects/999999", json={"name": "Ghost"})
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Project not found."
+
+
+def test_delete_unknown_id_returns_404(client: TestClient) -> None:
+    response = client.delete("/api/projects/999999")
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Project not found."
+
+
+def test_delete_returns_204_removes_project_and_repeat_delete_404s(
+    client: TestClient,
+) -> None:
+    created = client.post("/api/projects", json={"name": "Doomed", "task_type": "detect"})
+    project_id = created.json()["id"]
+
+    response = client.delete(f"/api/projects/{project_id}")
+    assert response.status_code == 204
+    assert response.content == b""
+
+    assert client.get(f"/api/projects/{project_id}").status_code == 404
+    assert project_id not in [p["id"] for p in client.get("/api/projects").json()]
+
+    again = client.delete(f"/api/projects/{project_id}")
+    assert again.status_code == 404
+
+
+def test_concurrent_renames_to_same_name_one_wins_one_409s(
+    client: TestClient, settings: Settings
+) -> None:
+    """Backstop for the DB-level unique index: two concurrent renames of
+    different projects to the same target name, via two separate synchronous
+    sessions - mirrors Plan 03's direct-insert collision test."""
+    client.post("/api/projects", json={"name": "Alpha", "task_type": "detect"})
+    client.post("/api/projects", json={"name": "Beta", "task_type": "detect"})
+
+    sync_engine = create_engine(settings.sync_database_url)
+    try:
+        with Session(sync_engine) as session_a, Session(sync_engine) as session_b:
+            alpha = session_a.execute(
+                select(Project).where(Project.normalized_name == "alpha")
+            ).scalar_one()
+            beta = session_b.execute(
+                select(Project).where(Project.normalized_name == "beta")
+            ).scalar_one()
+
+            alpha.set_name("Same Name")
+            session_a.commit()
+
+            beta.set_name("same name")
+            with pytest.raises(IntegrityError):
+                session_b.commit()
+    finally:
+        sync_engine.dispose()

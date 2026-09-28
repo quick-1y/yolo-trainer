@@ -1,4 +1,4 @@
-"""GET/POST /api/projects."""
+"""GET/POST/PATCH/DELETE /api/projects."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from yolo_trainer_api.db import get_session
 from yolo_trainer_api.models import Project
-from yolo_trainer_api.schemas import ProjectCreate, ProjectRead
+from yolo_trainer_api.schemas import ProjectCreate, ProjectRead, ProjectUpdate
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
 
@@ -24,8 +24,8 @@ async def list_projects(session: AsyncSession = Depends(get_session)) -> list[Pr
 async def get_project_or_404(session: AsyncSession, project_id: int) -> Project:
     """Fetch a project by primary key or raise a plain-English 404 (D-05).
 
-    Shared by the read route here and by Plan 09's PATCH/DELETE routes so
-    every project-scoped endpoint reports the same "not found" wording.
+    Shared by every project-scoped route so all of them report the same
+    "not found" wording.
     """
     project = await session.get(Project, project_id)
     if project is None:
@@ -62,3 +62,45 @@ async def create_project(
         ) from None
     await session.refresh(project)
     return project
+
+
+@router.patch("/{project_id}", response_model=ProjectRead)
+async def update_project(
+    project_id: int, payload: ProjectUpdate, session: AsyncSession = Depends(get_session)
+) -> Project:
+    project = await get_project_or_404(session, project_id)
+    fields = payload.model_fields_set
+
+    attempted_normalized_name: str | None = None
+    if "name" in fields:
+        project.set_name(payload.name)  # type: ignore[arg-type]
+        attempted_normalized_name = project.normalized_name
+    if "description" in fields:
+        project.description = payload.description
+
+    try:
+        await session.commit()
+    except IntegrityError:
+        await session.rollback()
+        # Same "use the already-stored name" rule as create (D-08). Capture
+        # the attempted normalized name BEFORE rollback: `project` is a
+        # persistent (already-existing) row here, so rollback expires it and
+        # reloads the PRE-update values from the database, not the rejected
+        # new ones.
+        existing = await session.execute(
+            select(Project.name).where(Project.normalized_name == attempted_normalized_name)
+        )
+        existing_name = existing.scalar_one_or_none() or payload.name
+        raise HTTPException(
+            status_code=409,
+            detail=f'A project named "{existing_name}" already exists.',
+        ) from None
+    await session.refresh(project)
+    return project
+
+
+@router.delete("/{project_id}", status_code=204)
+async def delete_project(project_id: int, session: AsyncSession = Depends(get_session)) -> None:
+    project = await get_project_or_404(session, project_id)
+    await session.delete(project)
+    await session.commit()
