@@ -9,15 +9,15 @@ Detailed technical background for every category: `docs/roadmap.md`, `docs/phase
 
 ### Foundation
 
-- [ ] **FOUND-01**: Developer can set up the project from a fresh clone with pinned dependencies (Python 3.12, PyTorch 2.14.0, Ultralytics 8.4.159) by following the README, with no manual guessing
+- [x] **FOUND-01**: Developer can set up the project from a fresh clone with pinned dependencies (Python 3.12, PyTorch 2.14.0, Ultralytics 8.4.159) by following the README, with no manual guessing
 - [x] **FOUND-02**: Duplicated helpers from `train_yolo.py` / `finetune_yolo.py` (device parsing, quality assessment) live in one shared module with unit tests (pytest configured)
 - [x] **FOUND-03**: Generated artifacts (`*.pt`, `runs/`, datasets, app data) are git-ignored so a training run leaves `git status` clean
 
 ### Deployment
 
-- [ ] **DEPL-01**: User can start the whole service with a single `docker compose up` on a CPU-only host (Windows, Linux, macOS)
+- [x] **DEPL-01**: User can start the whole service with a single `docker compose up` on a CPU-only host (Windows, Linux, macOS)
 - [ ] **DEPL-02**: User with an NVIDIA GPU can start a GPU variant that trains on the GPU (validated on real NVIDIA hardware, not the dev machine)
-- [ ] **DEPL-03**: User's data (database, images, models, training runs) persists across container restarts and upgrades
+- [x] **DEPL-03**: User's data (database, images, models, training runs) persists across container restarts and upgrades
 - [ ] **DEPL-04**: User can configure host folders (datasets, models) mounted into the service via a documented `.env` / compose setting
 - [ ] **DEPL-05**: User can see which compute devices are available (CPU / GPU name, VRAM, CUDA status) on a diagnostics page
 
@@ -131,12 +131,12 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| FOUND-01 | Phase 1 | Pending |
+| FOUND-01 | Phase 1 | Complete |
 | FOUND-02 | Phase 1 | Complete |
 | FOUND-03 | Phase 1 | Complete |
-| DEPL-01 | Phase 1 | Pending |
+| DEPL-01 | Phase 1 | Complete |
 | DEPL-02 | Phase 12 | Pending |
-| DEPL-03 | Phase 1 | Pending |
+| DEPL-03 | Phase 1 | Complete |
 | DEPL-04 | Phase 9 | Pending |
 | DEPL-05 | Phase 12 | Pending |
 | PROJ-01 | Phase 1 | Complete |
