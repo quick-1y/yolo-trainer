@@ -25,3 +25,10 @@ spikes/*.pt
 # IDE / tooling
 .idea/
 .claude/
+
+# App data (Phase 1: SQLite DB bind mount, D-13)
+data/
+.smoke-data/
+.env
+.pytest_cache/
+.ruff_cache/

@@ -1,0 +1,9 @@
+{
+  "app": {
+    "title": "YOLO Trainer"
+  },
+  "error": {
+    "title": "Ошибка"
+  },
+  "loading": "Загрузка..."
+}

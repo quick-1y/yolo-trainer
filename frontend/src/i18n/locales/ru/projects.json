@@ -1,0 +1,25 @@
+{
+  "page": {
+    "title": "Проекты"
+  },
+  "newProjectCard": {
+    "label": "Новый проект"
+  },
+  "emptyState": {
+    "hint": "Создайте первый проект, чтобы начать."
+  },
+  "modal": {
+    "title": "Создать проект",
+    "nameLabel": "Название",
+    "namePlaceholder": "например, Cars",
+    "taskTypeLabel": "Тип задачи",
+    "descriptionLabel": "Описание",
+    "descriptionPlaceholder": "Необязательное описание",
+    "submit": "Создать",
+    "cancel": "Отмена"
+  },
+  "taskType": {
+    "detect": "Детекция",
+    "segment": "Сегментация"
+  }
+}

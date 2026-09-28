@@ -1,0 +1,36 @@
+name: yolo-trainer
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.backend
+      target: api
+    image: yolo-trainer-api:local
+    volumes:
+      - ${DATA_DIR:-./data}:/data
+    environment:
+      DATA_DIR: /data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3)"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  web:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.frontend
+    image: yolo-trainer-web:local
+    ports:
+      - "${BIND_ADDR:-127.0.0.1}:${PORT:-8080}:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/api/health"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped

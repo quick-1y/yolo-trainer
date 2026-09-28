@@ -1,0 +1,25 @@
+{
+  "page": {
+    "title": "Projects"
+  },
+  "newProjectCard": {
+    "label": "New project"
+  },
+  "emptyState": {
+    "hint": "Create your first project to get started."
+  },
+  "modal": {
+    "title": "Create project",
+    "nameLabel": "Name",
+    "namePlaceholder": "e.g. Cars",
+    "taskTypeLabel": "Task type",
+    "descriptionLabel": "Description",
+    "descriptionPlaceholder": "Optional description",
+    "submit": "Create",
+    "cancel": "Cancel"
+  },
+  "taskType": {
+    "detect": "Detect",
+    "segment": "Segment"
+  }
+}

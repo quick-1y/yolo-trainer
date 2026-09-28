@@ -1,0 +1,15 @@
+.git
+**/node_modules
+**/.venv
+**/__pycache__
+data
+.smoke-data
+runs
+trained_models
+*.pt
+example_ready_dataset
+frontend/dist
+.planning
+.idea
+.claude
+spikes
