@@ -5,6 +5,9 @@ import os
 import logging
 from datetime import datetime
 
+from yolo_trainer_common.device import parse_device
+from yolo_trainer_common.quality import quality_assessment
+
 # ====== Красивый вывод (только для статической информации) ======
 from rich.console import Console
 from rich.table import Table
@@ -17,28 +20,10 @@ console = Console()
 # Вспомогательные функции
 # ==============================
 
-def parse_device(device_str):
-    device_str = device_str.strip()
-    if device_str.lower() == "cpu":
-        return "cpu"
-    if "," in device_str:
-        return [int(d) for d in device_str.split(",")]
-    return int(device_str)
-
 def auto_batch(imgsz, gpu_vram=12):
     if gpu_vram >= 12:
         return min(32, max(16, 12288 // (imgsz * imgsz // 1024)))
     return 16
-
-def quality_assessment(map50):
-    if map50 >= 0.90:
-        return "🔥 Отличная модель"
-    elif map50 >= 0.75:
-        return "👍 Хороший результат"
-    elif map50 >= 0.60:
-        return "⚠️ Среднее качество (можно улучшить)"
-    else:
-        return "❌ Требуется дообучение"
 
 # ==============================
 # Основное обучение

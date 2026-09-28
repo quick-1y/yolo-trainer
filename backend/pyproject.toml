@@ -12,6 +12,9 @@ dependencies = [
     "pydantic-settings>=2.15",
 ]
 
+[project.optional-dependencies]
+worker = ["torch==2.14.0", "torchvision==0.29.0", "ultralytics==8.4.159"]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
@@ -34,3 +37,12 @@ select = ["E", "F", "I", "UP", "B"]
 # FastAPI's `Depends(...)` default-argument pattern is intentional, not the
 # mutable-default-argument bug B008 exists to catch.
 extend-immutable-calls = ["fastapi.Depends", "fastapi.Query", "fastapi.Path"]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cpu" }
+torchvision = { index = "pytorch-cpu" }

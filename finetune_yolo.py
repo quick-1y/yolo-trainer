@@ -6,6 +6,9 @@ import os
 import logging
 from datetime import datetime
 
+from yolo_trainer_common.device import parse_device
+from yolo_trainer_common.quality import quality_assessment
+
 # ====== Красивый вывод ======
 from rich.console import Console
 from rich.table import Table
@@ -13,28 +16,6 @@ from rich.panel import Panel
 from rich import box
 
 console = Console()
-
-# ==============================
-# Вспомогательные функции
-# ==============================
-
-def parse_device(device_str):
-    device_str = device_str.strip()
-    if device_str.lower() == "cpu":
-        return "cpu"
-    if "," in device_str:
-        return [int(d) for d in device_str.split(",")]
-    return int(device_str)
-
-def quality_assessment(map50):
-    if map50 >= 0.90:
-        return "🔥 Отличная модель"
-    elif map50 >= 0.75:
-        return "👍 Хороший результат"
-    elif map50 >= 0.60:
-        return "⚠️ Среднее качество (можно улучшить)"
-    else:
-        return "❌ Требуется дообучение"
 
 # ==============================
 # Основное дообучение

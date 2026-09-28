@@ -2,7 +2,7 @@
 name = "yolo-trainer"
 version = "0.1.0"
 requires-python = ">=3.12,<3.13"
-dependencies = ["yolo-trainer-backend"]
+dependencies = ["yolo-trainer-backend[worker]", "rich>=13"]
 
 [dependency-groups]
 dev = ["pytest>=9.1", "httpx>=0.28", "ruff>=0.16"]
