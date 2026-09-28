@@ -5,5 +5,10 @@
   "error": {
     "title": "Error"
   },
-  "loading": "Loading..."
+  "loading": "Loading...",
+  "language": {
+    "label": "Language",
+    "en": "English",
+    "ru": "Русский"
+  }
 }
