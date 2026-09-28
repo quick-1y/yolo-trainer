@@ -106,4 +106,51 @@ case "$LIST_AFTER_RESTART" in
     ;;
 esac
 
+echo "==> Creating 10 projects in quick succession (burst-write check, RESEARCH Pitfall 1)..."
+BURST_NAMES=()
+for i in $(seq 1 10); do
+  NAME="burst-${i}-$(date +%s%N)"
+  BURST_NAMES+=("$NAME")
+  STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X POST "${BASE_URL}/api/projects" \
+    -H "Content-Type: application/json" \
+    -d "{\"name\": \"${NAME}\", \"task_type\": \"detect\"}")
+  if [ "$STATUS" != "201" ]; then
+    echo "FAIL: burst project ${NAME} creation returned HTTP ${STATUS} (expected 201)" >&2
+    exit 1
+  fi
+done
+
+echo "==> Rebuilding and recreating containers (docker compose up -d --build --force-recreate)..."
+docker compose up -d --build --force-recreate --wait --wait-timeout 600
+
+echo "==> Checking all projects survived the image rebuild..."
+LIST_AFTER_REBUILD=$(curl -fsS "${BASE_URL}/api/projects")
+for NAME in "${BURST_NAMES[@]}" "$PROJECT_NAME"; do
+  case "$LIST_AFTER_REBUILD" in
+    *"\"name\":\"${NAME}\""*) ;;
+    *)
+      echo "FAIL: project ${NAME} missing after image rebuild" >&2
+      exit 1
+      ;;
+  esac
+done
+
+echo "==> Checking database integrity after burst writes and rebuild..."
+INTEGRITY_OUTPUT=$(docker compose exec -T api python -c \
+  "import sqlite3; conn = sqlite3.connect('/data/app.db'); print(conn.execute('PRAGMA integrity_check').fetchone()[0])" \
+  | tr -d '\r\n')
+if [ "$INTEGRITY_OUTPUT" != "ok" ]; then
+  echo "FAIL: PRAGMA integrity_check returned '${INTEGRITY_OUTPUT}' (expected 'ok')" >&2
+  exit 1
+fi
+
+echo "==> Checking alembic_version has exactly one row..."
+ALEMBIC_ROWS=$(docker compose exec -T api python -c \
+  "import sqlite3; conn = sqlite3.connect('/data/app.db'); print(conn.execute('SELECT count(*) FROM alembic_version').fetchone()[0])" \
+  | tr -d '\r\n')
+if [ "$ALEMBIC_ROWS" != "1" ]; then
+  echo "FAIL: alembic_version has ${ALEMBIC_ROWS} row(s) (expected 1)" >&2
+  exit 1
+fi
+
 echo "SMOKE OK"

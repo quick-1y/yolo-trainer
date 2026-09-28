@@ -11,12 +11,17 @@ services:
       - ${DATA_DIR:-./data}:/data
     environment:
       DATA_DIR: /data
+      SQLITE_JOURNAL_MODE: ${SQLITE_JOURNAL_MODE:-WAL}
+      ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1}
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3)"]
       interval: 5s
       timeout: 5s
       retries: 10
     restart: unless-stopped
+    # Give uvicorn's graceful shutdown (and the WAL checkpoint it runs) time
+    # to complete before compose sends SIGKILL (RESEARCH Pitfall 1 mitigation 2).
+    stop_grace_period: 20s
 
   web:
     build:
