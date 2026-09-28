@@ -1,12 +1,27 @@
 {
   "nav": {
     "back": "Проекты",
-    "overview": "Обзор"
+    "overview": "Обзор",
+    "settings": "Настройки"
   },
   "overview": {
     "noDescription": "Описание не указано.",
     "createdAt": "Создано {{date}}",
     "emptyHint": "В этом проекте пока нет изображений."
+  },
+  "settings": {
+    "title": "Настройки",
+    "general": "Общее",
+    "name": "Название",
+    "description": "Описание",
+    "save": "Сохранить",
+    "saved": "Сохранено",
+    "taskType": "Тип задачи",
+    "taskTypeLocked": "Тип задачи нельзя изменить после создания проекта.",
+    "validation": {
+      "nameRequired": "Укажите название.",
+      "nameTooLong": "Название должно быть не длиннее 100 символов."
+    }
   },
   "notFound": {
     "title": "Проект не найден",

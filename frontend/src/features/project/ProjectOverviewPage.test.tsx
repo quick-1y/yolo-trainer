@@ -71,7 +71,7 @@ describe("ProjectOverviewPage", () => {
     expect(await screen.findByText(i18n.t("project:overview.noDescription"))).toBeInTheDocument();
   });
 
-  it("shows the back link and exactly one active Overview section entry", async () => {
+  it("shows the back link, Overview, and Settings - but no unbuilt-section links", async () => {
     const project: StubProject = {
       id: 9,
       name: "Planes",
@@ -86,8 +86,11 @@ describe("ProjectOverviewPage", () => {
 
     expect(await screen.findByText(`← ${i18n.t("project:nav.back")}`)).toBeInTheDocument();
     expect(screen.getByText(i18n.t("project:nav.overview"))).toBeInTheDocument();
+    // D-11: Settings (Plan 09) is a real, built section - only Images,
+    // Classes, Training, and Models remain unbuilt at this point.
+    expect(screen.getByText(i18n.t("project:nav.settings"))).toBeInTheDocument();
     const navLinks = screen.getAllByRole("link").map((link) => link.textContent ?? "");
-    expect(navLinks.some((text) => /settings|classes|training|models/i.test(text))).toBe(false);
+    expect(navLinks.some((text) => /classes|training|models/i.test(text))).toBe(false);
   });
 
   it("navigates to /projects/{id} and shows its overview when a project card is clicked", async () => {

@@ -19,6 +19,11 @@ export interface ProjectCreateInput {
   description?: string | null;
 }
 
+export interface ProjectUpdateInput {
+  name?: string;
+  description?: string | null;
+}
+
 export const projectKeys = {
   all: ["projects"] as const,
   detail: (id: number) => ["projects", id] as const,
@@ -49,6 +54,32 @@ export function useCreateProject() {
       }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: projectKeys.all });
+    },
+  });
+}
+
+export function useUpdateProject(id: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: ProjectUpdateInput) =>
+      apiRequest<Project>(`/projects/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(input),
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: projectKeys.all });
+      void queryClient.invalidateQueries({ queryKey: projectKeys.detail(id) });
+    },
+  });
+}
+
+export function useDeleteProject(id: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => apiRequest<void>(`/projects/${id}`, { method: "DELETE" }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: projectKeys.all });
+      queryClient.removeQueries({ queryKey: projectKeys.detail(id) });
     },
   });
 }

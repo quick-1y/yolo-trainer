@@ -1,12 +1,27 @@
 {
   "nav": {
     "back": "Projects",
-    "overview": "Overview"
+    "overview": "Overview",
+    "settings": "Settings"
   },
   "overview": {
     "noDescription": "No description provided.",
     "createdAt": "Created {{date}}",
     "emptyHint": "This project doesn't have any images yet."
+  },
+  "settings": {
+    "title": "Settings",
+    "general": "General",
+    "name": "Name",
+    "description": "Description",
+    "save": "Save",
+    "saved": "Saved",
+    "taskType": "Task type",
+    "taskTypeLocked": "The task type cannot be changed after a project is created.",
+    "validation": {
+      "nameRequired": "Name is required.",
+      "nameTooLong": "Name must be at most 100 characters."
+    }
   },
   "notFound": {
     "title": "Project not found",
