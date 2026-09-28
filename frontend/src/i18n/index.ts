@@ -2,7 +2,7 @@ import type { Resource, ResourceLanguage } from "i18next";
 import i18n from "i18next";
 import { initReactI18next } from "react-i18next";
 
-import { LANGUAGE_STORAGE_KEY, resolveInitialLanguage } from "./language";
+import { getStoredLanguage, resolveInitialLanguage } from "./language";
 
 // Eagerly load every namespace JSON file under locales/{lng}/{ns}.json into
 // react-i18next's resources shape: { [lng]: { [ns]: {...} } }.
@@ -20,10 +20,7 @@ for (const [path, content] of Object.entries(modules)) {
   resources[lng][ns] = content;
 }
 
-const initialLanguage = resolveInitialLanguage(
-  localStorage.getItem(LANGUAGE_STORAGE_KEY),
-  navigator.languages,
-);
+const initialLanguage = resolveInitialLanguage(getStoredLanguage(), navigator.languages);
 
 void i18n.use(initReactI18next).init({
   resources,

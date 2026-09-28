@@ -9,6 +9,21 @@ function isSupportedLanguage(value: string | null): value is AppLanguage {
 }
 
 /**
+ * Read the remembered manual language choice, if any (T-07-02): some
+ * browsers/embedding contexts throw on ANY `localStorage` access (not just
+ * writes), so reading is guarded the same way `changeAppLanguage` guards
+ * writing - a blocked store must fall back to browser detection, never crash
+ * app init.
+ */
+export function getStoredLanguage(): string | null {
+  try {
+    return localStorage.getItem(LANGUAGE_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Resolve the initial UI language (D-02): the user's remembered manual
  * choice wins; otherwise the browser language decides (`ru*` -> Russian,
  * everything else -> English).

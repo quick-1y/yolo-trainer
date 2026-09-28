@@ -1,6 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { changeAppLanguage, LANGUAGE_STORAGE_KEY, resolveInitialLanguage } from "./language";
+import {
+  changeAppLanguage,
+  getStoredLanguage,
+  LANGUAGE_STORAGE_KEY,
+  resolveInitialLanguage,
+} from "./language";
 import i18n from "./index";
 
 describe("resolveInitialLanguage", () => {
@@ -59,5 +64,24 @@ describe("initializing i18n without a stored choice", () => {
     localStorage.removeItem(LANGUAGE_STORAGE_KEY);
     resolveInitialLanguage(localStorage.getItem(LANGUAGE_STORAGE_KEY), navigator.languages);
     expect(localStorage.getItem(LANGUAGE_STORAGE_KEY)).toBeNull();
+  });
+});
+
+describe("getStoredLanguage", () => {
+  it("returns the stored value when localStorage is readable", () => {
+    localStorage.setItem(LANGUAGE_STORAGE_KEY, "ru");
+    expect(getStoredLanguage()).toBe("ru");
+    localStorage.removeItem(LANGUAGE_STORAGE_KEY);
+  });
+
+  it("returns null instead of throwing when localStorage access itself throws (T-07-02)", () => {
+    const getItemSpy = vi.spyOn(Storage.prototype, "getItem").mockImplementation(() => {
+      throw new Error("storage disabled");
+    });
+
+    expect(() => getStoredLanguage()).not.toThrow();
+    expect(getStoredLanguage()).toBeNull();
+
+    getItemSpy.mockRestore();
   });
 });
