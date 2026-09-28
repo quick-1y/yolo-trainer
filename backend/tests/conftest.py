@@ -18,8 +18,16 @@ from yolo_trainer_api.settings import Settings
 
 @pytest.fixture
 def settings(tmp_path: Path) -> Settings:
-    """Fresh settings pointing at an isolated, per-test DATA_DIR."""
-    return Settings(data_dir=tmp_path / "data")
+    """Fresh settings pointing at an isolated, per-test DATA_DIR.
+
+    `allowed_hosts` includes "testserver" so the TrustedHostMiddleware
+    (enabled by default in `create_app`) doesn't reject FastAPI's
+    `TestClient`, which sends `Host: testserver` by default.
+    """
+    return Settings(
+        data_dir=tmp_path / "data",
+        allowed_hosts=["testserver", "localhost", "127.0.0.1"],
+    )
 
 
 def make_client(settings: Settings) -> TestClient:

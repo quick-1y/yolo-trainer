@@ -14,7 +14,7 @@ def test_startup_creates_data_dir_and_migrates(tmp_path: Path) -> None:
     data_dir = tmp_path / "fresh" / "data"
     assert not data_dir.exists()
 
-    settings = Settings(data_dir=data_dir)
+    settings = Settings(data_dir=data_dir, allowed_hosts=["testserver", "localhost", "127.0.0.1"])
     with make_client(settings):
         pass
 
@@ -38,7 +38,9 @@ def test_startup_creates_data_dir_and_migrates(tmp_path: Path) -> None:
 
 
 def test_data_persists_across_app_restart(tmp_path: Path) -> None:
-    settings = Settings(data_dir=tmp_path / "data")
+    settings = Settings(
+        data_dir=tmp_path / "data", allowed_hosts=["testserver", "localhost", "127.0.0.1"]
+    )
 
     with make_client(settings) as first_app:
         response = first_app.post(
