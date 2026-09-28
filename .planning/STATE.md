@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 01
 current_phase_name: Runnable Skeleton & Projects
 status: executing
-stopped_at: Completed 01-04-PLAN.md
-last_updated: "2026-09-28T07:18:18.840Z"
+stopped_at: Completed 01-05-PLAN.md
+last_updated: "2026-09-28T07:32:39.782Z"
 last_activity: 2026-09-28
 last_activity_desc: Phase 01 execution started
-state_head: 82f2c78a43594348d9e088b871bcd6d340ab8365
+state_head: baad82219d3e78c9d1962c9595104bcc4f5986d7
 progress:
   total_phases: 12
   completed_phases: 0
   total_plans: 10
-  completed_plans: 4
+  completed_plans: 5
   percent: 0
 ---
 
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-09-24)
 ## Current Position
 
 Phase: 01 (Runnable Skeleton & Projects) — EXECUTING
-Plan: 5 of 10
+Plan: 6 of 10
 Status: Ready to execute
 Last activity: 2026-09-28 — Phase 01 execution started
 
@@ -61,6 +61,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 01 P01 | 55min | 2 tasks | 61 files |
 | Phase 01 P03 | 55min | 3 tasks | 14 files |
 | Phase 01 P04 | 45min | 2 tasks | 9 files |
+| Phase 01 P05 | 11min | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -78,6 +79,7 @@ Recent decisions affecting current work:
 - [Phase 01]: Task 1's 409 conflict detail was using the rejected attempt's own name, not the already-stored project's name; fixed to re-query by normalized_name. — Bug found while writing the DB-level uniqueness edge tests (Rule 1).
 - [Phase 01]: Re-verified torch 2.14.0/torchvision 0.29.0/ultralytics 8.4.159 pins against PyPI + download.pytorch.org/whl/cpu on 2026-09-28: none yanked, cp312 CPU wheels confirmed; kept unchanged from Phase 0. — Plan 01-04 D-22 re-verification step
 - [Phase 01]: pytorch-cpu uv index/sources declared in backend/pyproject.toml (the member declaring torch/torchvision), not the workspace root. — uv resolves sources relative to the pyproject.toml that declares the dependency; root only depends on yolo-trainer-backend[worker]
+- [Phase 01]: check_cli_run_git_clean.py cleans up via rglob('hygiene-check') under runs/, not a fixed path — Ultralytics nests output as runs/<task>/<project>/<name>/ when project is already a relative runs/... path, matching the pre-existing runs/detect/runs/train/... nesting pattern
 
 ### Pending Todos
 
@@ -87,7 +89,6 @@ None yet.
 
 - [Phase 12]: GPU-path acceptance (DEPL-02 and GPU memory freed after cancel) needs separate NVIDIA hardware, because the dev machine has none. It does not block Phases 1-11.
 - [Phase 1]: DEPL-01 on Linux/macOS needs those hosts to verify. Apple Silicon needs a `linux/arm64` CPU image.
-- [Phase 1]: Tracked binaries (`trained_models/best.pt`, `yolo*.pt`, `runs/`) must be untracked without deleting the user's real model. A history rewrite needs explicit owner confirmation.
 - [Phase 4]: How jobs cross from the API container to the worker is undecided. The API cannot `Popen` into another container; resolve this during planning.
 - [Phase 6]: Prior research does not cover click-to-segment (SAM). It needs phase research on model choice and CPU latency.
 
@@ -101,6 +102,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-09-28T07:18:18.801Z
-Stopped at: Completed 01-04-PLAN.md
+Last session: 2026-09-28T07:32:29.988Z
+Stopped at: Completed 01-05-PLAN.md
 Resume file: None
