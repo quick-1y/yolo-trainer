@@ -1,5 +1,5 @@
 import react from "@vitejs/plugin-react";
-import { defineConfig } from "vite";
+import { defineConfig } from "vitest/config";
 
 // Native dev (D-19): `vite dev` proxies /api to the FastAPI app running on
 // the host via `uvicorn --reload`. The compose stack (nginx) does its own
@@ -23,5 +23,11 @@ export default defineConfig({
         changeOrigin: true,
       },
     },
+  },
+  test: {
+    environment: "jsdom",
+    setupFiles: ["./src/test-setup.ts"],
+    css: false,
+    restoreMocks: true,
   },
 });
