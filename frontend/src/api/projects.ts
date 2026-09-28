@@ -21,12 +21,21 @@ export interface ProjectCreateInput {
 
 export const projectKeys = {
   all: ["projects"] as const,
+  detail: (id: number) => ["projects", id] as const,
 };
 
 export function useProjects() {
   return useQuery({
     queryKey: projectKeys.all,
     queryFn: () => apiRequest<Project[]>("/projects"),
+  });
+}
+
+export function useProject(id: number | null) {
+  return useQuery({
+    queryKey: id !== null ? projectKeys.detail(id) : ["projects", "detail", "disabled"],
+    queryFn: () => apiRequest<Project>(`/projects/${id}`),
+    enabled: id !== null,
   });
 }
 

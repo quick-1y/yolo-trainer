@@ -1,0 +1,20 @@
+{
+  "nav": {
+    "back": "Projects",
+    "overview": "Overview"
+  },
+  "overview": {
+    "noDescription": "No description provided.",
+    "createdAt": "Created {{date}}",
+    "emptyHint": "This project doesn't have any images yet."
+  },
+  "notFound": {
+    "title": "Project not found",
+    "body": "This project may have been deleted, or the link is incorrect.",
+    "back": "Back to projects"
+  },
+  "pageNotFound": {
+    "title": "Page not found",
+    "body": "The page you're looking for doesn't exist."
+  }
+}

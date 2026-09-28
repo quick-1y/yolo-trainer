@@ -1,5 +1,7 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 
+import { ProjectLayout } from "../features/project/ProjectLayout";
+import { ProjectOverviewPage } from "../features/project/ProjectOverviewPage";
 import { ProjectsPage } from "../features/projects/ProjectsPage";
 import { AppLayout } from "./AppLayout";
 
@@ -9,6 +11,9 @@ export function AppRoutes() {
       <Route element={<AppLayout />}>
         <Route path="/" element={<Navigate to="/projects" replace />} />
         <Route path="/projects" element={<ProjectsPage />} />
+        <Route path="/projects/:projectId" element={<ProjectLayout />}>
+          <Route index element={<ProjectOverviewPage />} />
+        </Route>
       </Route>
     </Routes>
   );

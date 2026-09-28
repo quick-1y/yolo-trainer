@@ -1,5 +1,6 @@
 import { Badge, Card, Group, Stack, Text } from "@mantine/core";
 import { useTranslation } from "react-i18next";
+import { Link } from "react-router-dom";
 
 import type { Project } from "../../api/projects";
 import { formatRelativeTime } from "../../lib/relativeTime";
@@ -12,7 +13,14 @@ export function ProjectCard({ project }: ProjectCardProps) {
   const { t, i18n } = useTranslation("projects");
 
   return (
-    <Card withBorder padding="lg" radius="md" h="100%">
+    <Card
+      component={Link}
+      to={`/projects/${project.id}`}
+      withBorder
+      padding="lg"
+      radius="md"
+      h="100%"
+    >
       <Card.Section withBorder inheritPadding py="xs">
         <Group justify="space-between">
           <Text fw={600}>{project.name}</Text>
