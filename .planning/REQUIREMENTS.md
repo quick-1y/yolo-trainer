@@ -23,7 +23,7 @@ Detailed technical background for every category: `docs/roadmap.md`, `docs/phase
 
 ### Projects
 
-- [ ] **PROJ-01**: User can create a project with a name and a fixed task type (`detect` or `segment`)
+- [x] **PROJ-01**: User can create a project with a name and a fixed task type (`detect` or `segment`)
 - [ ] **PROJ-02**: User can list, open, rename, and delete projects
 - [ ] **PROJ-03**: User can create, rename, recolor, and delete classes in a project
 - [ ] **PROJ-04**: User can create tags and assign/remove them on images; tags are never written into exported label files
@@ -139,7 +139,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | DEPL-03 | Phase 1 | Pending |
 | DEPL-04 | Phase 9 | Pending |
 | DEPL-05 | Phase 12 | Pending |
-| PROJ-01 | Phase 1 | Pending |
+| PROJ-01 | Phase 1 | Complete |
 | PROJ-02 | Phase 1 | Pending |
 | PROJ-03 | Phase 2 | Pending |
 | PROJ-04 | Phase 10 | Pending |
