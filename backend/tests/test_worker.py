@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import json
 import threading
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
@@ -31,8 +31,8 @@ FIXED_VERSIONS = {"torch": "2.14.0+cpu", "ultralytics": "8.4.159"}
 
 class TestBuildHeartbeat:
     def test_returns_exact_key_set(self):
-        started = datetime(2026, 1, 1, tzinfo=timezone.utc)
-        now = datetime(2026, 1, 1, 0, 0, 5, tzinfo=timezone.utc)
+        started = datetime(2026, 1, 1, tzinfo=UTC)
+        now = datetime(2026, 1, 1, 0, 0, 5, tzinfo=UTC)
 
         payload = build_heartbeat(42, started, now, FIXED_DEVICE, FIXED_VERSIONS)
 
@@ -48,8 +48,8 @@ class TestBuildHeartbeat:
         }
 
     def test_values_and_iso_z_timestamps(self):
-        started = datetime(2026, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
-        now = datetime(2026, 1, 1, 12, 0, 5, tzinfo=timezone.utc)
+        started = datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC)
+        now = datetime(2026, 1, 1, 12, 0, 5, tzinfo=UTC)
 
         payload = build_heartbeat(42, started, now, FIXED_DEVICE, FIXED_VERSIONS)
 
@@ -92,7 +92,7 @@ class TestWriteHeartbeat:
 class TestIsHeartbeatFresh:
     def test_true_for_recent_heartbeat(self, tmp_path: Path):
         path = tmp_path / "heartbeat.json"
-        now = datetime(2026, 1, 1, 12, 0, 5, tzinfo=timezone.utc)
+        now = datetime(2026, 1, 1, 12, 0, 5, tzinfo=UTC)
         started = now - timedelta(seconds=5)
         write_heartbeat(path, build_heartbeat(1, started, started, FIXED_DEVICE, FIXED_VERSIONS))
 
@@ -100,7 +100,7 @@ class TestIsHeartbeatFresh:
 
     def test_false_for_stale_heartbeat(self, tmp_path: Path):
         path = tmp_path / "heartbeat.json"
-        stale_at = datetime(2026, 1, 1, 12, 0, 0, tzinfo=timezone.utc)
+        stale_at = datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC)
         now = stale_at + timedelta(seconds=61)
         write_heartbeat(path, build_heartbeat(1, stale_at, stale_at, FIXED_DEVICE, FIXED_VERSIONS))
 
@@ -157,7 +157,7 @@ class TestMainHealthcheck:
     def test_exits_0_when_fresh(self, monkeypatch, tmp_path: Path):
         monkeypatch.setenv("DATA_DIR", str(tmp_path))
         heartbeat_path = tmp_path / "worker" / "heartbeat.json"
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         write_heartbeat(heartbeat_path, build_heartbeat(1, now, now, FIXED_DEVICE, FIXED_VERSIONS))
 
         assert main(["--healthcheck"]) == 0
@@ -170,7 +170,9 @@ class TestMainHealthcheck:
     def test_exits_1_when_stale(self, monkeypatch, tmp_path: Path):
         monkeypatch.setenv("DATA_DIR", str(tmp_path))
         heartbeat_path = tmp_path / "worker" / "heartbeat.json"
-        stale = datetime.now(timezone.utc) - timedelta(seconds=120)
-        write_heartbeat(heartbeat_path, build_heartbeat(1, stale, stale, FIXED_DEVICE, FIXED_VERSIONS))
+        stale = datetime.now(UTC) - timedelta(seconds=120)
+        write_heartbeat(
+            heartbeat_path, build_heartbeat(1, stale, stale, FIXED_DEVICE, FIXED_VERSIONS)
+        )
 
         assert main(["--healthcheck"]) == 1
