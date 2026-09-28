@@ -26,3 +26,25 @@ export function resolveInitialLanguage(
   }
   return "en";
 }
+
+/**
+ * Manually switch the UI language (D-02): persists the choice so it wins on
+ * the next reload, updates react-i18next immediately (no remount required),
+ * and syncs `document.documentElement.lang`.
+ *
+ * Imports `./index` dynamically (not at module top level) to avoid a static
+ * circular dependency - `./index` itself imports `resolveInitialLanguage`
+ * and `LANGUAGE_STORAGE_KEY` from this module at its own top level.
+ */
+export async function changeAppLanguage(lng: AppLanguage): Promise<void> {
+  try {
+    localStorage.setItem(LANGUAGE_STORAGE_KEY, lng);
+  } catch {
+    // Storage disabled (e.g. private browsing / blocked cookies) - the
+    // language still changes, the choice just won't be remembered (T-07-02).
+  }
+
+  const { default: i18n } = await import("./index");
+  await i18n.changeLanguage(lng);
+  document.documentElement.lang = lng;
+}

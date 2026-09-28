@@ -36,4 +36,12 @@ void i18n.use(initReactI18next).init({
   },
 });
 
+// Keep `document.documentElement.lang` in sync with the active UI language
+// at all times (truth: it always equals the active language), regardless of
+// whether the change came from `changeAppLanguage` or any other path.
+document.documentElement.lang = initialLanguage;
+i18n.on("languageChanged", (lng) => {
+  document.documentElement.lang = lng;
+});
+
 export default i18n;
