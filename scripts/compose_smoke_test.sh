@@ -153,4 +153,44 @@ if [ "$ALEMBIC_ROWS" != "1" ]; then
   exit 1
 fi
 
+echo "==> Checking worker heartbeat file exists with cuda_available..."
+if ! grep -q '"cuda_available"' "${DATA_DIR}/worker/heartbeat.json" 2>/dev/null; then
+  echo "FAIL: ${DATA_DIR}/worker/heartbeat.json missing or lacks cuda_available" >&2
+  exit 1
+fi
+
+echo "==> Checking worker's real torch/ultralytics versions (D-17)..."
+# Scoped (not exported globally): on Git Bash/MSYS, an absolute-looking arg
+# like /app/.venv/bin/python gets silently rewritten to a host path (e.g.
+# C:/Program Files/Git/app/...) before reaching `docker compose exec`.
+# MSYS_NO_PATHCONV=1 disables that specifically for this command; it must
+# NOT be exported for the whole script, since the same conversion is what
+# lets the `-o /dev/null` curl calls above work at all on Windows.
+WORKER_VERSIONS=$(MSYS_NO_PATHCONV=1 docker compose exec -T worker /app/.venv/bin/python -c \
+  "import torch, ultralytics; print(torch.__version__); print(ultralytics.__version__)")
+case "$WORKER_VERSIONS" in
+  *"2.14.0"*"8.4.159"*) ;;
+  *)
+    echo "FAIL: worker torch/ultralytics versions unexpected (got: $WORKER_VERSIONS)" >&2
+    exit 1
+    ;;
+esac
+
+echo "==> Checking the api image stays torch-free (D-17, RESEARCH Pitfall 4)..."
+if ! MSYS_NO_PATHCONV=1 docker compose exec -T api /app/.venv/bin/python -c \
+  "import importlib.util, sys; sys.exit(1 if importlib.util.find_spec('torch') else 0)"; then
+  echo "FAIL: torch is importable in the api image" >&2
+  exit 1
+fi
+
+echo "==> Comparing api vs worker image sizes (api must stay smaller)..."
+API_SIZE=$(docker image inspect --format '{{.Size}}' yolo-trainer-api:local)
+WORKER_SIZE=$(docker image inspect --format '{{.Size}}' yolo-trainer-worker:cpu)
+echo "    api image:    ${API_SIZE} bytes"
+echo "    worker image: ${WORKER_SIZE} bytes"
+if [ "$API_SIZE" -ge "$WORKER_SIZE" ]; then
+  echo "FAIL: api image (${API_SIZE}) is not smaller than worker image (${WORKER_SIZE})" >&2
+  exit 1
+fi
+
 echo "SMOKE OK"

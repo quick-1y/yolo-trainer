@@ -23,6 +23,31 @@ services:
     # to complete before compose sends SIGKILL (RESEARCH Pitfall 1 mitigation 2).
     stop_grace_period: 20s
 
+  # Phase 1 scope: the worker proves the heavy CPU ML image (torch +
+  # ultralytics) builds and stays alive via a heartbeat file; it runs no
+  # training jobs yet (Phase 4 decides the job hand-off from api). Phase 12's
+  # docker-compose.gpu.yml override (D-18) replaces build.target and image
+  # here and adds a GPU device reservation - not created in this phase.
+  worker:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.backend
+      target: worker
+    image: yolo-trainer-worker:cpu
+    volumes:
+      - ${DATA_DIR:-./data}:/data
+    environment:
+      DATA_DIR: /data
+    healthcheck:
+      test: ["CMD", "/app/.venv/bin/python", "-m", "yolo_trainer_worker.main", "--healthcheck"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      # torch/ultralytics import is slow on first start.
+      start_period: 90s
+    restart: unless-stopped
+    stop_grace_period: 20s
+
   web:
     build:
       context: .
