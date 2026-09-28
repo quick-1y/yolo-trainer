@@ -2,35 +2,58 @@
 
 from __future__ import annotations
 
+import unicodedata
 from datetime import UTC, datetime
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, field_serializer, field_validator
+from pydantic import AfterValidator, BaseModel, ConfigDict, field_serializer
 
 TaskType = Literal["detect", "segment"]
+
+# U+0000-U+001F (C0 controls) and U+007F (DEL). Rejected in names to keep
+# stored/displayed project names free of unprintable characters (D-08).
+_CONTROL_CHARS = frozenset(chr(code_point) for code_point in range(0x20)) | {chr(0x7F)}
+
+
+def _validate_project_name(value: str) -> str:
+    """NFC-normalize, trim, and enforce the name rules (D-07, D-08).
+
+    Length is counted in Unicode code points (`len()` on a `str`), matching
+    how the stored `normalized_name` uniqueness index compares names.
+    """
+    normalized = unicodedata.normalize("NFC", value).strip()
+    if not normalized:
+        raise ValueError("must not be empty")
+    if len(normalized) > 100:
+        raise ValueError("must be at most 100 characters")
+    if any(char in _CONTROL_CHARS for char in normalized):
+        raise ValueError("must not contain control characters")
+    return normalized
+
+
+def _validate_project_description(value: str | None) -> str | None:
+    """Trim; blank becomes `None`; enforce the max length (D-07)."""
+    if value is None:
+        return None
+    stripped = value.strip()
+    if not stripped:
+        return None
+    if len(stripped) > 2000:
+        raise ValueError("must be at most 2000 characters")
+    return stripped
+
+
+# Reusable annotated types (also used by Plan 09's ProjectUpdate).
+ProjectName = Annotated[str, AfterValidator(_validate_project_name)]
+ProjectDescription = Annotated[str | None, AfterValidator(_validate_project_description)]
 
 
 class ProjectCreate(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    name: str
+    name: ProjectName
     task_type: TaskType
-    description: str | None = None
-
-    @field_validator("name")
-    @classmethod
-    def _validate_name(cls, value: str) -> str:
-        stripped = value.strip()
-        if not (1 <= len(stripped) <= 100):
-            raise ValueError("must be between 1 and 100 characters")
-        return stripped
-
-    @field_validator("description")
-    @classmethod
-    def _validate_description(cls, value: str | None) -> str | None:
-        if value is not None and len(value) > 2000:
-            raise ValueError("must be at most 2000 characters")
-        return value
+    description: ProjectDescription = None
 
 
 class ProjectRead(BaseModel):

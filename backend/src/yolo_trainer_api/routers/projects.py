@@ -32,9 +32,16 @@ async def create_project(
         await session.commit()
     except IntegrityError:
         await session.rollback()
+        # Use the ALREADY-STORED project's display name in the message, not
+        # the rejected attempt's - the attempt may differ only by case/
+        # whitespace/Unicode-compatibility form (D-08).
+        existing = await session.execute(
+            select(Project.name).where(Project.normalized_name == project.normalized_name)
+        )
+        existing_name = existing.scalar_one_or_none() or project.name
         raise HTTPException(
             status_code=409,
-            detail=f'A project named "{project.name}" already exists.',
+            detail=f'A project named "{existing_name}" already exists.',
         ) from None
     await session.refresh(project)
     return project
