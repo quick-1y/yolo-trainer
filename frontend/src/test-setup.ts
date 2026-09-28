@@ -1,8 +1,15 @@
 import "@testing-library/jest-dom/vitest";
 
-import { beforeEach } from "vitest";
+import { cleanup } from "@testing-library/react";
+import { afterEach, beforeEach } from "vitest";
 
 import i18n from "./i18n";
+
+// `test.globals` is off (tests import from "vitest" explicitly), so
+// Testing Library's own auto-cleanup (which only registers when it finds a
+// global `afterEach`) never fires - register it explicitly instead, or a
+// modal from one test leaks into the next test's DOM.
+afterEach(cleanup);
 
 // Mantine reads `window.matchMedia` (color-scheme detection) and
 // `ResizeObserver` (several components) - jsdom implements neither.
@@ -27,6 +34,16 @@ if (!("ResizeObserver" in window)) {
   }
   // @ts-expect-error - jsdom has no ResizeObserver; a minimal stub is enough for tests.
   window.ResizeObserver = ResizeObserverPolyfill;
+}
+
+// Mantine's autosizing Textarea listens on `document.fonts` (FontFaceSet),
+// which jsdom does not implement.
+if (!document.fonts) {
+  // @ts-expect-error - minimal stub, only addEventListener/removeEventListener are used.
+  document.fonts = {
+    addEventListener: () => undefined,
+    removeEventListener: () => undefined,
+  };
 }
 
 beforeEach(async () => {

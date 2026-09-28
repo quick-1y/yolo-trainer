@@ -21,5 +21,12 @@
   "taskType": {
     "detect": "Детекция",
     "segment": "Сегментация"
+  },
+  "create": {
+    "validation": {
+      "nameRequired": "Введите название.",
+      "nameTooLong": "Название не должно превышать 100 символов.",
+      "descriptionTooLong": "Описание не должно превышать 2000 символов."
+    }
   }
 }

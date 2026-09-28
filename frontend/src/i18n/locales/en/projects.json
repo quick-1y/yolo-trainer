@@ -21,5 +21,12 @@
   "taskType": {
     "detect": "Detect",
     "segment": "Segment"
+  },
+  "create": {
+    "validation": {
+      "nameRequired": "Name is required.",
+      "nameTooLong": "Name must be at most 100 characters.",
+      "descriptionTooLong": "Description must be at most 2000 characters."
+    }
   }
 }
