@@ -10,7 +10,7 @@ Detailed technical background for every category: `docs/roadmap.md`, `docs/phase
 ### Foundation
 
 - [ ] **FOUND-01**: Developer can set up the project from a fresh clone with pinned dependencies (Python 3.12, PyTorch 2.14.0, Ultralytics 8.4.159) by following the README, with no manual guessing
-- [ ] **FOUND-02**: Duplicated helpers from `train_yolo.py` / `finetune_yolo.py` (device parsing, quality assessment) live in one shared module with unit tests (pytest configured)
+- [x] **FOUND-02**: Duplicated helpers from `train_yolo.py` / `finetune_yolo.py` (device parsing, quality assessment) live in one shared module with unit tests (pytest configured)
 - [ ] **FOUND-03**: Generated artifacts (`*.pt`, `runs/`, datasets, app data) are git-ignored so a training run leaves `git status` clean
 
 ### Deployment
@@ -132,7 +132,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | Requirement | Phase | Status |
 |-------------|-------|--------|
 | FOUND-01 | Phase 1 | Pending |
-| FOUND-02 | Phase 1 | Pending |
+| FOUND-02 | Phase 1 | Complete |
 | FOUND-03 | Phase 1 | Pending |
 | DEPL-01 | Phase 1 | Pending |
 | DEPL-02 | Phase 12 | Pending |
@@ -187,6 +187,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | TRAN-11 | Phase 5 | Pending |
 
 **Coverage:**
+
 - v1 requirements: 54 total
 - Mapped to phases: 54
 - Unmapped: 0 ✓
