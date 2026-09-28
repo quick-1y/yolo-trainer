@@ -23,6 +23,15 @@
       "nameTooLong": "Name must be at most 100 characters."
     }
   },
+  "delete": {
+    "dangerZone": "Danger zone",
+    "button": "Delete project",
+    "title": "Delete project",
+    "warning": "This will permanently delete \"{{name}}\" and cannot be undone.",
+    "typeToConfirm": "Type \"{{name}}\" to confirm",
+    "confirm": "Delete permanently",
+    "done": "Project \"{{name}}\" was deleted."
+  },
   "notFound": {
     "title": "Project not found",
     "body": "This project may have been deleted, or the link is incorrect.",

@@ -1,4 +1,17 @@
-import { Alert, Badge, Box, Button, Group, Stack, Text, Textarea, TextInput, Title } from "@mantine/core";
+import {
+  Alert,
+  Badge,
+  Box,
+  Button,
+  Divider,
+  Group,
+  Stack,
+  Text,
+  Textarea,
+  TextInput,
+  Title,
+} from "@mantine/core";
+import { useDisclosure } from "@mantine/hooks";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useOutletContext } from "react-router-dom";
@@ -6,6 +19,7 @@ import { useOutletContext } from "react-router-dom";
 import { ApiError } from "../../api/client";
 import { useUpdateProject } from "../../api/projects";
 import type { Project } from "../../api/projects";
+import { DeleteProjectModal } from "./DeleteProjectModal";
 
 interface ProjectOutletContext {
   project: Project;
@@ -19,6 +33,8 @@ export function ProjectSettingsPage() {
   const { t } = useTranslation(["project", "projects", "common"]);
   const { project } = useOutletContext<ProjectOutletContext>();
   const updateProject = useUpdateProject(project.id);
+  const [deleteModalOpened, { open: openDeleteModal, close: closeDeleteModal }] =
+    useDisclosure(false);
 
   const [name, setName] = useState(project.name);
   const [description, setDescription] = useState(project.description ?? "");
@@ -128,7 +144,22 @@ export function ProjectSettingsPage() {
           </Group>
         </Stack>
       </Box>
-      {/* Danger zone (delete) is added by Task 3. */}
+      <Divider mt="lg" />
+      <Stack>
+        <Title order={4} c="red">
+          {t("project:delete.dangerZone")}
+        </Title>
+        <Group>
+          <Button color="red" variant="outline" onClick={openDeleteModal}>
+            {t("project:delete.button")}
+          </Button>
+        </Group>
+      </Stack>
+      <DeleteProjectModal
+        project={project}
+        opened={deleteModalOpened}
+        onClose={closeDeleteModal}
+      />
     </Stack>
   );
 }

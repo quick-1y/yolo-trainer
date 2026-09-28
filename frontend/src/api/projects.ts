@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { apiRequest } from "./client";
+import { ApiError, apiRequest } from "./client";
 
 export type TaskType = "detect" | "segment";
 
@@ -76,7 +76,19 @@ export function useUpdateProject(id: number) {
 export function useDeleteProject(id: number) {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: () => apiRequest<void>(`/projects/${id}`, { method: "DELETE" }),
+    mutationFn: async () => {
+      try {
+        await apiRequest<void>(`/projects/${id}`, { method: "DELETE" });
+      } catch (error) {
+        // Deleting an already-deleted project is idempotent - a 404 here
+        // means the caller's desired end state (the project is gone) is
+        // already true, so treat it as success rather than an error.
+        if (error instanceof ApiError && error.status === 404) {
+          return;
+        }
+        throw error;
+      }
+    },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: projectKeys.all });
       queryClient.removeQueries({ queryKey: projectKeys.detail(id) });
