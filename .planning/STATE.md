@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 01
 current_phase_name: Runnable Skeleton & Projects
 status: executing
-stopped_at: Completed 01-01-PLAN.md
-last_updated: "2026-09-28T06:45:50.031Z"
+stopped_at: Completed 01-03-PLAN.md
+last_updated: "2026-09-28T07:02:50.256Z"
 last_activity: 2026-09-28
 last_activity_desc: Phase 01 execution started
-state_head: b855fcaa51229a228ca235b0e7ce65781eeb2bc1
+state_head: 68134738086e92ec6de8004f9889eae8043b1fd3
 progress:
   total_phases: 12
   completed_phases: 0
   total_plans: 10
-  completed_plans: 2
+  completed_plans: 3
   percent: 0
 ---
 
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-09-24)
 ## Current Position
 
 Phase: 01 (Runnable Skeleton & Projects) — EXECUTING
-Plan: 3 of 10
+Plan: 4 of 10
 Status: Ready to execute
 Last activity: 2026-09-28 — Phase 01 execution started
 
@@ -59,6 +59,7 @@ Progress: [░░░░░░░░░░] 0%
 | Plan | Duration | Tasks | Files |
 |------|----------|-------|-------|
 | Phase 01 P01 | 55min | 2 tasks | 61 files |
+| Phase 01 P03 | 55min | 3 tasks | 14 files |
 
 ## Accumulated Context
 
@@ -73,6 +74,7 @@ Recent decisions affecting current work:
 - [Roadmap]: Vertical MVP ordering. The core loop is complete at Phase 4; polygons (Phase 6) come before AI assist (Phase 8) so AI proposals are editable in segment projects.
 - [Phase 01]: Task 2 tests were written against Task 1's already-correct tracer implementation; all 7 passed on first run, no implementation changes needed.
 - [Phase 01]: Migration/restart tests live in test_migrations.py (2 tests); API-contract tests live in test_projects_api.py (5 tests), matching the plan's per-file acceptance-criteria grep counts.
+- [Phase 01]: Task 1's 409 conflict detail was using the rejected attempt's own name, not the already-stored project's name; fixed to re-query by normalized_name. — Bug found while writing the DB-level uniqueness edge tests (Rule 1).
 
 ### Pending Todos
 
@@ -96,6 +98,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-09-28T06:22:33.710Z
-Stopped at: Completed 01-01-PLAN.md
+Last session: 2026-09-28T07:02:50.217Z
+Stopped at: Completed 01-03-PLAN.md
 Resume file: None

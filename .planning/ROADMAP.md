@@ -44,7 +44,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   4. On the CPU-only dev machine, one `docker compose up` starts the service; the user opens the web UI, creates a project with a name and a fixed task type (`detect` or `segment`), and can list, open, rename, and delete projects
   5. Projects survive `docker compose down`/`up` and image rebuilds, and database migrations apply automatically on startup
 
-**Plans:** 2/10 plans executed (5 waves; walking skeleton in `SKELETON.md`)
+**Plans:** 3/10 plans executed (5 waves; walking skeleton in `SKELETON.md`)
 
 Plans:
 **Wave 1**
@@ -54,7 +54,7 @@ Plans:
 **Wave 2** *(blocked on Wave 1 completion)*
 
 - [x] 01-02-PLAN.md — Deployment hardening: WAL tuning/checkpoint, SQLITE_JOURNAL_MODE escape hatch, DATA_DIR validation, host allow-list, rebuild + integrity smoke stage (wave 2)
-- [ ] 01-03-PLAN.md — Create-project edges (empty, Unicode, case, repeats, races) with plain-English errors, Vitest harness, create-modal validation (wave 2)
+- [x] 01-03-PLAN.md — Create-project edges (empty, Unicode, case, repeats, races) with plain-English errors, Vitest harness, create-modal validation (wave 2)
 - [ ] 01-04-PLAN.md — Shared `yolo_trainer_common` module + pinned torch 2.14.0 CPU / ultralytics 8.4.159 env; legacy scripts import it (wave 2)
 
 **Wave 3** *(blocked on Wave 2 completion)*
@@ -331,7 +331,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Runnable Skeleton & Projects | 2/10 | In Progress|  |
+| 1. Runnable Skeleton & Projects | 3/10 | In Progress|  |
 | 2. Image Upload & Classes | 0/TBD | Not started | - |
 | 3. Box Annotation Editor | 0/TBD | Not started | - |
 | 4. Train & Download | 0/TBD | Not started | - |
