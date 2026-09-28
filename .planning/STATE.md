@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 01
 current_phase_name: Runnable Skeleton & Projects
 status: executing
-stopped_at: Completed 01-08-PLAN.md
-last_updated: "2026-09-28T11:02:07.000Z"
+stopped_at: Completed 01-09-PLAN.md
+last_updated: "2026-09-28T11:29:19.266Z"
 last_activity: 2026-09-28
 last_activity_desc: Phase 01 execution started
-state_head: 1279e6f92f45374d5cf9150180d5554ae6168c17
+state_head: a3327d2b904d3f4ddb02d815aa843d94c052e859
 progress:
   total_phases: 12
   completed_phases: 0
   total_plans: 10
-  completed_plans: 8
+  completed_plans: 9
   percent: 0
 ---
 
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-09-24)
 ## Current Position
 
 Phase: 01 (Runnable Skeleton & Projects) — EXECUTING
-Plan: 9 of 10
+Plan: 10 of 10
 Status: Ready to execute
 Last activity: 2026-09-28 — Phase 01 execution started
 
@@ -65,6 +65,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 01 P06 | ~26min | 2 tasks | 7 files |
 | Phase 01 P07 | 11min | 2 tasks | 9 files |
 | Phase 01 P08 | 35min | 3 tasks | 13 files |
+| Phase 01 P09 | 23min | 3 tasks | 16 files |
 
 ## Accumulated Context
 
@@ -89,6 +90,10 @@ Recent decisions affecting current work:
 - [Phase 01]: Phase 01: changeAppLanguage uses a dynamic import of ./index inside language.ts to avoid a static circular dependency with index.ts (which imports resolveInitialLanguage/getStoredLanguage from language.ts).
 - [Phase 01]: Phase 01: T-07-02 threat mitigation (localStorage access resilience) required guarding BOTH the read (index.ts init) and write (changeAppLanguage) paths; only the write was guarded initially - fixed via getStoredLanguage().
 - [Phase 01]: pageNotFound.* keys added to the project i18n namespace (not common) for the generic 404 page, and both not-found views reuse project:notFound.back — avoids touching Plan 07's common locale files. — Plan 08 interface note: put new strings in the new project namespace; do not touch Plan 07's common files.
+- [Phase 01]: Plan 09: ProjectUpdate's model_validator(mode='before') refuses task_type and explicit null name before field validation, so both errors surface as the model-level message with no field prefix (matches errors.py's stripping and the D-09 wording).
+- [Phase 01]: Plan 09: PATCH's 409 conflict handler captures the attempted new normalized_name in a local variable before commit() - a persistent ORM object's rollback reloads pre-transaction DB state, so re-reading project.normalized_name after rollback would look up the wrong (pre-rename) name.
+- [Phase 01]: Plan 09: useDeleteProject treats a DELETE 404 as idempotent success (project already gone = desired end state), so the normal-delete and already-deleted-elsewhere cases share one success path (navigate + invalidate + notify).
+- [Phase 01]: Plan 09: Fixed a pre-existing bug in ProjectLayout (Rule 1) - every section NavLink hardcoded the project root and active=true, which only worked by accident with a single section; now each section's own to/active is derived from its route.
 
 ### Pending Todos
 
@@ -111,6 +116,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-09-28T11:02:06.957Z
-Stopped at: Completed 01-08-PLAN.md
+Last session: 2026-09-28T11:29:19.219Z
+Stopped at: Completed 01-09-PLAN.md
 Resume file: None
