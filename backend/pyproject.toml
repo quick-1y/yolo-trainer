@@ -17,7 +17,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/yolo_trainer_api"]
+packages = ["src/yolo_trainer_api", "src/yolo_trainer_common"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

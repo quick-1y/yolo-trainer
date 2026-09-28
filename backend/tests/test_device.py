@@ -62,9 +62,7 @@ class TestDetectComputeDevice:
 
         result = detect_compute_device()
 
-        assert result == ComputeDevice(
-            cuda_available=True, device="cuda:0", device_name="Fake GPU"
-        )
+        assert result == ComputeDevice(cuda_available=True, device="cuda:0", device_name="Fake GPU")
 
 
 def test_importing_device_module_does_not_import_torch():
