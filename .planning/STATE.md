@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 01
 current_phase_name: Runnable Skeleton & Projects
 status: executing
-stopped_at: Completed 01-05-PLAN.md
-last_updated: "2026-09-28T07:32:39.782Z"
+stopped_at: Completed 01-06-PLAN.md
+last_updated: "2026-09-28T08:02:54.067Z"
 last_activity: 2026-09-28
 last_activity_desc: Phase 01 execution started
-state_head: baad82219d3e78c9d1962c9595104bcc4f5986d7
+state_head: 904b8d5fe4704f219cd0c69bdf4738d48ff162e6
 progress:
   total_phases: 12
   completed_phases: 0
   total_plans: 10
-  completed_plans: 5
+  completed_plans: 6
   percent: 0
 ---
 
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-09-24)
 ## Current Position
 
 Phase: 01 (Runnable Skeleton & Projects) — EXECUTING
-Plan: 6 of 10
+Plan: 7 of 10
 Status: Ready to execute
 Last activity: 2026-09-28 — Phase 01 execution started
 
@@ -62,6 +62,7 @@ Progress: [░░░░░░░░░░] 0%
 | Phase 01 P03 | 55min | 3 tasks | 14 files |
 | Phase 01 P04 | 45min | 2 tasks | 9 files |
 | Phase 01 P05 | 11min | 2 tasks | 6 files |
+| Phase 01 P06 | ~26min | 2 tasks | 7 files |
 
 ## Accumulated Context
 
@@ -80,6 +81,9 @@ Recent decisions affecting current work:
 - [Phase 01]: Re-verified torch 2.14.0/torchvision 0.29.0/ultralytics 8.4.159 pins against PyPI + download.pytorch.org/whl/cpu on 2026-09-28: none yanked, cp312 CPU wheels confirmed; kept unchanged from Phase 0. — Plan 01-04 D-22 re-verification step
 - [Phase 01]: pytorch-cpu uv index/sources declared in backend/pyproject.toml (the member declaring torch/torchvision), not the workspace root. — uv resolves sources relative to the pyproject.toml that declares the dependency; root only depends on yolo-trainer-backend[worker]
 - [Phase 01]: check_cli_run_git_clean.py cleans up via rglob('hygiene-check') under runs/, not a fixed path — Ultralytics nests output as runs/<task>/<project>/<name>/ when project is already a relative runs/... path, matching the pre-existing runs/detect/runs/train/... nesting pattern
+- [Phase 01]: WorkerSettings.heartbeat_interval_seconds uses a pydantic validation_alias (WORKER_HEARTBEAT_INTERVAL_SECONDS) plus populate_by_name=True so both the env var and direct keyword construction work.
+- [Phase 01]: MSYS_NO_PATHCONV=1 must be scoped per-command in compose_smoke_test.sh, not exported globally - a global export broke the pre-existing curl -o /dev/null burst-write stage on Git Bash/Windows. Bug found and fixed while wiring the new worker torch/ultralytics-version and torch-free-api assertions (Rule 1).
+- [Phase 4 follow-up]: Ultralytics usage analytics must be disabled in the worker (settings.update sync=False or equivalent) before it runs real training/inference jobs - not yet live in Phase 1 since the worker only imports torch/ultralytics and heartbeats.
 
 ### Pending Todos
 
@@ -102,6 +106,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-09-28T07:32:29.988Z
-Stopped at: Completed 01-05-PLAN.md
+Last session: 2026-09-28T08:02:54.027Z
+Stopped at: Completed 01-06-PLAN.md
 Resume file: None
