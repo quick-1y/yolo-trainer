@@ -19,8 +19,12 @@ spikes/output/
 spikes/*.pt
 
 # Local datasets -- never commit real user datasets (see docs/roadmap.md section 22)
-# example_ready_dataset/ is intentionally NOT ignored: it's a small, deliberate fixture,
-# not a real user dataset -- see docs/roadmap.md section 3 for the reasoning.
+# example_ready_dataset/ images/labels are gitignored (D-23); data.yaml and the two
+# READMEs stay tracked as a lightweight provenance record. A small dedicated test
+# fixture is added by the phase that first needs one.
+example_ready_dataset/train/
+example_ready_dataset/valid/
+example_ready_dataset/test/
 
 # IDE / tooling
 .idea/
@@ -32,3 +36,6 @@ data/
 .env
 .pytest_cache/
 .ruff_cache/
+
+# Planning tool caches
+.planning/research/.cache/
