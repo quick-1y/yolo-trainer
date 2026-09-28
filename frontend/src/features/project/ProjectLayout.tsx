@@ -4,6 +4,7 @@ import { Link, Outlet, useParams } from "react-router-dom";
 
 import { ApiError } from "../../api/client";
 import { useProject } from "../../api/projects";
+import { ProjectNotFound } from "./ProjectNotFound";
 
 interface SectionLink {
   key: string;
@@ -23,13 +24,7 @@ export function ProjectLayout() {
   const query = useProject(isValidId ? parsedId : null);
 
   if (!isValidId) {
-    // TODO(Task 3): replace with the dedicated ProjectNotFound component.
-    return (
-      <Stack gap="sm">
-        <Text fw={600}>{t("notFound.title")}</Text>
-        <Text c="dimmed">{t("notFound.body")}</Text>
-      </Stack>
-    );
+    return <ProjectNotFound />;
   }
 
   if (query.isPending) {
@@ -37,7 +32,9 @@ export function ProjectLayout() {
   }
 
   if (query.isError) {
-    // TODO(Task 3): distinguish a 404 ApiError from other failures.
+    if (query.error instanceof ApiError && query.error.status === 404) {
+      return <ProjectNotFound />;
+    }
     return (
       <Alert color="red" title={t("common:error.title")}>
         {query.error instanceof ApiError ? query.error.message : String(query.error)}

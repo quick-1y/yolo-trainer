@@ -1,5 +1,6 @@
 import { Navigate, Route, Routes } from "react-router-dom";
 
+import { NotFoundPage } from "../features/NotFoundPage";
 import { ProjectLayout } from "../features/project/ProjectLayout";
 import { ProjectOverviewPage } from "../features/project/ProjectOverviewPage";
 import { ProjectsPage } from "../features/projects/ProjectsPage";
@@ -14,6 +15,7 @@ export function AppRoutes() {
         <Route path="/projects/:projectId" element={<ProjectLayout />}>
           <Route index element={<ProjectOverviewPage />} />
         </Route>
+        <Route path="*" element={<NotFoundPage />} />
       </Route>
     </Routes>
   );
