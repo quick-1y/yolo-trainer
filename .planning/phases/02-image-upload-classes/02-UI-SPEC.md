@@ -298,6 +298,7 @@ Duplicate-name 409 and other API errors appear as received: under the input for 
 - Delete: confirmation modal (Copywriting Contract). After deletion the list re-renders with the shifted indices and a green notification `delete.done`.
 - The index shown is always the class's current position (0..N-1); no drag reorder in this phase (D-14).
 - No pagination or virtualization for classes (expected under about 200); the page scrolls normally.
+- Class list load failure: red `Alert` with the API message and a "Try again" button (reuse the grid's retry string); the add form stays visible. While a create is pending the "Add class" button shows `loading`; while a rename PATCH is pending the rename input is disabled.
 
 ### Accessibility
 - Glyph-only controls (`‹` `›` `×`, class swatch) carry `aria-label`s from the strings above. Modals trap focus and restore it to the trigger on close (Mantine default). Focus rings: Mantine default (2px accent, offset).
@@ -309,32 +310,75 @@ Duplicate-name 409 and other API errors appear as received: under the input for 
 
 ## UI Considerations
 
-Applicable state considerations resolved: 18 covered, 3 backstop, 1 unresolved.
+Probe run (post-verification, `ui-consideration-probe.cjs`, 2026-09-29) over 10 elements: 62 applicable considerations, plus 1 added row for folder drop across browsers (63 rows). Resolved: 45 explicit, 4 backstop, 14 dismissed (N/A, reason given), 0 unresolved. User confirmed the batch resolution, the detected element kinds (nothing missed), and backstop + manual check for folder drop.
 
-| Category | Element(s) | Status | Resolution / Reason |
-|----------|------------|--------|---------------------|
-| empty | ImageGrid | ✅ covered | Zero images and no search renders the "No images yet" EmptyState with both upload buttons (Copywriting Contract rows) |
-| loading | ImageGrid | ✅ covered | First page renders 24 Skeleton tiles of the same 176 x 200 size; further pages show a 48px "Loading more…" footer |
-| error | ImageGrid | ✅ covered | List failure shows a red Alert with the API message and "Try again"; next-page failure shows an inline footer error with retry |
-| populated | ImageGrid | ✅ covered | Virtualized flex-wrap grid of fixed tiles, page size 100, only a few hundred `<img>` nodes mounted at 5000 images |
-| partial | ImageTile | ✅ covered | A thumbnail that fails to load shows a "No preview" placeholder while the caption and viewer still work |
-| overflow | ImageGrid | ✅ covered | Own Virtuoso scroller inside a fixed-height flex region; toolbar and sidebar stay fixed |
-| zero-one-many | ImageGrid | ✅ covered | Counts use "Images: N" label form (no plurals); a single tile left-aligns in the first column; "Found: N" while searching; "No matching images" at zero results |
-| long-text | ImageTile | 🧪 backstop | Filename truncated with ellipsis and native tooltip; visual/held-out test with a 255-character name |
-| loading | UploadPanel | ✅ covered | Determinate `Progress` plus "Uploading: N of M" and live counters |
-| error | UploadPanel | ✅ covered | Failed batches become rejected entries with "Upload failed. Try again." and the retry hint; re-upload is idempotent |
-| partial | UploadPanel | ✅ covered | Mixed outcomes show added / already present / rejected badges and the expandable rejected list |
-| overflow | RejectedList | 🧪 backstop | Rows capped at 100 inside a 240px ScrollArea with "…and N more" and Copy list; test with 5000 rejected non-image files |
-| empty | ClassList | ✅ covered | "No classes yet" EmptyState below the always-visible add form |
-| loading | ClassList | ✅ covered | 3 Skeleton rows of 48px height |
-| error | AddClassForm | ✅ covered | 409 and validation messages appear under the input; the form keeps its value |
-| zero-one-many | ClassList | ✅ covered | "Classes: N" label form; the "classes after it will move up" sentence appears only when later classes exist |
-| overflow | ClassList | ✅ covered | Hundreds of classes scroll with the page; long lists are not virtualized by design |
-| long-text | ClassRow | 🧪 backstop | Name truncated at 100 chars max with ellipsis and `title`; test with a 100-character name in ru and en |
-| loading | ImageViewer | ✅ covered | Centered Loader until the original image loads |
-| error | ImageViewer | ✅ covered | "Could not load this image." on the stage; arrow navigation still works |
-| zero-one-many | ImageViewer | ✅ covered | With one image both arrows are disabled and the position reads "1 of 1" |
-| error | FolderDrop (Safari and Firefox) | ⚠ unresolved | Folder drop and `webkitdirectory` behavior was verified from library source only (RESEARCH A3); planner treats as an assumption and adds a manual end-of-phase browser check |
+Status legend: ✅ resolved (verification: explicit) — the Resolution column is the truth to lift into `must_haves.truths`; 🧪 resolved (verification: backstop) — lift as `{ statement: <Resolution>, verification: backstop }`; ➖ dismissed — not applicable, reason given, not lifted. Empty/error COPY lives in the Copywriting Contract; rows below reference it.
+
+| Category | Element | Status | Resolution / Reason |
+|----------|---------|--------|---------------------|
+| empty | ImageGrid | ✅ | Zero images and no search renders the "No images yet" EmptyState with both upload buttons |
+| loading | ImageGrid | ✅ | First page renders 24 Skeleton tiles of 176 x 200; further pages show a 48px "Loading more…" footer |
+| error | ImageGrid | ✅ | List failure shows a red Alert with the API message and "Try again"; next-page failure shows an inline footer error with retry |
+| populated | ImageGrid | ✅ | Virtualized flex-wrap grid of fixed 184 x 208 items, page size 100; only a few hundred `<img>` nodes are mounted at 5000 images |
+| partial | ImageGrid | ✅ | A page whose thumbnails partly fail still renders every tile; failed tiles show "No preview" (see ImageTile partial) |
+| overflow | ImageGrid | ✅ | Own Virtuoso scroller inside a fixed-height flex region; toolbar and sidebar never scroll away |
+| zero-one-many | ImageGrid | ✅ | Counts use "Images: N" label form (no plurals); a single tile left-aligns in the first column; "Found: N" while searching; "No matching images" at zero search results |
+| long-text | ImageGrid | ✅ | Long filenames never widen a grid item: items are fixed 184 x 208 and captions truncate (see ImageTile long-text) |
+| empty | ImageTile | ➖ | N/A — a tile exists only for a stored image |
+| loading | ImageTile | ✅ | Thumbnail area shows a `dark-5` background until the `<img>` loads (`decoding="async"`) |
+| error | ImageTile | ✅ | Thumbnail `onError` swaps to a `dark-5` block with "No preview"; the tile stays clickable and opens the viewer |
+| populated | ImageTile | ✅ | 176 x 176 cover thumbnail, 24px caption with the filename, hover/focus checkbox, reserved empty 24 x 24 badge slot |
+| partial | ImageTile | ✅ | A thumbnail that fails to load shows "No preview" while the caption and viewer still work |
+| long-text | ImageTile | 🧪 | Filename truncates to one line with ellipsis and the full name in the native `title`; held-out visual test with a 255-character name |
+| loading | UploadPanel | ✅ | Determinate `Progress` (aria-valuenow) plus "Uploading: N of M" and counters updated once per batch |
+| error | UploadPanel | ✅ | Every file of a failed batch (network, non-JSON 413, 5xx) becomes a rejected entry "Upload failed. Try again." and the retry hint shows; re-upload is idempotent by hash |
+| long-text | UploadPanel | ➖ | N/A — the panel shows counts only; filenames appear only in RejectedList (see RejectedList long-text) |
+| empty | RejectedList | ➖ | N/A — the list and its toggle are not rendered when rejected = 0 |
+| loading | RejectedList | ➖ | N/A — built client-side from batch responses; never fetched |
+| error | RejectedList | ➖ | N/A — no request of its own; request failures become entries (UploadPanel error) |
+| populated | RejectedList | ✅ | Collapsible rows of filename (14px) and reason (14px `dark-1`) in submission order, plus a "Copy list" button |
+| partial | RejectedList | ➖ | N/A — every entry always carries both a filename and a reason |
+| overflow | RejectedList | 🧪 | Rows capped at 100 inside a 240px ScrollArea with "…and N more"; "Copy list" copies all entries; held-out test with 5000 rejected non-image files |
+| zero-one-many | RejectedList | ✅ | Hidden at zero; "Rejected: N" label form at one and many; the "…and N more" line appears only above 100 |
+| long-text | RejectedList | ✅ | Filename truncates with ellipsis and full `title`; the reason wraps |
+| empty | Dropzone | ✅ | Idle state is invisible; upload entry points are the two header buttons and the empty-grid EmptyState |
+| loading | Dropzone | ✅ | While an upload runs both buttons are disabled and a new drop or pick shows the yellow `busy` notification and is ignored |
+| error | Dropzone | ✅ | Unsupported and oversize files are rejected client-side into the rejected list with `reject.unsupported` / `reject.tooLarge`; nothing is silently dropped except `.DS_Store` / `Thumbs.db` |
+| populated | Dropzone | ✅ | Drag-over shows the full-window overlay: dashed 2px accent border, 12% accent tint and the drop message |
+| populated | Dropzone (folder drop, Safari and Firefox) | 🧪 | Dropping or picking a folder with subfolders uploads every image inside it and reports non-image files as rejected in Chrome, Firefox and Safari (if available); manual end-of-phase browser check (RESEARCH A3 verified from library source only) |
+| long-text | Dropzone | ➖ | N/A — the overlay shows only a fixed translated message |
+| empty | ImageViewer | ➖ | N/A — the viewer opens only from an existing tile |
+| loading | ImageViewer | ✅ | Centered Loader on the stage until the original image fires `load` |
+| error | ImageViewer | ✅ | "Could not load this image." centered on the stage; arrow navigation still works |
+| populated | ImageViewer | ✅ | Full image `object-fit: contain` on a `#141414` stage; footer shows EXIF-corrected dimensions, file size and "N of M" |
+| overflow | ImageViewer | ✅ | Any image resolution fits the stage via `object-fit: contain`; the modal is `min(1200px, 92vw)` wide and never scrolls horizontally |
+| long-text | ImageViewer | ✅ | Header filename truncates to one line with ellipsis and the full name in `title` |
+| empty | DeleteImagesModal | ➖ | N/A — opens only from the selection bar with at least one image selected |
+| loading | DeleteImagesModal | ✅ | Confirm button shows a loading state and both buttons are disabled until the response |
+| error | DeleteImagesModal | ✅ | API error shows in a red Alert inside the modal and the modal stays open |
+| populated | DeleteImagesModal | ✅ | Title, count-based body per Copywriting Contract, Cancel and red filled confirm |
+| long-text | DeleteImagesModal | ➖ | N/A — the body states a count, never filenames |
+| empty | ClassList | ✅ | "No classes yet" EmptyState below the always-visible add form |
+| loading | ClassList | ✅ | 3 Skeleton rows of 48px height |
+| error | ClassList | ✅ | Class list load failure shows a red Alert with the API message and a "Try again" button that refetches; the add form stays visible |
+| populated | ClassList | ✅ | Paper with header row (Index, Color, Name) and 48px rows: index, swatch, name, Rename, Delete |
+| partial | ClassList | ➖ | N/A — every class always has an index, color and name |
+| overflow | ClassList | ✅ | Hundreds of classes scroll with the page; not virtualized by design |
+| zero-one-many | ClassList | ✅ | "Classes: N" label form; the "classes after it will move up" sentence appears in the delete dialog only when later classes exist |
+| empty | AddClassForm | ✅ | Submitting an empty or whitespace-only name shows the validation message under the input and sends no request |
+| loading | AddClassForm | ✅ | While the create request is pending the "Add class" button shows its loading state and Enter does not submit again; the typed value stays until success |
+| error | AddClassForm | ✅ | 409 and validation messages appear under the input; the form keeps its value |
+| partial | AddClassForm | ➖ | N/A — single-field form |
+| overflow | AddClassForm | ✅ | Input enforces a 100-character maximum; text scrolls inside the input |
+| long-text | AddClassForm | ✅ | A 100-character name is accepted and displayed truncated in the list (see ClassRow long-text) |
+| empty | ClassRow | ➖ | N/A — a row exists only for a stored class; an emptied rename input does not save |
+| loading | ClassRow | ✅ | While a rename PATCH is pending the rename input is disabled; a recolor updates the swatch optimistically |
+| error | ClassRow | ✅ | Recolor failure reverts the swatch and shows a red notification with the API message; rename 409 keeps the row in edit mode with the error until Esc |
+| populated | ClassRow | ✅ | 48px row: index (tabular), 24 x 24 swatch button, name, subtle "Rename", light-red "Delete" |
+| partial | ClassRow | ➖ | N/A — see ClassList partial |
+| overflow | ClassRow | ✅ | The name column is flex 1 with ellipsis; action buttons never wrap out of the row |
+| zero-one-many | ClassRow | ✅ | Delete dialog copy adds the "classes after it will move up" sentence only when later classes exist |
+| long-text | ClassRow | 🧪 | Name truncates with ellipsis and full `title`; held-out visual test with a 100-character name in ru and en |
 
 ---
 
@@ -363,12 +407,12 @@ No third-party shadcn registries are declared, so the registry view/vetting gate
 
 ## Checker Sign-Off
 
-- [ ] Dimension 1 Copywriting: PASS
-- [ ] Dimension 2 Visuals: PASS
-- [ ] Dimension 3 Color: PASS
-- [ ] Dimension 4 Typography: PASS
-- [ ] Dimension 5 Spacing: PASS
-- [ ] Dimension 6 Registry Safety: PASS
-- [ ] Dimension 7 Inventory Provenance: PASS
+- [x] Dimension 1 Copywriting: PASS
+- [x] Dimension 2 Visuals: PASS
+- [x] Dimension 3 Color: PASS
+- [x] Dimension 4 Typography: PASS
+- [x] Dimension 5 Spacing: PASS
+- [x] Dimension 6 Registry Safety: PASS
+- [x] Dimension 7 Inventory Provenance: PASS
 
-**Approval:** pending
+**Approval:** approved 2026-09-29 (gsd-ui-checker, 7/7 PASS)
