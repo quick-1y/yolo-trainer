@@ -1,9 +1,10 @@
 ---
 phase: 01-runnable-skeleton-projects
 verified: 2026-09-29T09:00:00Z
-status: human_needed
+status: passed
 score: 5/5 must-haves verified
 covered_files:
+
   - ".planning/REQUIREMENTS.md"
   - ".planning/phases/01-runnable-skeleton-projects/01-01-PLAN.md"
   - ".planning/phases/01-runnable-skeleton-projects/01-01-SUMMARY.md"
@@ -30,10 +31,12 @@ covered_files:
   - "backend/src/yolo_trainer_common/device.py"
   - "backend/src/yolo_trainer_common/quality.py"
   - "docker-compose.yml"
+
 covered_digest: "v1:sha256:72f65e2082e3b127505a30b87b4f3295392d8d97c29e27f7887d6ff3c04d8dd6"
 behavior_unverified: 0
 overrides_applied: 0
 human_verification:
+
   - test: "Открыть http://127.0.0.1:8080 в реальном браузере после `docker compose up --build`; создать проект detect и segment, переименовать, открыть, удалить (с вводом точного имени), переключить язык RU/EN, перезагрузить страницу"
     expected: "UI отрисовывается без визуальных дефектов, все действия работают в браузере (а не только в jsdom-тестах Vitest), выбор языка сохраняется после перезагрузки"
     why_human: "Визуальный вид и полный пользовательский сценарий в настоящем браузере нельзя проверить grep/curl/jsdom; автоматически проверены API через nginx (compose smoke) и компоненты в Vitest"

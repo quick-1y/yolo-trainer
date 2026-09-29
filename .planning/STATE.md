@@ -1,44 +1,44 @@
 ---
 gsd_state_version: "1.0"
-current_phase: 01
-current_phase_name: Runnable Skeleton & Projects
-status: verifying
-stopped_at: Completed 01-10-PLAN.md
-last_updated: "2026-09-28T12:02:48.677Z"
-last_activity: 2026-09-28
-last_activity_desc: Phase 01 execution started
-state_head: a46c932c6c4a1cd27555e41fb58e2afde571b85b
+current_phase: 2
+current_phase_name: Image Upload & Classes
+status: planning
+stopped_at: Phase 01 complete, ready to plan Phase 2
+last_updated: "2026-09-29T06:02:50.741Z"
+last_activity: 2026-09-29
+last_activity_desc: Phase 01 complete, transitioned to Phase 2
+state_head: 59dec27ab676f4276b5193e4550d38eba44ddab8
 progress:
   total_phases: 12
-  completed_phases: 0
+  completed_phases: 1
   total_plans: 10
   completed_plans: 10
-  percent: 0
+  percent: 8
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-09-24)
+See: .planning/PROJECT.md (updated 2026-09-29)
 
 **Core value:** The full loop works end-to-end in the browser: upload images → annotate → train with configurable settings → download a working `.pt`
-**Current focus:** Phase 01 — Runnable Skeleton & Projects
+**Current focus:** Phase 2 — Image Upload & Classes
 
 ## Current Position
 
-Phase: 01 (Runnable Skeleton & Projects) — EXECUTING
-Plan: 10 of 10
-Status: Phase complete — ready for verification
-Last activity: 2026-09-28 — Phase 01 execution started
+Phase: 2 — Image Upload & Classes
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-09-29 — Phase 01 complete, transitioned to Phase 2
 
-Progress: [░░░░░░░░░░] 0%
+Progress: [█░░░░░░░░░] 8%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 0
+- Total plans completed: 10
 - Average duration: -
 - Total execution time: 0.0 hours
 
@@ -46,7 +46,7 @@ Progress: [░░░░░░░░░░] 0%
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
-| - | - | - | - |
+| 01 | 10 | - | - |
 
 **Recent Trend:**
 
@@ -104,7 +104,6 @@ None yet.
 ### Blockers/Concerns
 
 - [Phase 12]: GPU-path acceptance (DEPL-02 and GPU memory freed after cancel) needs separate NVIDIA hardware, because the dev machine has none. It does not block Phases 1-11.
-- [Phase 1]: DEPL-01 on Linux/macOS needs those hosts to verify. Apple Silicon needs a `linux/arm64` CPU image.
 - [Phase 4]: How jobs cross from the API container to the worker is undecided. The API cannot `Popen` into another container; resolve this during planning.
 - [Phase 6]: Prior research does not cover click-to-segment (SAM). It needs phase research on model choice and CPU latency.
 
@@ -118,6 +117,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-09-28T12:02:48.634Z
-Stopped at: Completed 01-10-PLAN.md
+Last session: 2026-09-29
+Stopped at: Phase 01 complete, ready to plan Phase 2
 Resume file: None

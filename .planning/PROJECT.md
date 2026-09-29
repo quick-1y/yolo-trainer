@@ -21,18 +21,19 @@ The full loop works end-to-end in the browser: **upload images → annotate them
 - ✓ Post-training quality assessment based on mAP50 — existing
 - ✓ Callback-instrumented training in a subprocess with structured JSONL progress, and clean subprocess cancellation (CPU path) — Phase 0 spike
 - ✓ `example_ready_dataset/` (Roboflow YOLO export, detect format) trains successfully end-to-end — Phase 0 spike
+- ✓ Reproducible project setup with pinned dependencies (Python 3.12, PyTorch 2.14.0, Ultralytics 8.4.159) and a test framework (pytest + Vitest) — Phase 1
+- ✓ User can create, list, open, rename and delete projects with a fixed task type (`detect` / `segment`) in a bilingual (en/ru) web UI — Phase 1
+- ✓ CPU stack (web + api + worker) runs via `docker compose up` on Windows/Linux/macOS, bound to 127.0.0.1, data persists across down/up — Phase 1 (GPU image still pending, Phase 12)
 
 ### Active
 
 <!-- v1 scope. Hypotheses until shipped and validated. -->
 
 **Foundation & deployment**
-- [ ] Reproducible project setup with pinned dependencies (Python 3.12, PyTorch 2.14.0, Ultralytics 8.4.159) and a test framework
 - [ ] Runs via `docker compose up` on Windows/Linux/macOS; CPU image works everywhere, GPU image uses NVIDIA GPU when present
 - [ ] Web UI (browser SPA) backed by an API service; training runs in a separate worker process/container so the UI stays responsive
 
 **Projects, classes, tags**
-- [ ] User can create a project with a fixed task type: `detect` or `segment`
 - [ ] User can create, rename, recolor, and delete classes (labels) per project
 - [ ] User can tag images (e.g. `night`, `rain`) and filter the image list by tags; tags are workflow metadata, never exported into label files
 
@@ -104,14 +105,15 @@ The full loop works end-to-end in the browser: **upload images → annotate them
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
 | Single-operator per install, no auth in v1 | Owner's primary use is personal; others install their own copy | ✓ Good (Phase 0) |
-| SQLite for v1 with Postgres-ready SQLAlchemy/Alembic layer | Simple self-hosting; migration path for small teams later | — Pending |
-| Docker Compose as the distribution method | Universal install for other users across OSes | — Pending |
+| SQLite for v1 with Postgres-ready SQLAlchemy/Alembic layer | Simple self-hosting; migration path for small teams later | ✓ Good (Phase 1: WAL + integrity-checked smoke, `SQLITE_JOURNAL_MODE=DELETE` escape hatch) |
+| Docker Compose as the distribution method | Universal install for other users across OSes | ✓ Good (Phase 1 CPU stack; UAT on Windows/Linux/macOS) |
 | v1 task types: detect + segment (OBB later) | Covers box and polygon workflows the owner uses in Roboflow | — Pending |
 | AI assist = user's own trained/uploaded models, not open-vocabulary | Matches owner's workflow: manually label, train, use model to label more | — Pending |
 | Click-to-segment (SAM-style) is a drawing tool, not the main AI mode | Owner's clarification during initialization | — Pending |
 | Per-image AI assist is primary; batch/iterative pre-annotation is optional | Owner's primary workflow is image-by-image review | — Pending |
 | Training settings: basic + collapsible "Advanced" | Balance of usability and control | — Pending |
 | Subprocess + DB job model, SSE progress streaming | Right-sized for single server; validated in Phase 0 spike | ✓ Good (Phase 0) |
+| Host allow-list (`TrustedHostMiddleware`) + loopback bind instead of auth | No-auth single-operator tool must still resist DNS rebinding and LAN exposure | ✓ Good (Phase 1) |
 | Existing `docs/roadmap.md` retained as detailed technical reference | Avoid losing research; GSD ROADMAP.md becomes the execution plan | — Pending |
 
 ## Evolution
@@ -132,4 +134,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-09-24 after initialization*
+*Last updated: 2026-09-29 after Phase 1*

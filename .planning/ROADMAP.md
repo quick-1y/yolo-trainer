@@ -15,7 +15,7 @@ Detailed technical reference: `docs/roadmap.md` (§4 target architecture, §16 d
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Runnable Skeleton & Projects** - Clean reproducible repo plus a `docker compose up` web app where the user creates and manages detect/segment projects
+- [x] **Phase 1: Runnable Skeleton & Projects** - Clean reproducible repo plus a `docker compose up` web app where the user creates and manages detect/segment projects (completed 2026-09-29)
 - [ ] **Phase 2: Image Upload & Classes** - User uploads images from the browser, browses them in a fast grid, and defines the project's classes
 - [ ] **Phase 3: Box Annotation Editor** - User annotates images one by one with bounding boxes, autosave, undo/redo, shortcuts, and image status
 - [ ] **Phase 4: Train & Download** - User splits the dataset, trains from the browser in a background worker, and downloads a working `.pt` (core loop complete)
@@ -44,7 +44,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   4. On the CPU-only dev machine, one `docker compose up` starts the service; the user opens the web UI, creates a project with a name and a fixed task type (`detect` or `segment`), and can list, open, rename, and delete projects
   5. Projects survive `docker compose down`/`up` and image rebuilds, and database migrations apply automatically on startup
 
-**Plans:** 10/10 plans executed (5 waves; walking skeleton in `SKELETON.md`)
+**Plans:** 10/10 plans complete
 
 Plans:
 **Wave 1**
@@ -331,7 +331,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Runnable Skeleton & Projects | 10/10 | In Progress|  |
+| 1. Runnable Skeleton & Projects | 10/10 | Complete    | 2026-09-29 |
 | 2. Image Upload & Classes | 0/TBD | Not started | - |
 | 3. Box Annotation Editor | 0/TBD | Not started | - |
 | 4. Train & Download | 0/TBD | Not started | - |
