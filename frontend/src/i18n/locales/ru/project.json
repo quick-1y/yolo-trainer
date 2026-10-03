@@ -7,6 +7,9 @@
     "settings": "Настройки"
   },
   "overview": {
+    "images": "Изображений: {{count}}",
+    "classes": "Классов: {{count}}",
+    "uploadCta": "Загрузить изображения",
     "noDescription": "Описание не указано.",
     "createdAt": "Создано {{date}}",
     "emptyHint": "В этом проекте пока нет изображений."

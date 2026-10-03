@@ -11,6 +11,8 @@ export interface Project {
   description: string | null;
   created_at: string;
   updated_at: string;
+  image_count: number;
+  class_count: number;
 }
 
 export interface ProjectCreateInput {

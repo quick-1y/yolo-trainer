@@ -15,6 +15,7 @@ import { useTranslation } from "react-i18next";
 import { configQueryKey } from "../../api/config";
 import type { AppConfig } from "../../api/config";
 import { imageKeys, uploadImageBatch } from "../../api/images";
+import { projectKeys } from "../../api/projects";
 import { classifyFiles } from "../../lib/imageFiles";
 import { planBatches, runUploadQueue } from "../../lib/uploadQueue";
 
@@ -182,6 +183,9 @@ export function UploadProvider({
           // Reset (never invalidate) the infinite query, once for the whole
           // upload: invalidation would refetch every page loaded so far.
           await queryClient.resetQueries({ queryKey: imageKeys.project(projectId) });
+          // The project's image count on the Overview and project cards.
+          void queryClient.invalidateQueries({ queryKey: projectKeys.all });
+          void queryClient.invalidateQueries({ queryKey: projectKeys.detail(projectId) });
         })
         .catch(() => {
           runningRef.current = false;

@@ -97,6 +97,8 @@ class ProjectRead(BaseModel):
     description: str | None
     created_at: datetime
     updated_at: datetime
+    image_count: int = 0
+    class_count: int = 0
 
     @field_serializer("created_at", "updated_at")
     def _serialize_utc(self, value: datetime) -> str:

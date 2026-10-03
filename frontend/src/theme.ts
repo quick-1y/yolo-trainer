@@ -4,4 +4,5 @@ export const theme = createTheme({
   fontFamily:
     "system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif",
   primaryColor: "blue",
+  headings: { fontWeight: "600" },
 });

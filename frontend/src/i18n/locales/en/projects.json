@@ -18,6 +18,9 @@
     "submit": "Create",
     "cancel": "Cancel"
   },
+  "card": {
+    "images": "Images: {{count}}"
+  },
   "taskType": {
     "detect": "Detect",
     "segment": "Segment"

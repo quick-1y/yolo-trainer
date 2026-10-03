@@ -18,6 +18,9 @@
     "submit": "Создать",
     "cancel": "Отмена"
   },
+  "card": {
+    "images": "Изображений: {{count}}"
+  },
   "taskType": {
     "detect": "Детекция",
     "segment": "Сегментация"

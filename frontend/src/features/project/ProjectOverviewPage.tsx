@@ -1,6 +1,6 @@
-import { Badge, Group, Stack, Text, Title } from "@mantine/core";
+import { Badge, Button, Group, Stack, Text, Title } from "@mantine/core";
 import { useTranslation } from "react-i18next";
-import { useOutletContext } from "react-router-dom";
+import { Link, useOutletContext } from "react-router-dom";
 
 import type { Project } from "../../api/projects";
 
@@ -26,7 +26,22 @@ export function ProjectOverviewPage() {
       <Text size="sm" c="dimmed">
         {t("overview.createdAt", { date: createdAt })}
       </Text>
-      <Text c="dimmed">{t("overview.emptyHint")}</Text>
+      <Text size="sm" c="dark.1">
+        {t("overview.images", { count: project.image_count ?? 0 })}
+      </Text>
+      <Text size="sm" c="dark.1">
+        {t("overview.classes", { count: project.class_count ?? 0 })}
+      </Text>
+      {(project.image_count ?? 0) === 0 && (
+        <>
+          <Text c="dimmed">{t("overview.emptyHint")}</Text>
+          <Group>
+            <Button component={Link} to={`/projects/${project.id}/images`}>
+              {t("overview.uploadCta")}
+            </Button>
+          </Group>
+        </>
+      )}
     </Stack>
   );
 }

@@ -7,6 +7,9 @@
     "settings": "Settings"
   },
   "overview": {
+    "images": "Images: {{count}}",
+    "classes": "Classes: {{count}}",
+    "uploadCta": "Upload images",
     "noDescription": "No description provided.",
     "createdAt": "Created {{date}}",
     "emptyHint": "This project doesn't have any images yet."

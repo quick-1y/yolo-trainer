@@ -32,6 +32,9 @@ export function ProjectCard({ project }: ProjectCardProps) {
           <Text size="sm" c="dimmed">
             {formatRelativeTime(project.updated_at, i18n.language)}
           </Text>
+          <Text size="sm" c="dark.1">
+            {t("card.images", { count: project.image_count ?? 0 })}
+          </Text>
         </Stack>
       </Card.Section>
     </Card>

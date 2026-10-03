@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { ApiError, apiRequest } from "./client";
+import { projectKeys } from "./projects";
 
 export interface ProjectClassItem {
   id: number;
@@ -39,6 +40,9 @@ export function useCreateClass(projectId: number) {
       void queryClient.invalidateQueries({
         queryKey: classKeys.list(projectId),
       });
+      // The project's class count on the Overview and project cards.
+      void queryClient.invalidateQueries({ queryKey: projectKeys.all });
+      void queryClient.invalidateQueries({ queryKey: projectKeys.detail(projectId) });
     },
   });
 }
@@ -93,6 +97,9 @@ export function useDeleteClass(projectId: number) {
       void queryClient.invalidateQueries({
         queryKey: classKeys.list(projectId),
       });
+      // The project's class count on the Overview and project cards.
+      void queryClient.invalidateQueries({ queryKey: projectKeys.all });
+      void queryClient.invalidateQueries({ queryKey: projectKeys.detail(projectId) });
     },
   });
 }

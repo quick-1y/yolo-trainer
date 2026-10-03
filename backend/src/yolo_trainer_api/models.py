@@ -14,8 +14,10 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    func,
+    select,
 )
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, column_property, mapped_column
 
 from yolo_trainer_api.db import Base
 
@@ -128,3 +130,19 @@ class ProjectClass(Base):
         normalized name used for case-insensitive uniqueness checks."""
         self.name = unicodedata.normalize("NFC", raw).strip()
         self.normalized_name = normalize_project_name(raw)
+
+
+# Read-only counts loaded together with every Project row (select and refresh).
+# Attached after both child classes exist; not part of the table definition.
+Project.image_count = column_property(
+    select(func.count(Image.id))
+    .where(Image.project_id == Project.id)
+    .correlate_except(Image)
+    .scalar_subquery()
+)
+Project.class_count = column_property(
+    select(func.count(ProjectClass.id))
+    .where(ProjectClass.project_id == Project.id)
+    .correlate_except(ProjectClass)
+    .scalar_subquery()
+)
