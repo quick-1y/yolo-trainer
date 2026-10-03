@@ -12,6 +12,8 @@ interface StubProject {
   description: string | null;
   created_at: string;
   updated_at: string;
+  image_count: number;
+  class_count: number;
 }
 
 function stubFetchForProject(project: StubProject) {
@@ -39,6 +41,8 @@ describe("ProjectOverviewPage", () => {
       description: "Detecting cars in traffic footage.",
       created_at: "2026-01-15T10:00:00Z",
       updated_at: "2026-01-15T10:00:00Z",
+      image_count: 0,
+      class_count: 0,
     };
     stubFetchForProject(project);
 
@@ -63,6 +67,8 @@ describe("ProjectOverviewPage", () => {
       description: null,
       created_at: "2026-01-15T10:00:00Z",
       updated_at: "2026-01-15T10:00:00Z",
+      image_count: 0,
+      class_count: 0,
     };
     stubFetchForProject(project);
 
@@ -79,6 +85,8 @@ describe("ProjectOverviewPage", () => {
       description: null,
       created_at: "2026-01-15T10:00:00Z",
       updated_at: "2026-01-15T10:00:00Z",
+      image_count: 0,
+      class_count: 0,
     };
     stubFetchForProject(project);
 
@@ -93,6 +101,50 @@ describe("ProjectOverviewPage", () => {
     expect(navLinks.some((text) => /training|models/i.test(text))).toBe(false);
   });
 
+  it("shows the image and class counts and no upload shortcut once the project has images", async () => {
+    const project: StubProject = {
+      id: 11,
+      name: "Counted",
+      task_type: "detect",
+      description: null,
+      created_at: "2026-01-15T10:00:00Z",
+      updated_at: "2026-01-15T10:00:00Z",
+      image_count: 2,
+      class_count: 1,
+    };
+    stubFetchForProject(project);
+
+    renderWithProviders(<AppRoutes />, { route: "/projects/11" });
+
+    expect(await screen.findByText(i18n.t("project:overview.images", { count: 2 }))).toBeInTheDocument();
+    expect(screen.getByText(i18n.t("project:overview.classes", { count: 1 }))).toBeInTheDocument();
+    expect(screen.queryByText(i18n.t("project:overview.emptyHint"))).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("link", { name: i18n.t("project:overview.uploadCta") }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("points an empty project at the Images section with an Upload images link", async () => {
+    const project: StubProject = {
+      id: 12,
+      name: "Fresh",
+      task_type: "detect",
+      description: null,
+      created_at: "2026-01-15T10:00:00Z",
+      updated_at: "2026-01-15T10:00:00Z",
+      image_count: 0,
+      class_count: 0,
+    };
+    stubFetchForProject(project);
+
+    renderWithProviders(<AppRoutes />, { route: "/projects/12" });
+
+    expect(await screen.findByText(i18n.t("project:overview.emptyHint"))).toBeInTheDocument();
+    const cta = screen.getByRole("link", { name: i18n.t("project:overview.uploadCta") });
+    expect(cta).toHaveAttribute("href", "/projects/12/images");
+    expect(screen.getByText(i18n.t("project:overview.images", { count: 0 }))).toBeInTheDocument();
+  });
+
   it("navigates to /projects/{id} and shows its overview when a project card is clicked", async () => {
     const projects: StubProject[] = [
       {
@@ -102,6 +154,8 @@ describe("ProjectOverviewPage", () => {
         description: null,
         created_at: "2026-01-15T10:00:00Z",
         updated_at: "2026-01-15T10:00:00Z",
+        image_count: 0,
+        class_count: 0,
       },
     ];
     vi.stubGlobal(

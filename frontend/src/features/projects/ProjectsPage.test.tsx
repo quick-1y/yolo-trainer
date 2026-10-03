@@ -38,6 +38,8 @@ describe("ProjectsPage", () => {
         description: null,
         created_at: now,
         updated_at: now,
+        image_count: 3,
+        class_count: 0,
       },
       {
         id: 2,
@@ -46,6 +48,8 @@ describe("ProjectsPage", () => {
         description: null,
         created_at: now,
         updated_at: now,
+        image_count: 3,
+        class_count: 0,
       },
     ];
     mockFetchOnce(projects);
@@ -56,6 +60,7 @@ describe("ProjectsPage", () => {
     expect(screen.getByText(i18n.t("projects:taskType.detect"))).toBeInTheDocument();
     expect(screen.getByText(i18n.t("projects:taskType.segment"))).toBeInTheDocument();
     expect(screen.getAllByText("now")).toHaveLength(2);
+    expect(screen.getAllByText(i18n.t("projects:card.images", { count: 3 }))).toHaveLength(2);
   });
 
   it("shows a translated error title and the API's own detail text on a 500", async () => {

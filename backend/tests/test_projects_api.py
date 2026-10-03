@@ -328,3 +328,40 @@ def test_delete_project_without_a_folder_is_fine(client: TestClient, settings: S
     assert not (settings.projects_dir / str(project_id)).exists()
 
     assert client.delete(f"/api/projects/{project_id}").status_code == 204
+
+
+def test_new_project_reports_zero_counts_on_create_get_and_list(client: TestClient) -> None:
+    created = client.post("/api/projects", json={"name": "Counts", "task_type": "detect"})
+    project_id = created.json()["id"]
+
+    assert created.json()["image_count"] == 0
+    assert created.json()["class_count"] == 0
+    fetched = client.get(f"/api/projects/{project_id}").json()
+    assert (fetched["image_count"], fetched["class_count"]) == (0, 0)
+    [listed] = [p for p in client.get("/api/projects").json() if p["id"] == project_id]
+    assert (listed["image_count"], listed["class_count"]) == (0, 0)
+
+
+def test_counts_follow_uploads_and_classes_and_get_matches_list(client: TestClient) -> None:
+    project_id = client.post(
+        "/api/projects", json={"name": "Counted", "task_type": "detect"}
+    ).json()["id"]
+    other_id = client.post("/api/projects", json={"name": "Other", "task_type": "detect"}).json()[
+        "id"
+    ]
+    _upload_png(client, project_id, shade=1)
+    _upload_png(client, project_id, shade=2)
+    _upload_png(client, other_id, shade=3)
+    assert (
+        client.post(f"/api/projects/{project_id}/classes", json={"name": "car"}).status_code == 201
+    )
+
+    fetched = client.get(f"/api/projects/{project_id}").json()
+    [listed] = [p for p in client.get("/api/projects").json() if p["id"] == project_id]
+
+    assert (fetched["image_count"], fetched["class_count"]) == (2, 1)
+    assert fetched == listed
+    patched = client.patch(f"/api/projects/{project_id}", json={"description": "x"}).json()
+    assert (patched["image_count"], patched["class_count"]) == (2, 1)
+    [other] = [p for p in client.get("/api/projects").json() if p["id"] == other_id]
+    assert (other["image_count"], other["class_count"]) == (1, 0)
