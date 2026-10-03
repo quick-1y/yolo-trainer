@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 02
 current_phase_name: Image Upload & Classes
 status: executing
-stopped_at: Completed 02-07-PLAN.md
-last_updated: "2026-10-03T13:17:21.065Z"
+stopped_at: Completed 02-08-PLAN.md
+last_updated: "2026-10-03T13:27:03.077Z"
 last_activity: 2026-10-03
 last_activity_desc: Phase 02 execution started
-state_head: 011398b97411dc90641b90cf987c1eab6acf977e
+state_head: 4f62c8d2e9a13e55f3f2fe62aa2e39cb1a53b1fb
 progress:
   total_phases: 12
   completed_phases: 1
   total_plans: 22
-  completed_plans: 17
+  completed_plans: 18
   percent: 8
 ---
 
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-09-29)
 ## Current Position
 
 Phase: 02 (Image Upload & Classes) — EXECUTING
-Plan: 8 of 12
+Plan: 9 of 12
 Status: Ready to execute
 Last activity: 2026-10-03 — Phase 02 execution started
 
@@ -74,6 +74,7 @@ Progress: [█░░░░░░░░░] 8%
 | Phase 02 P05 | 6 min | 2 tasks | 10 files |
 | Phase 02 P06 | 25 min | 2 tasks | 18 files |
 | Phase 02 P07 | 9 min | 2 tasks | 15 files |
+| Phase 02 P08 | 8 min | 3 tasks | 19 files |
 
 ## Accumulated Context
 
@@ -112,6 +113,7 @@ Recent decisions affecting current work:
 - [Phase 02]: 02-05: class delete shifts later positions down in the same transaction as the DELETE; recolor sends PATCH only from ColorPicker onChangeEnd — Indices stay exactly 0..N-1 (fixed-seed sequence test); no per-tick requests while dragging
 - [Phase 02]: 02-06: UploadProvider reads limits from the react-query cache (getQueryData), not useAppConfig; cancelled = some batch never reported due to abort — An eager GET /config consumed mockResolvedValueOnce sequences of Phase 1 tests and added a needless request per project section
 - [Phase 02]: 02-07: dropzone has no accept and useFsAccessApi=false; first-page error keyed on data===undefined because TanStack flips isError on a failed next page; handleEndReached refuses to fetch after a failed page — Folder drops must report non-images; a failed next page keeps loaded pages and must show the inline footer retry
+- [Phase 02]: 02-08: orphan cleanup treats only canonical decimal dir names as projects, never follows symlinks/junctions, and skips all deletion when the projects table is empty (safety valve) — Wrong or restored app.db must not trigger mass deletion; junctions are links on Windows
 
 ### Pending Todos
 
@@ -133,6 +135,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-10-03T13:17:20.995Z
-Stopped at: Completed 02-07-PLAN.md
+Last session: 2026-10-03T13:27:03.006Z
+Stopped at: Completed 02-08-PLAN.md
 Resume file: None
