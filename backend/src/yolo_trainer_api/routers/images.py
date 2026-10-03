@@ -6,11 +6,11 @@ import asyncio
 import base64
 import json
 from dataclasses import dataclass
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse
-from sqlalchemy import Select, func, select
+from sqlalchemy import Select, func, select, tuple_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -28,6 +28,8 @@ router = APIRouter(prefix="/api/projects", tags=["images"])
 DEFAULT_PAGE_SIZE = 100
 MAX_PAGE_SIZE = 500
 SORT_NEWEST = "newest"
+SORT_NAME = "name"
+MAX_SEARCH_LENGTH = 255
 _THUMBNAIL_CACHE_CONTROL = "private, max-age=31536000, immutable"
 
 
@@ -72,12 +74,36 @@ def _decode_cursor(raw: str, expected_sort: str) -> Cursor:
         raise _invalid_cursor()
     if key is not None and not isinstance(key, str):
         raise _invalid_cursor()
+    if sort == SORT_NAME and key is None:
+        raise _invalid_cursor()
     return Cursor(sort=sort, key=key, image_id=image_id)
 
 
-def build_page_query(project_id: int, cursor: Cursor | None, limit: int) -> Select[tuple[Image]]:
-    """Newest-first keyset page: `limit + 1` rows so the caller can tell if more exist."""
-    stmt = select(Image).where(Image.project_id == project_id)
+def _scoped[T: tuple](stmt: Select[T], project_id: int, q_key: str) -> Select[T]:
+    """Every listing query is scoped to one project; `q_key` is a normalized filename fragment."""
+    stmt = stmt.where(Image.project_id == project_id)
+    if q_key:
+        # autoescape makes a literal % or _ in the search text match itself.
+        stmt = stmt.where(Image.filename_key.contains(q_key, autoescape=True))
+    return stmt
+
+
+def build_page_query(
+    project_id: int, sort: str, q_key: str, cursor: Cursor | None, limit: int
+) -> Select[tuple[Image]]:
+    """Keyset page: `limit + 1` rows so the caller can tell if more exist.
+
+    newest: `ORDER BY id DESC`, cursor `id < i` (ix_images_project_id_id).
+    name: `ORDER BY filename_key, id`, row-value cursor `(filename_key, id) > (k, i)`
+    (ix_images_project_filename_key); the id tiebreak keeps equal filenames stable.
+    """
+    stmt = _scoped(select(Image), project_id, q_key)
+    if sort == SORT_NAME:
+        if cursor is not None:
+            stmt = stmt.where(
+                tuple_(Image.filename_key, Image.id) > tuple_(cursor.key, cursor.image_id)
+            )
+        return stmt.order_by(Image.filename_key, Image.id).limit(limit + 1)
     if cursor is not None:
         stmt = stmt.where(Image.id < cursor.image_id)
     return stmt.order_by(Image.id.desc()).limit(limit + 1)
@@ -222,20 +248,26 @@ async def list_images(
     project_id: int,
     cursor: str | None = None,
     limit: Annotated[int, Query(ge=1, le=MAX_PAGE_SIZE)] = DEFAULT_PAGE_SIZE,
+    sort: Literal["newest", "name"] = SORT_NEWEST,
+    q: Annotated[str, Query(max_length=MAX_SEARCH_LENGTH)] = "",
     session: AsyncSession = Depends(get_session),
 ) -> ImagePage:
-    decoded = _decode_cursor(cursor, SORT_NEWEST) if cursor else None
+    decoded = _decode_cursor(cursor, sort) if cursor else None
     await get_project_or_404(session, project_id)
+    q_key = normalize_project_name(q)
 
-    rows = list((await session.execute(build_page_query(project_id, decoded, limit))).scalars())
+    page = build_page_query(project_id, sort, q_key, decoded, limit)
+    rows = list((await session.execute(page)).scalars())
     next_cursor: str | None = None
     if len(rows) > limit:
         rows = rows[:limit]
-        next_cursor = _encode_cursor(SORT_NEWEST, None, rows[-1].id)
+        last = rows[-1]
+        next_cursor = _encode_cursor(
+            sort, last.filename_key if sort == SORT_NAME else None, last.id
+        )
 
-    total = (
-        await session.execute(select(func.count(Image.id)).where(Image.project_id == project_id))
-    ).scalar_one()
+    count_stmt = _scoped(select(func.count(Image.id)), project_id, q_key)
+    total = (await session.execute(count_stmt)).scalar_one()
     return ImagePage(
         items=[ImageRead.model_validate(row) for row in rows],
         next_cursor=next_cursor,
