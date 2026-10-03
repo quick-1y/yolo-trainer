@@ -32,5 +32,17 @@
     "requestFailed": "Upload failed. Try again."
   },
   "busy": "An upload is already in progress.",
-  "dropOverlay": "Drop images or a folder to upload"
+  "dropOverlay": "Drop images or a folder to upload",
+  "empty": {
+    "title": "No images yet",
+    "body": "Drag and drop images or a whole folder here, or choose them with the buttons below.",
+    "hint": "JPG, PNG, WEBP or BMP, up to {{max}} MB each."
+  },
+  "loadingMore": "Loading more…",
+  "error": {
+    "nextPage": "Could not load more images."
+  },
+  "tile": {
+    "noPreview": "No preview"
+  }
 }

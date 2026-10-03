@@ -110,7 +110,10 @@ async function renderImagesPage(stub: ReturnType<typeof makeStub>) {
   renderWithProviders(<AppRoutes />, { route: "/projects/7/images" });
   // The drop handler reads the limits from the query cache: wait until loaded.
   await waitFor(() => {
-    expect(screen.getByRole("button", { name: "Upload images" })).toBeEnabled();
+    // Header buttons and the empty-state buttons are both present.
+    for (const button of screen.getAllByRole("button", { name: "Upload images" })) {
+      expect(button).toBeEnabled();
+    }
   });
   return capturedProps();
 }

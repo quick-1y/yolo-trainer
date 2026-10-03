@@ -121,7 +121,10 @@ async function renderImagesPage(stub: ReturnType<typeof makeStub>) {
   // client pre-filter must still catch a non-image that slips through.
   const user = userEvent.setup({ applyAccept: false });
   await waitFor(() => {
-    expect(screen.getByRole("button", { name: "Upload images" })).toBeEnabled();
+    // Header buttons and the empty-state buttons are both present.
+    for (const button of screen.getAllByRole("button", { name: "Upload images" })) {
+      expect(button).toBeEnabled();
+    }
   });
   // The window-wide Dropzone renders its own hidden input (no accept
   // attribute, pointer-events none); the picker button's input has accept.
@@ -178,8 +181,9 @@ describe("Upload flow", () => {
     expect(await screen.findByText("Uploading: 0 of 1")).toBeInTheDocument();
 
     expect(screen.getByTestId("images-nav-loader")).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Upload images" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Upload folder" })).toBeDisabled();
+    for (const button of screen.getAllByRole("button", { name: /^Upload (images|folder)$/ })) {
+      expect(button).toBeDisabled();
+    }
 
     await user.upload(input, images(2));
     expect(notifications.show).toHaveBeenCalledWith(

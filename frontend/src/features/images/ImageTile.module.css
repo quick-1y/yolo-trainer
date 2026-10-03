@@ -41,3 +41,15 @@
   height: 24px;
   pointer-events: none;
 }
+
+/* Shown instead of the <img> when the thumbnail fails to load. */
+.noPreview {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 176px;
+  height: 176px;
+  font-size: 12px;
+  color: var(--mantine-color-dark-1);
+  background: var(--mantine-color-dark-5);
+}

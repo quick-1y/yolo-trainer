@@ -86,7 +86,7 @@ describe("ImagesPage states", () => {
     await waitFor(() =>
       expect(screen.getByText("JPG, PNG, WEBP or BMP, up to 50 MB each.")).toBeInTheDocument(),
     );
-    const emptyState = screen.getByText("No images yet").closest("[class*='EmptyState']");
+    const emptyState = screen.getByText("No images yet").closest(".mantine-EmptyState-root");
     expect(emptyState).not.toBeNull();
     const scoped = within(emptyState as HTMLElement);
     expect(scoped.getByRole("button", { name: "Upload images" })).toBeInTheDocument();
