@@ -157,7 +157,49 @@ Plans:
   4. User switches tools, picks classes, saves, and navigates images with keyboard shortcuts listed in an on-screen shortcut reference
   5. Each image shows a status (unannotated / annotated / reviewed); the user can jump to the next unannotated image and mark an image as background (no objects)
 
-**Plans**: TBD
+**Plans:** 13 plans
+
+Plans:
+**Wave 1**
+
+- [ ] 03-01-PLAN.md — Tracer: package-legitimacy gate, then draw a box in the full-screen editor and find it after a reload (migration 0004, versioned replace-set PUT, zundo store, serial saver, lazy react-konva route, smoke test) (wave 1)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 03-02-PLAN.md — Save contract pinned by tests (validation, idempotent retry, concurrency, migration upgrade); class delete re-versions/demotes images; "N objects" in the delete dialog (wave 2)
+- [ ] 03-03-PLAN.md — Select, move and resize boxes (tool bar, Transformer, crosshair, label chips) (wave 2)
+- [ ] 03-04-PLAN.md — Open the editor from the grid; sort/search in the URL; viewer modal removed (wave 2)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 03-05-PLAN.md — Delete, undo/redo, and the physical-key shortcut layer (wave 3)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [ ] 03-06-PLAN.md — Class panel (active class, digits, inline create) and virtualized object list (wave 4)
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
+- [ ] 03-07-PLAN.md — Prev/next in grid order (neighbors endpoint), save-before-leave dialog, beforeunload guard (wave 5)
+
+**Wave 6** *(blocked on Wave 5 completion)*
+
+- [ ] 03-08-PLAN.md — Status badge, reviewed/background toggles, next-unannotated and status-counts endpoints (wave 6)
+
+**Wave 7** *(blocked on Wave 6 completion)*
+
+- [ ] 03-09-PLAN.md — Grid tiles show status and box count; editor saves patch the grid cache (wave 7)
+- [ ] 03-10-PLAN.md — Zoom toward the cursor, Space/middle-button pan, fit (wave 7)
+
+**Wave 8** *(blocked on Wave 7 completion)*
+
+- [ ] 03-11-PLAN.md — Grid summary "Annotated N of M" and "Annotate next" (wave 8)
+- [ ] 03-12-PLAN.md — Save robustness: backoff retries, Ctrl+S, conflict banner and Reload, 422 resync, load errors, orientation-mismatch guard, 2000-box limit (wave 8)
+
+**Wave 9** *(blocked on Wave 8 completion)*
+
+- [ ] 03-13-PLAN.md — On-screen shortcut reference, README docs, full-suite gate and end-of-phase browser checklist (wave 9)
+
 **UI hint**: yes
 **Notes**:
 
