@@ -70,11 +70,29 @@ export function ImagesPage() {
   // Read through a ref so the callback below keeps a stable identity (ImageTile is memoized).
   const itemsRef = useRef(items);
   itemsRef.current = items;
-  const toggleSelect = useCallback((index: number, _shiftKey: boolean) => {
-    const image = itemsRef.current[index];
+  // Index (in the loaded list) of the last tile toggled without Shift: the start of a Shift range.
+  const anchorIndex = useRef<number | null>(null);
+  const toggleSelect = useCallback((index: number, shiftKey: boolean) => {
+    const current = itemsRef.current;
+    const image = current[index];
     if (image === undefined) {
       return;
     }
+    const anchor = anchorIndex.current;
+    if (shiftKey && anchor !== null && anchor < current.length) {
+      // Shift-click selects the whole range within the loaded list (D-11); the anchor stays put.
+      const from = Math.min(anchor, index);
+      const to = Math.max(anchor, index);
+      setSelected((previous) => {
+        const next = new Set(previous);
+        for (const item of current.slice(from, to + 1)) {
+          next.add(item.id);
+        }
+        return next;
+      });
+      return;
+    }
+    anchorIndex.current = index;
     setSelected((previous) => {
       const next = new Set(previous);
       if (!next.delete(image.id)) {
@@ -83,7 +101,31 @@ export function ImagesPage() {
       return next;
     });
   }, []);
-  const clearSelection = useCallback(() => setSelected(new Set()), []);
+  const clearSelection = useCallback(() => {
+    anchorIndex.current = null;
+    setSelected((previous) => (previous.size === 0 ? previous : new Set()));
+  }, []);
+  const selecting = selected.size > 0;
+
+  // A new search or sort starts from an empty selection.
+  useEffect(() => {
+    clearSelection();
+  }, [sort, query, clearSelection]);
+
+  // Esc clears the selection, but only when nothing else owns Esc: the viewer and the
+  // delete dialog close themselves first and keep the selection.
+  useEffect(() => {
+    if (!selecting || viewerIndex !== null || deleteOpen) {
+      return;
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        clearSelection();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [selecting, viewerIndex, deleteOpen, clearSelection]);
 
   useEffect(() => {
     if (!advancePending) {
@@ -121,7 +163,7 @@ export function ImagesPage() {
       {state.status !== "idle" && (
         <UploadPanel state={state} onCancel={cancel} onDismiss={dismiss} />
       )}
-      {selected.size > 0 ? (
+      {selecting && (
         <SelectionBar
           count={selected.size}
           onClear={clearSelection}
@@ -130,14 +172,16 @@ export function ImagesPage() {
             setDeleteOpen(true);
           }}
         />
-      ) : (
+      )}
+      {/* Kept mounted (hidden) while selecting, so a pending debounced search still commits. */}
+      <Box display={selecting ? "none" : undefined}>
         <ImagesToolbar
           search={search}
           onSearchChange={setSearch}
           sort={sort}
           onSortChange={setSort}
         />
-      )}
+      </Box>
       <Box style={{ flex: 1, minHeight: 320 }}>
         {images.isPending ? (
           <GridSkeleton />
