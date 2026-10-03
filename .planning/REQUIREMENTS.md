@@ -25,13 +25,13 @@ Detailed technical background for every category: `docs/roadmap.md`, `docs/phase
 
 - [x] **PROJ-01**: User can create a project with a name and a fixed task type (`detect` or `segment`)
 - [x] **PROJ-02**: User can list, open, rename, and delete projects
-- [ ] **PROJ-03**: User can create, rename, recolor, and delete classes in a project
+- [x] **PROJ-03**: User can create, rename, recolor, and delete classes in a project
 - [ ] **PROJ-04**: User can create tags and assign/remove them on images; tags are never written into exported label files
 - [ ] **PROJ-05**: User can filter the image list by tag, class, split, and annotation status
 
 ### Dataset
 
-- [ ] **DATA-01**: User can upload images into a project from the browser (multiple files / folder, drag & drop)
+- [x] **DATA-01**: User can upload images into a project from the browser (multiple files / folder, drag & drop)
 - [ ] **DATA-02**: User can import an existing YOLO-format dataset (images + labels + `data.yaml`, e.g. a Roboflow export) including classes and splits
 - [ ] **DATA-03**: User can add images from a folder on disk mounted into the container without uploading through the browser
 - [ ] **DATA-04**: On import, user sees a validation report; mixed box/polygon label rows are surfaced as an actionable warning explaining what happens under `detect` vs `segment`
@@ -41,7 +41,7 @@ Detailed technical background for every category: `docs/roadmap.md`, `docs/phase
 
 ### Annotation
 
-- [ ] **ANNO-01**: User can browse project images in a virtualized thumbnail grid that stays responsive with thousands of images
+- [x] **ANNO-01**: User can browse project images in a virtualized thumbnail grid that stays responsive with thousands of images
 - [ ] **ANNO-02**: User can open an image in an annotation editor with zoom/pan and navigate to next/previous image
 - [ ] **ANNO-03**: User can draw, select, move, resize, and delete bounding boxes and assign a class to each
 - [ ] **ANNO-04**: User can draw polygons and edit them (add, move, delete vertices), and assign a class to each
@@ -141,17 +141,17 @@ Which phases cover which requirements. Updated during roadmap creation.
 | DEPL-05 | Phase 12 | Pending |
 | PROJ-01 | Phase 1 | Complete |
 | PROJ-02 | Phase 1 | Complete |
-| PROJ-03 | Phase 2 | Pending |
+| PROJ-03 | Phase 2 | Complete |
 | PROJ-04 | Phase 10 | Pending |
 | PROJ-05 | Phase 10 | Pending |
-| DATA-01 | Phase 2 | Pending |
+| DATA-01 | Phase 2 | Complete |
 | DATA-02 | Phase 9 | Pending |
 | DATA-03 | Phase 9 | Pending |
 | DATA-04 | Phase 9 | Pending |
 | DATA-05 | Phase 4 | Pending |
 | DATA-06 | Phase 10 | Pending |
 | DATA-07 | Phase 9 | Pending |
-| ANNO-01 | Phase 2 | Pending |
+| ANNO-01 | Phase 2 | Complete |
 | ANNO-02 | Phase 3 | Pending |
 | ANNO-03 | Phase 3 | Pending |
 | ANNO-04 | Phase 6 | Pending |

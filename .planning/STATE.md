@@ -2,17 +2,17 @@
 gsd_state_version: "1.0"
 current_phase: 02
 current_phase_name: Image Upload & Classes
-status: executing
-stopped_at: Completed 02-11-PLAN.md
-last_updated: "2026-10-03T14:05:35.217Z"
+status: verifying
+stopped_at: Completed 02-12-PLAN.md
+last_updated: "2026-10-03T14:19:10.520Z"
 last_activity: 2026-10-03
 last_activity_desc: Phase 02 execution started
-state_head: 7931a34a246210d65371fee38b2463067392cfe3
+state_head: 2c759e3fc589f93a56dd35eddc5e124c8fdc41b6
 progress:
   total_phases: 12
   completed_phases: 1
   total_plans: 22
-  completed_plans: 21
+  completed_plans: 22
   percent: 8
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-09-29)
 
 Phase: 02 (Image Upload & Classes) — EXECUTING
 Plan: 12 of 12
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-10-03 — Phase 02 execution started
 
 Progress: [█░░░░░░░░░] 8%
@@ -78,6 +78,7 @@ Progress: [█░░░░░░░░░] 8%
 | Phase 02 P09 | 11 min | 2 tasks | 8 files |
 | Phase 02 P10 | 25 min | 2 tasks | 13 files |
 | Phase 02 P11 | 16 min | 3 tasks | 17 files |
+| Phase 02 P12 | 16 min | 2 tasks | 6 files |
 
 ## Accumulated Context
 
@@ -120,6 +121,7 @@ Recent decisions affecting current work:
 - [Phase 02]: 02-09: name-sort cursor requires a string key; search is normalized server-side like filename_key and applied via autoescaped contains to both page and count queries; no keepPreviousData so a new query restarts the grid at the top
 - [Phase 02]: 02-10: /file route takes media type from stored ext (CHECK-constrained), shares immutable cache constant with thumbnails; viewer is mounted only while open and ImagesPage advances index via a pending-advance flag after fetchNextPage — Originals never requested for the grid; cross-page navigation stays seamless without the modal owning paging state
 - [Phase 02]: 02-11: images delete route relies on JSON CORS preflight (no require_xhr); ImagesToolbar stays mounted hidden while selecting; Shift range additive with anchor = last plain toggle — Keeps debounced search commit reachable and matches other JSON routes
+- [Phase 02]: 02-12: seed_images.py makes images unique via drawn counter and is deterministic per (index, seed); re-run reports all duplicates; CLI exits 1 on rejected, 2 on connection/HTTP errors — Re-seeding proves the duplicate path; duplicates are a normal outcome
 
 ### Pending Todos
 
@@ -141,6 +143,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-10-03T14:05:35.110Z
-Stopped at: Completed 02-11-PLAN.md
+Last session: 2026-10-03T14:19:10.447Z
+Stopped at: Completed 02-12-PLAN.md
 Resume file: None
