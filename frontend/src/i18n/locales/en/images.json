@@ -1,7 +1,16 @@
 {
   "page": {
     "title": "Images",
-    "count": "Images: {{count}}"
+    "count": "Images: {{count}}",
+    "countFiltered": "Found: {{count}}"
+  },
+  "search": {
+    "placeholder": "Search by filename",
+    "clear": "Clear"
+  },
+  "sort": {
+    "newest": "Newest first",
+    "name": "By filename"
   },
   "upload": {
     "files": "Upload images",
@@ -44,5 +53,10 @@
   },
   "tile": {
     "noPreview": "No preview"
+  },
+  "noResults": {
+    "title": "No matching images",
+    "body": "No filenames contain \"{{query}}\". Try a different search.",
+    "clear": "Clear search"
   }
 }

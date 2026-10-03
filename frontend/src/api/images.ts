@@ -30,6 +30,8 @@ export interface UploadResponse {
   results: UploadResult[];
 }
 
+export type ImageSort = "newest" | "name";
+
 export const PAGE_SIZE = 100;
 
 export const imageKeys = {
@@ -39,20 +41,34 @@ export const imageKeys = {
 
 export function listImages(
   projectId: number,
-  { cursor, limit = PAGE_SIZE }: { cursor?: string | null; limit?: number } = {},
+  {
+    sort = "newest",
+    q = "",
+    cursor,
+    limit = PAGE_SIZE,
+  }: {
+    sort?: ImageSort;
+    q?: string;
+    cursor?: string | null;
+    limit?: number;
+  } = {},
 ): Promise<ImagePage> {
-  const params = new URLSearchParams({ limit: String(limit) });
+  const params = new URLSearchParams({ sort, limit: String(limit) });
+  if (q) {
+    params.set("q", q);
+  }
   if (cursor) {
     params.set("cursor", cursor);
   }
   return apiRequest<ImagePage>(`/projects/${projectId}/images?${params.toString()}`);
 }
 
-export function useImagesInfinite(projectId: number) {
+export function useImagesInfinite(projectId: number, sort: ImageSort = "newest", q = "") {
   return useInfiniteQuery({
-    queryKey: imageKeys.list(projectId, "newest", ""),
+    queryKey: imageKeys.list(projectId, sort, q),
     initialPageParam: null as string | null,
-    queryFn: ({ pageParam }) => listImages(projectId, { cursor: pageParam, limit: PAGE_SIZE }),
+    queryFn: ({ pageParam }) =>
+      listImages(projectId, { sort, q, cursor: pageParam, limit: PAGE_SIZE }),
     getNextPageParam: (last) => last.next_cursor,
   });
 }
