@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 02
 current_phase_name: Image Upload & Classes
 status: executing
-stopped_at: Completed 02-09-PLAN.md
-last_updated: "2026-10-03T13:39:59.494Z"
+stopped_at: Completed 02-10-PLAN.md
+last_updated: "2026-10-03T13:50:47.094Z"
 last_activity: 2026-10-03
 last_activity_desc: Phase 02 execution started
-state_head: e22a227e0082b838342b4d780981c932f10fa115
+state_head: 1028688926c067af9c8c6e8d4f2ee657569b6992
 progress:
   total_phases: 12
   completed_phases: 1
   total_plans: 22
-  completed_plans: 19
+  completed_plans: 20
   percent: 8
 ---
 
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-09-29)
 ## Current Position
 
 Phase: 02 (Image Upload & Classes) — EXECUTING
-Plan: 10 of 12
+Plan: 11 of 12
 Status: Ready to execute
 Last activity: 2026-10-03 — Phase 02 execution started
 
@@ -76,6 +76,7 @@ Progress: [█░░░░░░░░░] 8%
 | Phase 02 P07 | 9 min | 2 tasks | 15 files |
 | Phase 02 P08 | 8 min | 3 tasks | 19 files |
 | Phase 02 P09 | 11 min | 2 tasks | 8 files |
+| Phase 02 P10 | 25 min | 2 tasks | 13 files |
 
 ## Accumulated Context
 
@@ -116,6 +117,7 @@ Recent decisions affecting current work:
 - [Phase 02]: 02-07: dropzone has no accept and useFsAccessApi=false; first-page error keyed on data===undefined because TanStack flips isError on a failed next page; handleEndReached refuses to fetch after a failed page — Folder drops must report non-images; a failed next page keeps loaded pages and must show the inline footer retry
 - [Phase 02]: 02-08: orphan cleanup treats only canonical decimal dir names as projects, never follows symlinks/junctions, and skips all deletion when the projects table is empty (safety valve) — Wrong or restored app.db must not trigger mass deletion; junctions are links on Windows
 - [Phase 02]: 02-09: name-sort cursor requires a string key; search is normalized server-side like filename_key and applied via autoescaped contains to both page and count queries; no keepPreviousData so a new query restarts the grid at the top
+- [Phase 02]: 02-10: /file route takes media type from stored ext (CHECK-constrained), shares immutable cache constant with thumbnails; viewer is mounted only while open and ImagesPage advances index via a pending-advance flag after fetchNextPage — Originals never requested for the grid; cross-page navigation stays seamless without the modal owning paging state
 
 ### Pending Todos
 
@@ -137,6 +139,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-10-03T13:39:59.415Z
-Stopped at: Completed 02-09-PLAN.md
+Last session: 2026-10-03T13:50:47.007Z
+Stopped at: Completed 02-10-PLAN.md
 Resume file: None
