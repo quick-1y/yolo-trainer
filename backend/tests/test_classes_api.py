@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import random
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
@@ -346,3 +347,108 @@ def test_patch_unknown_class_and_project_return_404(client: TestClient) -> None:
     missing_project = client.patch("/api/projects/999/classes/1", json={"name": "x"})
     assert missing_project.status_code == 404
     assert missing_project.json()["detail"] == "Project not found."
+
+
+# --- DELETE /classes/{class_id}: contiguous re-indexing (PROJ-03, D-13, D-16) ---
+
+
+def _listed(client: TestClient, project_id: int) -> list[dict]:
+    response = client.get(f"/api/projects/{project_id}/classes")
+    assert response.status_code == 200
+    return response.json()
+
+
+def test_delete_middle_class_shifts_later_indices_down(client: TestClient) -> None:
+    project_id = _project(client)
+    a, b, c, d = (_add_class(client, project_id, name) for name in ("a", "b", "c", "d"))
+
+    response = client.delete(f"/api/projects/{project_id}/classes/{b['id']}")
+
+    assert response.status_code == 204
+    assert response.content == b""
+    listed = _listed(client, project_id)
+    assert [(x["name"], x["index"]) for x in listed] == [("a", 0), ("c", 1), ("d", 2)]
+    # Ids and colors are untouched: only the index moves (annotations use the id).
+    assert [x["id"] for x in listed] == [a["id"], c["id"], d["id"]]
+    assert [x["color"] for x in listed] == [a["color"], c["color"], d["color"]]
+
+
+def test_delete_last_class_changes_no_other_index(client: TestClient) -> None:
+    project_id = _project(client)
+    _add_class(client, project_id, "a")
+    _add_class(client, project_id, "b")
+    last = _add_class(client, project_id, "c")
+
+    assert client.delete(f"/api/projects/{project_id}/classes/{last['id']}").status_code == 204
+
+    assert [(x["name"], x["index"]) for x in _listed(client, project_id)] == [("a", 0), ("b", 1)]
+
+
+def test_delete_same_class_twice_returns_404_the_second_time(client: TestClient) -> None:
+    project_id = _project(client)
+    car = _add_class(client, project_id, "car")
+    url = f"/api/projects/{project_id}/classes/{car['id']}"
+
+    assert client.delete(url).status_code == 204
+    again = client.delete(url)
+
+    assert again.status_code == 404
+    assert again.json()["detail"] == "Class not found."
+
+
+def test_delete_in_one_project_leaves_another_projects_indices_alone(client: TestClient) -> None:
+    project_id = _project(client, "First")
+    other_id = _project(client, "Second")
+    first = _add_class(client, project_id, "a")
+    _add_class(client, project_id, "b")
+    for name in ("x", "y", "z"):
+        _add_class(client, other_id, name)
+
+    assert client.delete(f"/api/projects/{project_id}/classes/{first['id']}").status_code == 204
+
+    assert [(x["name"], x["index"]) for x in _listed(client, project_id)] == [("b", 0)]
+    assert [(x["name"], x["index"]) for x in _listed(client, other_id)] == [
+        ("x", 0),
+        ("y", 1),
+        ("z", 2),
+    ]
+
+
+def test_delete_class_of_another_project_returns_404_and_deletes_nothing(
+    client: TestClient,
+) -> None:
+    project_id = _project(client, "First")
+    other_id = _project(client, "Second")
+    other_class = _add_class(client, other_id, "car")
+
+    response = client.delete(f"/api/projects/{project_id}/classes/{other_class['id']}")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Class not found."
+    assert len(_listed(client, other_id)) == 1
+
+
+def test_delete_unknown_project_returns_404(client: TestClient) -> None:
+    response = client.delete("/api/projects/999/classes/1")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Project not found."
+
+
+def test_random_create_delete_sequence_keeps_indices_contiguous(client: TestClient) -> None:
+    rng = random.Random(20261003)
+    project_id = _project(client)
+    live: list[dict] = []
+    counter = 0
+
+    for _ in range(15):
+        if live and rng.random() < 0.45:
+            victim = live.pop(rng.randrange(len(live)))
+            response = client.delete(f"/api/projects/{project_id}/classes/{victim['id']}")
+            assert response.status_code == 204
+        else:
+            counter += 1
+            live.append(_add_class(client, project_id, f"class-{counter}"))
+        listed = _listed(client, project_id)
+        assert [x["index"] for x in listed] == list(range(len(listed)))
+        assert [x["id"] for x in listed] == [x["id"] for x in live]
