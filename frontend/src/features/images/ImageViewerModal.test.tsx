@@ -133,3 +133,117 @@ describe("ImageViewerModal opening", () => {
     expect(within(dialog()).getByText("1 of 3")).toBeInTheDocument();
   });
 });
+
+describe("ImageViewerModal navigation", () => {
+  it("steps through the loaded images with the arrow keys and disables the ends", async () => {
+    stubFetch(() => jsonResponse({ items: makeItems(3), next_cursor: null, total: 3 }));
+    const { user } = renderImagesPage();
+    await user.click(await screen.findByRole("button", { name: "img-1.jpg" }));
+    const modal = await screen.findByRole("dialog");
+    expect(within(modal).getByText("1 of 3")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Previous image" })).toBeDisabled();
+
+    await user.keyboard("{ArrowRight}");
+    expect(within(modal).getByText("2 of 3")).toBeInTheDocument();
+    expect(within(modal).getByText("img-2.jpg")).toBeInTheDocument();
+    await user.keyboard("{ArrowRight}");
+    expect(within(modal).getByText("3 of 3")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Next image" })).toBeDisabled();
+
+    await user.keyboard("{ArrowLeft}");
+    expect(within(modal).getByText("2 of 3")).toBeInTheDocument();
+    expect(stageImage()?.getAttribute("src")).toBe("/api/projects/7/images/2/file");
+  });
+
+  it("moves with the on-screen arrow buttons", async () => {
+    stubFetch(() => jsonResponse({ items: makeItems(3), next_cursor: null, total: 3 }));
+    const { user } = renderImagesPage();
+    await user.click(await screen.findByRole("button", { name: "img-2.jpg" }));
+    await screen.findByRole("dialog");
+
+    await user.click(screen.getByRole("button", { name: "Next image" }));
+    expect(within(dialog()).getByText("3 of 3")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Previous image" }));
+    await user.click(screen.getByRole("button", { name: "Previous image" }));
+    expect(within(dialog()).getByText("1 of 3")).toBeInTheDocument();
+  });
+
+  it("closes on Escape", async () => {
+    stubFetch(() => jsonResponse({ items: makeItems(3), next_cursor: null, total: 3 }));
+    const { user } = renderImagesPage();
+    await user.click(await screen.findByRole("button", { name: "img-1.jpg" }));
+    await screen.findByRole("dialog");
+
+    await user.keyboard("{Escape}");
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  });
+
+  it("loads the next page at the end of the loaded list and continues on it", async () => {
+    let release: (response: Response) => void = () => undefined;
+    const fetchMock = stubFetch((cursor) => {
+      if (cursor === null) {
+        return jsonResponse({ items: makeItems(100), next_cursor: "c1", total: 200 });
+      }
+      return new Promise<Response>((resolve) => {
+        release = resolve;
+      });
+    });
+    const { user } = renderImagesPage();
+    await user.click(await screen.findByRole("button", { name: "img-1.jpg" }));
+    await screen.findByRole("dialog");
+    // Walk to the last loaded image (index 100).
+    await user.keyboard("{ArrowRight}".repeat(99));
+    expect(within(dialog()).getByText("100 of 200")).toBeInTheDocument();
+
+    await user.keyboard("{ArrowRight}");
+
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.some(([input]) => String(input).includes("cursor=c1")),
+      ).toBe(true),
+    );
+    expect(screen.getByRole("button", { name: "Next image" })).toHaveAttribute(
+      "data-loading",
+      "true",
+    );
+    expect(within(dialog()).getByText("100 of 200")).toBeInTheDocument();
+
+    release(jsonResponse({ items: makeItems(100, 100), next_cursor: null, total: 200 }));
+
+    expect(await within(dialog()).findByText("101 of 200")).toBeInTheDocument();
+    expect(within(dialog()).getByText("img-101.jpg")).toBeInTheDocument();
+  });
+});
+
+describe("ImageViewerModal stage states", () => {
+  it("shows a loader until the original fires load", async () => {
+    stubFetch(() => jsonResponse({ items: makeItems(2), next_cursor: null, total: 2 }));
+    const { user } = renderImagesPage();
+    await user.click(await screen.findByRole("button", { name: "img-1.jpg" }));
+    await screen.findByRole("dialog");
+    await waitFor(() => expect(stageImage()).not.toBeNull());
+
+    expect(screen.getByTestId("viewer-loader")).toBeInTheDocument();
+    fireEvent.load(stageImage() as HTMLImageElement);
+
+    await waitFor(() => expect(screen.queryByTestId("viewer-loader")).not.toBeInTheDocument());
+  });
+
+  it("shows the failure message on error and arrows keep working", async () => {
+    stubFetch(() => jsonResponse({ items: makeItems(2), next_cursor: null, total: 2 }));
+    const { user } = renderImagesPage();
+    await user.click(await screen.findByRole("button", { name: "img-1.jpg" }));
+    await screen.findByRole("dialog");
+    await waitFor(() => expect(stageImage()).not.toBeNull());
+
+    fireEvent.error(stageImage() as HTMLImageElement);
+
+    expect(await screen.findByText("Could not load this image.")).toBeInTheDocument();
+    expect(screen.queryByTestId("viewer-loader")).not.toBeInTheDocument();
+    await user.keyboard("{ArrowRight}");
+    expect(within(dialog()).getByText("2 of 2")).toBeInTheDocument();
+    expect(screen.queryByText("Could not load this image.")).not.toBeInTheDocument();
+    expect(screen.getByTestId("viewer-loader")).toBeInTheDocument();
+  });
+});
