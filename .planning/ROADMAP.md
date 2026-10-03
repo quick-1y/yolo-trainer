@@ -94,12 +94,12 @@ Plans:
   3. User creates, renames, recolors, and deletes classes in a project; each class shows a stable index and color
   4. Uploaded images and classes are still present after a service restart
 
-**Plans:** 12 plans
+**Plans:** 1/12 plans executed
 
 Plans:
 **Wave 1**
 
-- [ ] 02-01-PLAN.md — Tracer: upload images from the Images page and see them in a virtualized thumbnail grid (multipart -> Pillow -> id-keyed disk layout + SQLite -> keyset list -> thumbnails), smoke-tested through nginx (wave 1)
+- [x] 02-01-PLAN.md — Tracer: upload images from the Images page and see them in a virtualized thumbnail grid (multipart -> Pillow -> id-keyed disk layout + SQLite -> keyset list -> thumbnails), smoke-tested through nginx (wave 1)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
@@ -370,7 +370,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Runnable Skeleton & Projects | 10/10 | Complete    | 2026-09-29 |
-| 2. Image Upload & Classes | 0/12 | Planned | - |
+| 2. Image Upload & Classes | 1/12 | In Progress|  |
 | 3. Box Annotation Editor | 0/TBD | Not started | - |
 | 4. Train & Download | 0/TBD | Not started | - |
 | 5. Live Training Monitoring & Control | 0/TBD | Not started | - |

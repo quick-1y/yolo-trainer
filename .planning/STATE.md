@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 02
 current_phase_name: Image Upload & Classes
 status: executing
-stopped_at: Phase 2 UI-SPEC approved
-last_updated: "2026-10-03T07:39:42.377Z"
-last_activity: 2026-09-29
-last_activity_desc: Phase 01 complete, transitioned to Phase 2
-state_head: c9b4d5ff584e8e226ad7fba5af482f8ec7540838
+stopped_at: Completed 02-01-PLAN.md
+last_updated: "2026-10-03T08:06:07.514Z"
+last_activity: 2026-10-03
+last_activity_desc: Phase 02 execution started
+state_head: 8088bf4b373945a64bbf28e97271dc6924865785
 progress:
   total_phases: 12
   completed_phases: 1
   total_plans: 22
-  completed_plans: 10
+  completed_plans: 11
   percent: 8
 ---
 
@@ -23,14 +23,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-09-29)
 
 **Core value:** The full loop works end-to-end in the browser: upload images → annotate → train with configurable settings → download a working `.pt`
-**Current focus:** Phase 2 — Image Upload & Classes
+**Current focus:** Phase 02 — Image Upload & Classes
 
 ## Current Position
 
-Phase: 02 (Image Upload & Classes) — READY TO EXECUTE
-Plan: Not started
+Phase: 02 (Image Upload & Classes) — EXECUTING
+Plan: 2 of 12
 Status: Ready to execute
-Last activity: 2026-09-29 — Phase 01 complete, transitioned to Phase 2
+Last activity: 2026-10-03 — Phase 02 execution started
 
 Progress: [█░░░░░░░░░] 8%
 
@@ -67,6 +67,7 @@ Progress: [█░░░░░░░░░] 8%
 | Phase 01 P08 | 35min | 3 tasks | 13 files |
 | Phase 01 P09 | 23min | 3 tasks | 16 files |
 | Phase 01 P10 | 40min | 2 tasks | 4 files |
+| Phase 02 P01 | 19min | 2 tasks | 33 files |
 
 ## Accumulated Context
 
@@ -96,6 +97,8 @@ Recent decisions affecting current work:
 - [Phase 01]: Plan 09: useDeleteProject treats a DELETE 404 as idempotent success (project already gone = desired end state), so the normal-delete and already-deleted-elsewhere cases share one success path (navigate + invalidate + notify).
 - [Phase 01]: Plan 09: Fixed a pre-existing bug in ProjectLayout (Rule 1) - every section NavLink hardcoded the project root and active=true, which only worked by accident with a single section; now each section's own to/active is derived from its route.
 - [Phase 01]: Plan 10 README.ru.md translates prose only, keeping every command/URL/path/env-var name verbatim so the two READMEs stay diffable section-by-section (11 sections each).
+- [Phase 02]: Plan 02-01: EXIF orientation applied via an explicit Pillow transpose table (same mapping as ImageOps.exif_transpose) so it does not depend on im.info surviving convert/thumbnail; size_bytes comes from the staged byte count. — Robust D-17 semantics independent of Pillow metadata propagation
+- [Phase 02]: Plan 02-01: Dockerfile.frontend runs npm ci --maxsockets=1 - parallel registry connections get ECONNRESET on Docker Desktop (Windows), reproduced on the pre-phase lockfile too. — Reliable image build on the dev machine; retries alone did not help
 
 ### Pending Todos
 
@@ -117,6 +120,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-09-29T06:58:29.914Z
-Stopped at: Phase 2 UI-SPEC approved
-Resume file: .planning/phases/02-image-upload-classes/02-UI-SPEC.md
+Last session: 2026-10-03T08:06:07.448Z
+Stopped at: Completed 02-01-PLAN.md
+Resume file: None
