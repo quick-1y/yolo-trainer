@@ -180,6 +180,18 @@ class ImagePage(BaseModel):
     total: int
 
 
+class ImageDeleteRequest(BaseModel):
+    """Ids to hard-delete; 1..1000 per request (T2-11-02)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    ids: list[int] = Field(min_length=1, max_length=1000)
+
+
+class ImageDeleteResult(BaseModel):
+    deleted: int
+
+
 UploadStatus = Literal["added", "duplicate", "rejected"]
 
 

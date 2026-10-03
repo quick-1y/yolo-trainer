@@ -5,12 +5,13 @@ from __future__ import annotations
 import asyncio
 import base64
 import json
+import logging
 from dataclasses import dataclass
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse
-from sqlalchemy import Select, func, select, tuple_
+from sqlalchemy import Select, delete, func, select, tuple_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,9 +20,18 @@ from yolo_trainer_api.db import get_session
 from yolo_trainer_api.image_processing import EXT_MEDIA, Rejected, clean_filename, process_image
 from yolo_trainer_api.models import Image, normalize_project_name
 from yolo_trainer_api.routers.projects import get_project_or_404
-from yolo_trainer_api.schemas import ImagePage, ImageRead, UploadResponse, UploadResult
+from yolo_trainer_api.schemas import (
+    ImageDeleteRequest,
+    ImageDeleteResult,
+    ImagePage,
+    ImageRead,
+    UploadResponse,
+    UploadResult,
+)
 from yolo_trainer_api.security import require_xhr
 from yolo_trainer_api.settings import Settings
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/projects", tags=["images"])
 
@@ -322,3 +332,41 @@ async def get_original(
     return FileResponse(
         path, media_type=EXT_MEDIA[ext], headers={"Cache-Control": _IMMUTABLE_CACHE_CONTROL}
     )
+
+
+# --------------------------------------------------------------------------
+# Delete
+# --------------------------------------------------------------------------
+
+
+@router.post("/{project_id}/images/delete", response_model=ImageDeleteResult)
+async def delete_images(
+    project_id: int,
+    body: ImageDeleteRequest,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+) -> ImageDeleteResult:
+    """Hard-delete images: rows first and committed, files after (D-19).
+
+    Only rows of this project are touched (T2-11-01), so ids of other projects
+    are ignored and a repeated request deletes nothing. A file that cannot be
+    removed is logged and left for the startup cleanup; the rows are already gone.
+    """
+    await get_project_or_404(session, project_id)
+    ids = list(dict.fromkeys(body.ids))
+    scope = (Image.project_id == project_id, Image.id.in_(ids))
+    removed = (await session.execute(select(Image.id, Image.ext).where(*scope))).all()
+    if not removed:
+        return ImageDeleteResult(deleted=0)
+    await session.execute(delete(Image).where(*scope))
+    await session.commit()
+
+    settings = _settings(request)
+    for image_id, ext in removed:
+        try:
+            await asyncio.to_thread(storage.remove_image_files, settings, project_id, image_id, ext)
+        except Exception:
+            logger.exception(
+                "Could not remove files of deleted image %s in project %s", image_id, project_id
+            )
+    return ImageDeleteResult(deleted=len(removed))
