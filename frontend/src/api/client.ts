@@ -17,8 +17,15 @@ interface ErrorBody {
  * are shown to the user verbatim, as plain English text).
  */
 export async function apiRequest<T>(path: string, init?: RequestInit): Promise<T> {
-  const headers: Record<string, string> = { Accept: "application/json" };
-  if (init?.body !== undefined) {
+  // X-Requested-With is the CSRF guard for multipart POSTs (a custom header
+  // forces a CORS preflight, which the api never grants). Content-Type is
+  // only set for non-FormData bodies: for FormData the browser must set the
+  // multipart boundary itself.
+  const headers: Record<string, string> = {
+    Accept: "application/json",
+    "X-Requested-With": "yolo-trainer",
+  };
+  if (init?.body !== undefined && !(init.body instanceof FormData)) {
     headers["Content-Type"] = "application/json";
   }
 

@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Annotated, Literal
 
-from pydantic import field_validator
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
@@ -32,6 +32,13 @@ class Settings(BaseSettings):
     # header matches this allow-list (blunts DNS-rebinding attacks).
     allowed_hosts: Annotated[list[str], NoDecode] = ["localhost", "127.0.0.1"]  # noqa: RUF012
 
+    # D-03: per-file upload cap and decoded-pixel cap. The MB cap is decimal
+    # on purpose (RESEARCH Pattern 5) so it matches what users see in file
+    # managers; the megapixel cap guards against decompression bombs.
+    max_upload_mb: int = Field(default=50, ge=1)
+    max_image_megapixels: int = Field(default=100, ge=1)
+    thumbnail_size: int = Field(default=256, ge=32, le=1024)
+
     @field_validator("sqlite_journal_mode", mode="before")
     @classmethod
     def _normalize_journal_mode(cls, value: object) -> object:
@@ -50,6 +57,18 @@ class Settings(BaseSettings):
     @property
     def db_path(self) -> Path:
         return self.data_dir / "app.db"
+
+    @property
+    def projects_dir(self) -> Path:
+        return self.data_dir / "projects"
+
+    @property
+    def max_upload_bytes(self) -> int:
+        return self.max_upload_mb * 1_000_000
+
+    @property
+    def max_image_pixels(self) -> int:
+        return self.max_image_megapixels * 1_000_000
 
     @property
     def async_database_url(self) -> str:

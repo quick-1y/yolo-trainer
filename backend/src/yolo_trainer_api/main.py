@@ -11,6 +11,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from yolo_trainer_api.db import checkpoint_wal, create_engine_for, create_sessionmaker
 from yolo_trainer_api.errors import register_error_handlers
 from yolo_trainer_api.migrate import run_migrations
+from yolo_trainer_api.routers.images import router as images_router
 from yolo_trainer_api.routers.projects import router as projects_router
 from yolo_trainer_api.settings import Settings, validate_data_dir
 
@@ -39,6 +40,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         await engine.dispose()
 
     app = FastAPI(title="YOLO Trainer API", lifespan=lifespan)
+    app.state.settings = settings
 
     # T-02-01: reject requests whose Host header isn't allow-listed - blunts
     # DNS-rebinding against this local, unauthenticated API (D-14).
@@ -51,6 +53,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         return {"status": "ok"}
 
     app.include_router(projects_router)
+    app.include_router(images_router)
 
     return app
 

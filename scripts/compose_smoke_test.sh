@@ -10,6 +10,9 @@ export PORT=18080
 export BIND_ADDR=127.0.0.1
 
 cleanup() {
+  if [ -n "${SMOKE_TMP:-}" ]; then
+    rm -rf "$SMOKE_TMP"
+  fi
   if [ "${KEEP_SMOKE_DATA:-}" = "1" ]; then
     return
   fi
@@ -93,6 +96,83 @@ if [ ! -f "${DATA_DIR}/app.db" ]; then
   exit 1
 fi
 
+echo "==> Uploading images through the API (Phase 2 tracer, DATA-01)..."
+PROJECT_ID=$(printf '%s' "$CREATE_BODY" | sed -n 's/.*"id":\([0-9][0-9]*\).*/\1/p')
+if [ -z "$PROJECT_ID" ]; then
+  echo "FAIL: could not parse the project id from: $CREATE_BODY" >&2
+  exit 1
+fi
+
+# 16x16 PNG (83 bytes). Relative paths + a subshell cd keep Git Bash/MSYS from
+# rewriting the curl -F "files=@..." argument into a host path.
+SMOKE_TMP=$(mktemp -d)
+printf '%s' 'iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAIAAACQkWg2AAAAGklEQVR42mM8oaHBQApgYiARjGoY1TB0NAAAjC0BOJDndDkAAAAASUVORK5CYII=' | base64 -d > "${SMOKE_TMP}/tiny.png"
+printf 'this is not an image' > "${SMOKE_TMP}/x.jpg"
+IMAGES_URL="${BASE_URL}/api/projects/${PROJECT_ID}/images"
+
+NOHEADER_STATUS=$(cd "$SMOKE_TMP" && curl -s -o /dev/null -w "%{http_code}" -F "files=@tiny.png;type=image/png" "$IMAGES_URL")
+if [ "$NOHEADER_STATUS" != "403" ]; then
+  echo "FAIL: upload without X-Requested-With returned HTTP ${NOHEADER_STATUS} (expected 403)" >&2
+  exit 1
+fi
+
+ADDED_BODY=$(cd "$SMOKE_TMP" && curl -fsS -H "X-Requested-With: yolo-trainer" -F "files=@tiny.png;type=image/png" "$IMAGES_URL")
+case "$ADDED_BODY" in
+  *'"status":"added"'*) ;;
+  *)
+    echo "FAIL: PNG upload was not reported as added (got: $ADDED_BODY)" >&2
+    exit 1
+    ;;
+esac
+IMAGE_ID=$(printf '%s' "$ADDED_BODY" | sed -n 's/.*"image":{"id":\([0-9][0-9]*\).*/\1/p')
+if [ -z "$IMAGE_ID" ]; then
+  echo "FAIL: could not parse the image id from: $ADDED_BODY" >&2
+  exit 1
+fi
+
+REJECTED_BODY=$(cd "$SMOKE_TMP" && curl -fsS -H "X-Requested-With: yolo-trainer" -F "files=@x.jpg;type=image/jpeg" "$IMAGES_URL")
+case "$REJECTED_BODY" in
+  *'"status":"rejected"'*) ;;
+  *)
+    echo "FAIL: a text file named x.jpg was not rejected (got: $REJECTED_BODY)" >&2
+    exit 1
+    ;;
+esac
+
+DUPLICATE_BODY=$(cd "$SMOKE_TMP" && curl -fsS -H "X-Requested-With: yolo-trainer" -F "files=@tiny.png;type=image/png" "$IMAGES_URL")
+case "$DUPLICATE_BODY" in
+  *'"status":"duplicate"'*) ;;
+  *)
+    echo "FAIL: re-uploading the same PNG was not reported as duplicate (got: $DUPLICATE_BODY)" >&2
+    exit 1
+    ;;
+esac
+
+IMAGES_LIST=$(curl -fsS "$IMAGES_URL")
+case "$IMAGES_LIST" in
+  *'"total":1'*) ;;
+  *)
+    echo "FAIL: image list total is not 1 (got: $IMAGES_LIST)" >&2
+    exit 1
+    ;;
+esac
+
+THUMB_RESULT=$(curl -sS -o /dev/null -w "%{http_code} %{content_type}" "${IMAGES_URL}/${IMAGE_ID}/thumbnail")
+if [ "$THUMB_RESULT" != "200 image/webp" ]; then
+  echo "FAIL: thumbnail returned '${THUMB_RESULT}' (expected '200 image/webp')" >&2
+  exit 1
+fi
+
+echo "==> Checking image files exist on the host at the id-keyed paths (D-18)..."
+for IMAGE_FILE in \
+  "${DATA_DIR}/projects/${PROJECT_ID}/images/${IMAGE_ID}.png" \
+  "${DATA_DIR}/projects/${PROJECT_ID}/thumbs/${IMAGE_ID}.webp"; do
+  if [ ! -f "$IMAGE_FILE" ]; then
+    echo "FAIL: ${IMAGE_FILE} does not exist on the host" >&2
+    exit 1
+  fi
+done
+
 echo "==> Restarting the stack (down/up) to check persistence..."
 docker compose down
 docker compose up -d --wait --wait-timeout 600
@@ -105,6 +185,21 @@ case "$LIST_AFTER_RESTART" in
     exit 1
     ;;
 esac
+
+echo "==> Checking uploaded images survived down/up (SC4)..."
+IMAGES_AFTER_RESTART=$(curl -fsS "$IMAGES_URL")
+case "$IMAGES_AFTER_RESTART" in
+  *'"total":1'*) ;;
+  *)
+    echo "FAIL: image list did not survive down/up (got: $IMAGES_AFTER_RESTART)" >&2
+    exit 1
+    ;;
+esac
+THUMB_AFTER_RESTART=$(curl -sS -o /dev/null -w "%{http_code}" "${IMAGES_URL}/${IMAGE_ID}/thumbnail")
+if [ "$THUMB_AFTER_RESTART" != "200" ]; then
+  echo "FAIL: thumbnail returned HTTP ${THUMB_AFTER_RESTART} after down/up (expected 200)" >&2
+  exit 1
+fi
 
 echo "==> Creating 10 projects in quick succession (burst-write check, RESEARCH Pitfall 1)..."
 BURST_NAMES=()

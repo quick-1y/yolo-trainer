@@ -1,0 +1,43 @@
+.tile {
+  position: relative;
+  width: 176px;
+  height: 200px;
+  box-sizing: border-box;
+  overflow: hidden;
+  border-radius: 8px;
+  border: 1px solid var(--mantine-color-dark-4);
+  background: var(--mantine-color-dark-6);
+}
+
+.tile:hover {
+  border-color: var(--mantine-color-dark-3);
+}
+
+.thumb {
+  display: block;
+  width: 176px;
+  height: 176px;
+  object-fit: cover;
+  background: var(--mantine-color-dark-5);
+}
+
+.caption {
+  height: 24px;
+  padding: 0 8px;
+  font-size: 12px;
+  line-height: 24px;
+  color: var(--mantine-color-dark-1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Reserved for the Phase 3 annotation-status badge (D-07). */
+.badgeSlot {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 24px;
+  height: 24px;
+  pointer-events: none;
+}

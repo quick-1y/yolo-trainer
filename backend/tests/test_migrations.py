@@ -5,6 +5,7 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
+from yolo_trainer_api.migrate import migration_head
 from yolo_trainer_api.settings import Settings
 
 from .conftest import make_client
@@ -29,10 +30,11 @@ def test_startup_creates_data_dir_and_migrates(tmp_path: Path) -> None:
             for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")
         }
         assert "projects" in tables
+        assert "images" in tables
 
         version_row = connection.execute("SELECT version_num FROM alembic_version").fetchone()
         assert version_row is not None
-        assert version_row[0] == "0001"
+        assert version_row[0] == migration_head()
     finally:
         connection.close()
 

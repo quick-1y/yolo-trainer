@@ -1,0 +1,110 @@
+"""On-disk layout for project images (D-18).
+
+Every path is built from integers and an allow-listed extension only; a
+user-supplied filename never reaches the filesystem.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import os
+from pathlib import Path
+from typing import BinaryIO
+from uuid import uuid4
+
+from yolo_trainer_api.image_processing import EXT_MEDIA, Rejected
+from yolo_trainer_api.settings import Settings
+
+_CHUNK_SIZE = 1024 * 1024
+
+
+def project_dir(settings: Settings, project_id: int) -> Path:
+    return settings.projects_dir / str(int(project_id))
+
+
+def images_dir(settings: Settings, project_id: int) -> Path:
+    return project_dir(settings, project_id) / "images"
+
+
+def thumbs_dir(settings: Settings, project_id: int) -> Path:
+    return project_dir(settings, project_id) / "thumbs"
+
+
+def incoming_dir(settings: Settings, project_id: int) -> Path:
+    return project_dir(settings, project_id) / ".incoming"
+
+
+def image_path(settings: Settings, project_id: int, image_id: int, ext: str) -> Path:
+    if ext not in EXT_MEDIA:
+        raise ValueError(f"Unsupported image extension: {ext!r}")
+    return images_dir(settings, project_id) / f"{int(image_id)}.{ext}"
+
+
+def thumb_path(settings: Settings, project_id: int, image_id: int) -> Path:
+    return thumbs_dir(settings, project_id) / f"{int(image_id)}.webp"
+
+
+def discard(path: Path | None) -> None:
+    """Delete a file if it exists; never raises for a missing file."""
+    if path is not None:
+        path.unlink(missing_ok=True)
+
+
+def stage_and_hash(settings: Settings, project_id: int, fileobj: BinaryIO) -> tuple[Path, str, int]:
+    """Copy `fileobj` into the project's staging dir while hashing it.
+
+    Returns `(staged_path, sha256_hex, size_bytes)`. The copy stops as soon as
+    the per-file cap is exceeded: the partial file is removed and `Rejected`
+    is raised. Runs in a worker thread (blocking I/O).
+    """
+    directory = incoming_dir(settings, project_id)
+    directory.mkdir(parents=True, exist_ok=True)
+    staged = directory / f"{uuid4().hex}.tmp"
+    digest = hashlib.sha256()
+    total = 0
+    try:
+        with staged.open("wb") as target:
+            while chunk := fileobj.read(_CHUNK_SIZE):
+                total += len(chunk)
+                if total > settings.max_upload_bytes:
+                    raise Rejected(f"The file is larger than {settings.max_upload_mb} MB.")
+                digest.update(chunk)
+                target.write(chunk)
+    except BaseException:
+        discard(staged)
+        raise
+    return staged, digest.hexdigest(), total
+
+
+def write_thumb_tmp(settings: Settings, project_id: int, data: bytes) -> Path:
+    directory = incoming_dir(settings, project_id)
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / f"{uuid4().hex}.tmp"
+    try:
+        path.write_bytes(data)
+    except BaseException:
+        discard(path)
+        raise
+    return path
+
+
+def commit_files(
+    settings: Settings,
+    project_id: int,
+    image_id: int,
+    ext: str,
+    staged: Path,
+    thumb_tmp: Path,
+) -> None:
+    """Move the staged original and thumbnail to their final id-keyed names."""
+    final_image = image_path(settings, project_id, image_id, ext)
+    final_thumb = thumb_path(settings, project_id, image_id)
+    final_image.parent.mkdir(parents=True, exist_ok=True)
+    final_thumb.parent.mkdir(parents=True, exist_ok=True)
+    os.replace(staged, final_image)
+    os.replace(thumb_tmp, final_thumb)
+
+
+def remove_image_files(settings: Settings, project_id: int, image_id: int, ext: str) -> None:
+    discard(image_path(settings, project_id, image_id, ext))
+    discard(thumb_path(settings, project_id, image_id))

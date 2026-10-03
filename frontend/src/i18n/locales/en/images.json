@@ -1,0 +1,12 @@
+{
+  "page": {
+    "title": "Images",
+    "count": "Images: {{count}}"
+  },
+  "upload": {
+    "files": "Upload images"
+  },
+  "progress": {
+    "counters": "Added: {{added}} · Already present: {{duplicates}} · Rejected: {{rejected}}"
+  }
+}

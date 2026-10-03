@@ -2,7 +2,9 @@
 FROM node:24-alpine AS build
 WORKDIR /app
 COPY frontend/package.json frontend/package-lock.json ./
-RUN npm ci
+# One socket at a time: on Docker Desktop (Windows) parallel registry
+# connections are reset (ECONNRESET) and `npm ci` fails; serial is reliable.
+RUN npm ci --maxsockets=1
 COPY frontend/ ./
 RUN npm run build
 

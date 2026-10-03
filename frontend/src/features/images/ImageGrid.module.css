@@ -1,0 +1,14 @@
+/* Flex-wrap list of fixed-size items: VirtuosoGrid needs equal-sized items
+   and a container-independent item width (no CSS grid auto-fill). */
+.list {
+  display: flex;
+  flex-wrap: wrap;
+}
+
+.item {
+  width: 184px;
+  height: 208px;
+  padding: 4px;
+  box-sizing: border-box;
+  flex: none;
+}

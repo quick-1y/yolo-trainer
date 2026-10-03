@@ -14,6 +14,7 @@ from pathlib import Path
 import pytest
 
 from yolo_trainer_api.db import apply_sqlite_pragmas
+from yolo_trainer_api.migrate import migration_head
 from yolo_trainer_api.settings import Settings
 
 from .conftest import make_client
@@ -115,7 +116,7 @@ def test_restart_is_migration_noop(tmp_path: Path) -> None:
     try:
         rows = connection.execute("SELECT version_num FROM alembic_version").fetchall()
         assert len(rows) == 1
-        assert rows[0][0] == "0001"
+        assert rows[0][0] == migration_head()
     finally:
         connection.close()
 

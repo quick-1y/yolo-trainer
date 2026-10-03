@@ -16,6 +16,7 @@ interface SectionLink {
 // (D-11: no links to sections that do not exist yet).
 const SECTIONS: SectionLink[] = [
   { key: "overview", to: ".", labelKey: "project:nav.overview" },
+  { key: "images", to: "images", labelKey: "project:nav.images" },
   { key: "settings", to: "settings", labelKey: "project:nav.settings" },
 ];
 
@@ -46,11 +47,15 @@ export function ProjectLayout() {
     );
   }
 
-  // Only the "settings" section has its own sub-path today; every other
-  // section (currently just "overview") lives at the project's index route,
-  // so "not on /settings" is what marks it active (D-11: extend this as
-  // more sections land instead of assuming exactly two).
-  const isSettingsRoute = location.pathname.endsWith("/settings");
+  // Per-section matching: "overview" lives at the project's index route and
+  // is active only on the exact project path; every other section is active
+  // when the path starts with its own sub-path.
+  const projectBase = `/projects/${parsedId}`;
+  const pathname = location.pathname.replace(/\/+$/, "");
+  const isActive = (section: SectionLink) =>
+    section.to === "."
+      ? pathname === projectBase
+      : pathname.startsWith(`${projectBase}/${section.to}`);
 
   return (
     <Group align="flex-start" gap="xl" wrap="nowrap">
@@ -60,18 +65,14 @@ export function ProjectLayout() {
           <NavLink
             key={section.key}
             component={Link}
-            to={
-              section.to === "."
-                ? `/projects/${parsedId}`
-                : `/projects/${parsedId}/${section.to}`
-            }
+            to={section.to === "." ? projectBase : `${projectBase}/${section.to}`}
             label={t(section.labelKey)}
-            active={section.key === "settings" ? isSettingsRoute : !isSettingsRoute}
+            active={isActive(section)}
             variant="light"
           />
         ))}
       </Stack>
-      <Box style={{ flex: 1 }}>
+      <Box style={{ flex: 1, minWidth: 0 }}>
         <Outlet context={{ project: query.data }} />
       </Box>
     </Group>

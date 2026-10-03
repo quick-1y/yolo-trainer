@@ -1,0 +1,12 @@
+{
+  "page": {
+    "title": "Изображения",
+    "count": "Изображений: {{count}}"
+  },
+  "upload": {
+    "files": "Загрузить изображения"
+  },
+  "progress": {
+    "counters": "Добавлено: {{added}} · Уже есть: {{duplicates}} · Отклонено: {{rejected}}"
+  }
+}

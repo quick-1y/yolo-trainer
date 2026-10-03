@@ -6,7 +6,14 @@ import unicodedata
 from datetime import UTC, datetime
 from typing import Annotated, Literal
 
-from pydantic import AfterValidator, BaseModel, ConfigDict, field_serializer, model_validator
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    ConfigDict,
+    Field,
+    field_serializer,
+    model_validator,
+)
 
 TaskType = Literal["detect", "segment"]
 
@@ -96,3 +103,40 @@ class ProjectRead(BaseModel):
         if value.tzinfo is None:
             value = value.replace(tzinfo=UTC)
         return value.isoformat().replace("+00:00", "Z")
+
+
+class ImageRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+    id: int
+    filename: str = Field(validation_alias="original_filename")
+    width: int
+    height: int
+    size_bytes: int
+    created_at: datetime
+
+    @field_serializer("created_at")
+    def _serialize_utc(self, value: datetime) -> str:
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=UTC)
+        return value.isoformat().replace("+00:00", "Z")
+
+
+class ImagePage(BaseModel):
+    items: list[ImageRead]
+    next_cursor: str | None
+    total: int
+
+
+UploadStatus = Literal["added", "duplicate", "rejected"]
+
+
+class UploadResult(BaseModel):
+    filename: str
+    status: UploadStatus
+    reason: str | None = None
+    image: ImageRead | None = None
+
+
+class UploadResponse(BaseModel):
+    results: list[UploadResult]
