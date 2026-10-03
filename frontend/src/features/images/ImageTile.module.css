@@ -9,6 +9,15 @@
   background: var(--mantine-color-dark-6);
 }
 
+.tile {
+  cursor: pointer;
+}
+
+.tile:focus-visible {
+  outline: 2px solid var(--mantine-primary-color-filled);
+  outline-offset: 1px;
+}
+
 .tile:hover {
   border-color: var(--mantine-color-dark-3);
 }

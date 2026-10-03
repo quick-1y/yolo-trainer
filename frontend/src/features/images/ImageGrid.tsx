@@ -16,6 +16,7 @@ interface PagingState {
 interface ImageGridProps extends PagingState {
   projectId: number;
   items: ImageItem[];
+  onOpen: (index: number) => void;
 }
 
 /**
@@ -74,6 +75,7 @@ const GRID_COMPONENTS = { Footer: GridFooter };
 export function ImageGrid({
   projectId,
   items,
+  onOpen,
   hasNextPage,
   isFetchingNextPage,
   isFetchNextPageError,
@@ -96,7 +98,9 @@ export function ImageGrid({
       increaseViewportBy={{ top: 400, bottom: 800 }}
       listClassName={classes.list}
       itemClassName={classes.item}
-      itemContent={(_, image) => <ImageTile projectId={projectId} image={image} />}
+      itemContent={(index, image) => (
+        <ImageTile projectId={projectId} image={image} index={index} onOpen={onOpen} />
+      )}
     />
   );
 }

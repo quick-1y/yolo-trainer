@@ -40,6 +40,7 @@ function renderGrid({
         <ImageGrid
           projectId={7}
           items={items}
+          onOpen={() => undefined}
           hasNextPage={hasNextPage}
           isFetchingNextPage={isFetchingNextPage}
           isFetchNextPageError={isFetchNextPageError}

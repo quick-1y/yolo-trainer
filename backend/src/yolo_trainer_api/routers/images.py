@@ -1,4 +1,4 @@
-"""POST/GET /api/projects/{project_id}/images and the thumbnail route."""
+"""POST/GET /api/projects/{project_id}/images, the thumbnail and the original-file routes."""
 
 from __future__ import annotations
 
@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from yolo_trainer_api import storage
 from yolo_trainer_api.db import get_session
-from yolo_trainer_api.image_processing import Rejected, clean_filename, process_image
+from yolo_trainer_api.image_processing import EXT_MEDIA, Rejected, clean_filename, process_image
 from yolo_trainer_api.models import Image, normalize_project_name
 from yolo_trainer_api.routers.projects import get_project_or_404
 from yolo_trainer_api.schemas import ImagePage, ImageRead, UploadResponse, UploadResult
@@ -30,7 +30,7 @@ MAX_PAGE_SIZE = 500
 SORT_NEWEST = "newest"
 SORT_NAME = "name"
 MAX_SEARCH_LENGTH = 255
-_THUMBNAIL_CACHE_CONTROL = "private, max-age=31536000, immutable"
+_IMMUTABLE_CACHE_CONTROL = "private, max-age=31536000, immutable"
 
 
 def _settings(request: Request) -> Settings:
@@ -239,7 +239,7 @@ async def upload_images(
 
 
 # --------------------------------------------------------------------------
-# List and thumbnail
+# List, thumbnail and original
 # --------------------------------------------------------------------------
 
 
@@ -293,5 +293,32 @@ async def get_thumbnail(
     if not path.is_file():
         raise HTTPException(status_code=404, detail="Image not found.")
     return FileResponse(
-        path, media_type="image/webp", headers={"Cache-Control": _THUMBNAIL_CACHE_CONTROL}
+        path, media_type="image/webp", headers={"Cache-Control": _IMMUTABLE_CACHE_CONTROL}
+    )
+
+
+@router.get("/{project_id}/images/{image_id}/file")
+async def get_original(
+    project_id: int,
+    image_id: int,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+) -> FileResponse:
+    """The stored original, byte for byte.
+
+    The media type comes from the stored (CHECK-constrained) extension, never
+    from the client's filename or content type.
+    """
+    ext = (
+        await session.execute(
+            select(Image.ext).where(Image.id == image_id, Image.project_id == project_id)
+        )
+    ).scalar_one_or_none()
+    if ext is None or ext not in EXT_MEDIA:
+        raise HTTPException(status_code=404, detail="Image not found.")
+    path = storage.image_path(_settings(request), project_id, image_id, ext)
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="Image not found.")
+    return FileResponse(
+        path, media_type=EXT_MEDIA[ext], headers={"Cache-Control": _IMMUTABLE_CACHE_CONTROL}
     )

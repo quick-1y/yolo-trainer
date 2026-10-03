@@ -9,6 +9,7 @@ import { type ImageSort, useImagesInfinite } from "../../api/images";
 import type { Project } from "../../api/projects";
 import { ImageGrid } from "./ImageGrid";
 import { ImagesToolbar } from "./ImagesToolbar";
+import { ImageViewerModal } from "./ImageViewerModal";
 import { UploadButtons } from "./UploadButtons";
 import { useUpload } from "./UploadContext";
 import { UploadDropzone } from "./UploadDropzone";
@@ -45,6 +46,7 @@ export function ImagesPage() {
   const { project } = useOutletContext<ProjectOutletContext>();
   const [sort, setSort] = useState<ImageSort>("newest");
   const [search, setSearch] = useState("");
+  const [viewerIndex, setViewerIndex] = useState<number | null>(null);
   const query = search.trim();
   const images = useImagesInfinite(project.id, sort, query);
   const config = useAppConfig();
@@ -136,6 +138,7 @@ export function ImagesPage() {
             key={`${sort}|${query}`}
             projectId={project.id}
             items={items}
+            onOpen={setViewerIndex}
             hasNextPage={images.hasNextPage}
             isFetchingNextPage={images.isFetchingNextPage}
             isFetchNextPageError={images.isFetchNextPageError}
@@ -143,6 +146,15 @@ export function ImagesPage() {
           />
         )}
       </Box>
+      {viewerIndex !== null && (
+        <ImageViewerModal
+          projectId={project.id}
+          items={items}
+          index={viewerIndex}
+          total={total}
+          onClose={() => setViewerIndex(null)}
+        />
+      )}
     </Box>
   );
 }

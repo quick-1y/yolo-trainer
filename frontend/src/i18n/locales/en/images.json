@@ -58,5 +58,10 @@
     "title": "No matching images",
     "body": "No filenames contain \"{{query}}\". Try a different search.",
     "clear": "Clear search"
+  },
+  "viewer": {
+    "dimensions": "{{width}} × {{height}} px",
+    "position": "{{index}} of {{total}}",
+    "close": "Close"
   }
 }
