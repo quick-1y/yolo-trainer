@@ -138,7 +138,33 @@ export function ImagesPage() {
       setAdvancePending(false);
     }
   }, [advancePending, viewerIndex, items.length, images.isFetchNextPageError]);
+
+  // Deleting every loaded image leaves an empty list while the server still has more pages:
+  // pruneDeletedImages keeps next_cursor, and VirtuosoGrid's endReached never fires for zero
+  // items, so load the next page here. Never during a fetch, and never after a failed load
+  // (only the footer "Try again" fetches again, same rule as handleEndReached).
+  const { fetchNextPage } = images;
+  useEffect(() => {
+    if (
+      images.data !== undefined &&
+      items.length === 0 &&
+      images.hasNextPage &&
+      !images.isFetching &&
+      !images.isFetchNextPageError
+    ) {
+      void fetchNextPage();
+    }
+  }, [
+    images.data,
+    items.length,
+    images.hasNextPage,
+    images.isFetching,
+    images.isFetchNextPageError,
+    fetchNextPage,
+  ]);
   const searching = query !== "";
+  // Empty states only when the list is exhausted, not merely empty.
+  const nothingLeft = items.length === 0 && !images.hasNextPage;
 
   return (
     <Box
@@ -203,7 +229,7 @@ export function ImagesPage() {
               </Button>
             </Stack>
           </Alert>
-        ) : items.length === 0 && searching ? (
+        ) : nothingLeft && searching ? (
           <EmptyState
             title={t("images:noResults.title")}
             description={t("images:noResults.body", { query })}
@@ -215,7 +241,7 @@ export function ImagesPage() {
               </Button>
             </EmptyState.Actions>
           </EmptyState>
-        ) : items.length === 0 ? (
+        ) : nothingLeft ? (
           <EmptyState title={t("images:empty.title")} description={t("images:empty.body")} py={64}>
             {config.data !== undefined && (
               <EmptyState.Description>
