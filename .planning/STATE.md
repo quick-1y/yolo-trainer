@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 02
 current_phase_name: Image Upload & Classes
 status: executing
-stopped_at: Completed 02-01-PLAN.md
-last_updated: "2026-10-03T08:06:07.514Z"
+stopped_at: Completed 02-02-PLAN.md
+last_updated: "2026-10-03T08:13:19.786Z"
 last_activity: 2026-10-03
 last_activity_desc: Phase 02 execution started
-state_head: 8088bf4b373945a64bbf28e97271dc6924865785
+state_head: 72a7dc80e7c0164725a451056b4aa99d5d928d1c
 progress:
   total_phases: 12
   completed_phases: 1
   total_plans: 22
-  completed_plans: 11
+  completed_plans: 12
   percent: 8
 ---
 
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-09-29)
 ## Current Position
 
 Phase: 02 (Image Upload & Classes) — EXECUTING
-Plan: 2 of 12
+Plan: 3 of 12
 Status: Ready to execute
 Last activity: 2026-10-03 — Phase 02 execution started
 
@@ -68,6 +68,7 @@ Progress: [█░░░░░░░░░] 8%
 | Phase 01 P09 | 23min | 3 tasks | 16 files |
 | Phase 01 P10 | 40min | 2 tasks | 4 files |
 | Phase 02 P01 | 19min | 2 tasks | 33 files |
+| Phase 02 P02 | 5min | 2 tasks | 22 files |
 
 ## Accumulated Context
 
@@ -99,6 +100,7 @@ Recent decisions affecting current work:
 - [Phase 01]: Plan 10 README.ru.md translates prose only, keeping every command/URL/path/env-var name verbatim so the two READMEs stay diffable section-by-section (11 sections each).
 - [Phase 02]: Plan 02-01: EXIF orientation applied via an explicit Pillow transpose table (same mapping as ImageOps.exif_transpose) so it does not depend on im.info surviving convert/thumbnail; size_bytes comes from the staged byte count. — Robust D-17 semantics independent of Pillow metadata propagation
 - [Phase 02]: Plan 02-01: Dockerfile.frontend runs npm ci --maxsockets=1 - parallel registry connections get ECONNRESET on Docker Desktop (Windows), reproduced on the pre-phase lockfile too. — Reliable image build on the dev machine; retries alone did not help
+- [Phase 02]: Plan 02-02: class index is computed inside the INSERT (scalar subquery COALESCE(MAX(position), -1) + 1); default color is chosen before it, so concurrent creates may share a color (cosmetic). — Atomic index guarantees contiguous 0..N-1 under concurrency; 20-way test passes
 
 ### Pending Todos
 
@@ -120,6 +122,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-10-03T08:06:07.448Z
-Stopped at: Completed 02-01-PLAN.md
+Last session: 2026-10-03T08:13:19.724Z
+Stopped at: Completed 02-02-PLAN.md
 Resume file: None
