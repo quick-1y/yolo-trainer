@@ -94,7 +94,45 @@ Plans:
   3. User creates, renames, recolors, and deletes classes in a project; each class shows a stable index and color
   4. Uploaded images and classes are still present after a service restart
 
-**Plans**: TBD
+**Plans:** 12 plans
+
+Plans:
+**Wave 1**
+
+- [ ] 02-01-PLAN.md — Tracer: upload images from the Images page and see them in a virtualized thumbnail grid (multipart -> Pillow -> id-keyed disk layout + SQLite -> keyset list -> thumbnails), smoke-tested through nginx (wave 1)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 02-02-PLAN.md — Classes: create and list with contiguous index and palette color; Classes page and sidebar entry (wave 2)
+- [ ] 02-03-PLAN.md — Upload validation hardening: decode/EXIF matrix, size limits, filename hygiene, concurrent duplicates (wave 2)
+- [ ] 02-04-PLAN.md — nginx per-route upload limit via MAX_UPLOAD_MB template, compose/env/README wiring, smoke limit checks (wave 2)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 02-05-PLAN.md — Classes: rename, recolor, delete with confirmation and index shift (wave 3)
+- [ ] 02-06-PLAN.md — Upload at scale: server limits, batch queue (10 files, concurrency 3), folder dialog, progress/summary panel (wave 3)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [ ] 02-07-PLAN.md — Drag and drop files/folders anywhere; grid empty/loading/error states and virtualization bound test (wave 4)
+- [ ] 02-08-PLAN.md — Project delete removes its folder, startup orphan cleanup with safety valve, image/class counts on card and Overview (wave 4)
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
+- [ ] 02-09-PLAN.md — Find images: server-side filename search and by-filename sort on the keyset API, toolbar (wave 5)
+
+**Wave 6** *(blocked on Wave 5 completion)*
+
+- [ ] 02-10-PLAN.md — Full-size viewer modal with arrow/keyboard navigation across pages (wave 6)
+
+**Wave 7** *(blocked on Wave 6 completion)*
+
+- [ ] 02-11-PLAN.md — Multi-select (checkbox, Shift range) and delete images with confirmation; rows first, then files (wave 7)
+
+**Wave 8** *(blocked on Wave 7 completion)*
+
+- [ ] 02-12-PLAN.md — Seed script for a 5000-image project, smoke test for image + class persistence, full suite, end-of-phase browser checks (wave 8)
+
 **UI hint**: yes
 **Notes**:
 
@@ -332,7 +370,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Runnable Skeleton & Projects | 10/10 | Complete    | 2026-09-29 |
-| 2. Image Upload & Classes | 0/TBD | Not started | - |
+| 2. Image Upload & Classes | 0/12 | Planned | - |
 | 3. Box Annotation Editor | 0/TBD | Not started | - |
 | 4. Train & Download | 0/TBD | Not started | - |
 | 5. Live Training Monitoring & Control | 0/TBD | Not started | - |
