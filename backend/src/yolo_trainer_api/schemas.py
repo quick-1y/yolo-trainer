@@ -190,3 +190,11 @@ class UploadResult(BaseModel):
 
 class UploadResponse(BaseModel):
     results: list[UploadResult]
+
+
+class ConfigRead(BaseModel):
+    """Server-side upload limits, so the client pre-filter cannot drift from them."""
+
+    max_upload_mb: int
+    max_upload_bytes: int
+    accepted_extensions: list[str]

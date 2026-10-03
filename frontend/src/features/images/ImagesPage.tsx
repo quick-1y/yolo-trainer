@@ -6,17 +6,17 @@ import { useTranslation } from "react-i18next";
 import { useOutletContext } from "react-router-dom";
 
 import { ApiError } from "../../api/client";
+import { useAppConfig } from "../../api/config";
 import { imageKeys, uploadImageBatch, useImagesInfinite } from "../../api/images";
 import type { UploadResult } from "../../api/images";
 import type { Project } from "../../api/projects";
+import { classifyFiles } from "../../lib/imageFiles";
+import { planBatches, runUploadQueue } from "../../lib/uploadQueue";
 import { ImageGrid } from "./ImageGrid";
 
 interface ProjectOutletContext {
   project: Project;
 }
-
-const MAX_FILES_PER_BATCH = 10;
-const ACCEPT = "image/jpeg,image/png,image/webp,image/bmp";
 
 function countStatuses(results: UploadResult[]) {
   return {
@@ -26,11 +26,15 @@ function countStatuses(results: UploadResult[]) {
   };
 }
 
+const ACCEPT = "image/jpeg,image/png,image/webp,image/bmp";
+const CONCURRENCY = 3;
+
 export function ImagesPage() {
   const { t } = useTranslation(["images", "common"]);
   const { project } = useOutletContext<ProjectOutletContext>();
   const queryClient = useQueryClient();
   const images = useImagesInfinite(project.id);
+  const config = useAppConfig();
   const [uploading, setUploading] = useState(false);
 
   const items = useMemo(
@@ -40,27 +44,36 @@ export function ImagesPage() {
   const total = images.data?.pages[0]?.total ?? 0;
 
   async function handleFiles(files: File[]) {
-    if (files.length === 0 || uploading) {
+    if (files.length === 0 || uploading || config.data === undefined) {
       return;
     }
     setUploading(true);
-    const results: UploadResult[] = [];
+    const { accepted, rejected } = classifyFiles(files, {
+      maxUploadBytes: config.data.max_upload_bytes,
+      acceptedExtensions: config.data.accepted_extensions,
+    });
+    // Counters only - never per-file React state (D-04).
+    const counters = { added: 0, duplicates: 0, rejected: rejected.length };
     try {
-      // Sequential batches: the api processes files one by one anyway, and
-      // small batches keep each request well under the proxy body limit.
-      for (let start = 0; start < files.length; start += MAX_FILES_PER_BATCH) {
-        const batch = files.slice(start, start + MAX_FILES_PER_BATCH);
-        const response = await uploadImageBatch(project.id, batch);
-        results.push(...response.results);
-      }
+      await runUploadQueue({
+        batches: planBatches(accepted, config.data.max_upload_bytes),
+        concurrency: CONCURRENCY,
+        signal: new AbortController().signal,
+        upload: (batch, signal) => uploadImageBatch(project.id, batch, signal),
+        onBatchDone: ({ files: batch, response }) => {
+          if (response === undefined) {
+            counters.rejected += batch.length;
+            return;
+          }
+          const statuses = countStatuses(response.results);
+          counters.added += statuses.added;
+          counters.duplicates += statuses.duplicates;
+          counters.rejected += statuses.rejected;
+        },
+      });
       notifications.show({
         color: "green",
-        message: t("images:progress.counters", countStatuses(results)),
-      });
-    } catch (error) {
-      notifications.show({
-        color: "red",
-        message: error instanceof ApiError ? error.message : String(error),
+        message: t("images:progress.counters", counters),
       });
     } finally {
       setUploading(false);
@@ -81,7 +94,7 @@ export function ImagesPage() {
         </Group>
         <FileButton onChange={(files) => void handleFiles(files)} accept={ACCEPT} multiple>
           {(props) => (
-            <Button {...props} loading={uploading}>
+            <Button {...props} loading={uploading} disabled={config.data === undefined}>
               {t("images:upload.files")}
             </Button>
           )}
