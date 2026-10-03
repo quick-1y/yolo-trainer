@@ -118,11 +118,25 @@ Individual checks:
 uv run pytest backend/tests                    # backend unit/API tests
 uv run ruff check backend                       # backend lint
 uv run ruff format --check backend              # backend format check
+uv run ruff check scripts/seed_images.py        # seed script lint
+uv run ruff format --check scripts/seed_images.py  # seed script format check
 npm --prefix frontend run test -- --run         # frontend unit tests
 npm --prefix frontend run build                 # frontend type-check + production build
 bash scripts/compose_smoke_test.sh              # full Docker stack end-to-end check (its own data dir, port 18080)
 uv run python scripts/check_cli_run_git_clean.py  # legacy CLI training leaves git status clean (needs example_ready_dataset/ images locally)
 ```
+
+### Seeding a large project and checking grid smoothness
+
+The Images grid is virtualized, so it should stay smooth at thousands of images. To check that, fill a project with generated images through the real upload API (the stack must be running, e.g. `docker compose up --build`):
+```bash
+uv run python scripts/seed_images.py --count 5000                       # creates (or reuses) the project "seed-5000"
+uv run python scripts/seed_images.py --count 5000 --project-id 3        # seed an existing project instead
+uv run python scripts/seed_images.py --count 5000 --base-url http://127.0.0.1:8080
+```
+It uploads in batches of 20 with 4 parallel workers (`--batch-size`, `--workers`) and prints `project=<id> added=<n> duplicate=<n> rejected=<n> elapsed=<s>s`. The images are deterministic per index (and `--seed`), so running it a second time with the same arguments reports every image as a duplicate. 5000 images take roughly 40 MB of disk space and about a minute.
+
+Manual smoothness check: open the project's **Images** page, scroll from top to bottom, and run `document.querySelectorAll("img").length` in the browser DevTools console. Scrolling should stay smooth and the count should stay at a few hundred, not thousands.
 
 ## Legacy CLI scripts
 

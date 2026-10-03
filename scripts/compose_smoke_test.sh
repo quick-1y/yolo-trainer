@@ -165,6 +165,34 @@ if [ "$THUMB_RESULT" != "200 image/webp" ]; then
   exit 1
 fi
 
+echo "==> Creating a class and checking project counts (CLS-01, SC4 setup)..."
+CLASSES_URL="${BASE_URL}/api/projects/${PROJECT_ID}/classes"
+CLASS_RESPONSE=$(curl -sS -w '\n%{http_code}' -X POST "$CLASSES_URL" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "car"}')
+CLASS_STATUS=$(printf '%s' "$CLASS_RESPONSE" | tail -n 1)
+CLASS_BODY=$(printf '%s' "$CLASS_RESPONSE" | sed '$d')
+if [ "$CLASS_STATUS" != "201" ]; then
+  echo "FAIL: creating class 'car' returned HTTP ${CLASS_STATUS} (expected 201; body: $CLASS_BODY)" >&2
+  exit 1
+fi
+case "$CLASS_BODY" in
+  *'"index":0'*'"color":"#E6194B"'* | *'"color":"#E6194B"'*'"index":0'*) ;;
+  *)
+    echo "FAIL: class 'car' lacks index 0 / color #E6194B (got: $CLASS_BODY)" >&2
+    exit 1
+    ;;
+esac
+
+PROJECT_DETAIL=$(curl -fsS "${BASE_URL}/api/projects/${PROJECT_ID}")
+case "$PROJECT_DETAIL" in
+  *'"image_count":1'*'"class_count":1'* | *'"class_count":1'*'"image_count":1'*) ;;
+  *)
+    echo "FAIL: project response lacks image_count 1 / class_count 1 (got: $PROJECT_DETAIL)" >&2
+    exit 1
+    ;;
+esac
+
 echo "==> Checking image files exist on the host at the id-keyed paths (D-18)..."
 for IMAGE_FILE in \
   "${DATA_DIR}/projects/${PROJECT_ID}/images/${IMAGE_ID}.png" \
@@ -202,6 +230,23 @@ if [ "$THUMB_AFTER_RESTART" != "200" ]; then
   echo "FAIL: thumbnail returned HTTP ${THUMB_AFTER_RESTART} after down/up (expected 200)" >&2
   exit 1
 fi
+
+echo "==> Checking GET /classes survived down/up (SC4)..."
+CLASSES_AFTER_RESTART=$(curl -fsS "$CLASSES_URL")
+case "$CLASSES_AFTER_RESTART" in
+  *'"name":"car"'*) ;;
+  *)
+    echo "FAIL: class 'car' did not survive down/up (got: $CLASSES_AFTER_RESTART)" >&2
+    exit 1
+    ;;
+esac
+case "$CLASSES_AFTER_RESTART" in
+  *'"index":0'*) ;;
+  *)
+    echo "FAIL: class 'car' lost index 0 after down/up (got: $CLASSES_AFTER_RESTART)" >&2
+    exit 1
+    ;;
+esac
 
 echo "==> Checking upload limits through nginx (D-03, MAX_UPLOAD_MB=2)..."
 NGINX_CONF=$(docker compose exec -T web nginx -T 2>/dev/null)
@@ -330,6 +375,24 @@ for NAME in "${BURST_NAMES[@]}" "$PROJECT_NAME"; do
       ;;
   esac
 done
+
+echo "==> Checking GET /classes and the image list survived the image rebuild (SC4)..."
+CLASSES_AFTER_REBUILD=$(curl -fsS "$CLASSES_URL")
+case "$CLASSES_AFTER_REBUILD" in
+  *'"name":"car"'*'"index":0'* | *'"index":0'*'"name":"car"'*) ;;
+  *)
+    echo "FAIL: class 'car' (index 0) missing after image rebuild (got: $CLASSES_AFTER_REBUILD)" >&2
+    exit 1
+    ;;
+esac
+IMAGES_AFTER_REBUILD=$(curl -fsS "$IMAGES_URL")
+case "$IMAGES_AFTER_REBUILD" in
+  *'"total":1'*) ;;
+  *)
+    echo "FAIL: image list did not survive the image rebuild (got: $IMAGES_AFTER_REBUILD)" >&2
+    exit 1
+    ;;
+esac
 
 echo "==> Checking database integrity after burst writes and rebuild..."
 INTEGRITY_OUTPUT=$(docker compose exec -T api python -c \

@@ -118,11 +118,25 @@ bash scripts/fresh_clone_check.sh
 uv run pytest backend/tests                    # юнит- и API-тесты бэкенда
 uv run ruff check backend                       # линтер бэкенда
 uv run ruff format --check backend              # проверка форматирования бэкенда
+uv run ruff check scripts/seed_images.py        # линтер скрипта наполнения
+uv run ruff format --check scripts/seed_images.py  # проверка форматирования скрипта наполнения
 npm --prefix frontend run test -- --run         # юнит-тесты фронтенда
 npm --prefix frontend run build                 # проверка типов + продакшн-сборка фронтенда
 bash scripts/compose_smoke_test.sh              # полная сквозная проверка стека Docker (свой каталог данных, порт 18080)
 uv run python scripts/check_cli_run_git_clean.py  # обучение через старый CLI не меняет git status (нужны локальные изображения example_ready_dataset/)
 ```
+
+### Наполнение большого проекта и проверка плавности сетки
+
+Сетка на странице «Изображения» виртуализирована, поэтому должна оставаться плавной при тысячах изображений. Чтобы это проверить, заполните проект сгенерированными изображениями через настоящий API загрузки (стек должен быть запущен, например `docker compose up --build`):
+```bash
+uv run python scripts/seed_images.py --count 5000                       # создаёт (или переиспользует) проект "seed-5000"
+uv run python scripts/seed_images.py --count 5000 --project-id 3        # наполнить существующий проект
+uv run python scripts/seed_images.py --count 5000 --base-url http://127.0.0.1:8080
+```
+Скрипт загружает пачками по 20 изображений в 4 параллельных потока (`--batch-size`, `--workers`) и печатает `project=<id> added=<n> duplicate=<n> rejected=<n> elapsed=<s>s`. Изображения детерминированы по индексу (и `--seed`), поэтому повторный запуск с теми же аргументами сообщит обо всех изображениях как о дубликатах. 5000 изображений занимают около 40 МБ на диске и примерно минуту.
+
+Ручная проверка плавности: откройте страницу **Изображения** проекта, прокрутите её сверху вниз и выполните в консоли DevTools браузера `document.querySelectorAll("img").length`. Прокрутка должна оставаться плавной, а число элементов — держаться в пределах нескольких сотен, а не тысяч.
 
 ## Устаревшие CLI-скрипты
 

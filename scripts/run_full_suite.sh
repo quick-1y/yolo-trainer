@@ -17,6 +17,12 @@ uv run ruff check backend
 echo "==> uv run ruff format --check backend..."
 uv run ruff format --check backend
 
+echo "==> uv run ruff check scripts/seed_images.py..."
+uv run ruff check scripts/seed_images.py
+
+echo "==> uv run ruff format --check scripts/seed_images.py..."
+uv run ruff format --check scripts/seed_images.py
+
 echo "==> npm --prefix frontend run test -- --run..."
 npm --prefix frontend run test -- --run
 
