@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import logging
+import shutil
+import sqlite3
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, select
@@ -10,6 +14,32 @@ from sqlalchemy.orm import Session
 
 from yolo_trainer_api.models import Project
 from yolo_trainer_api.settings import Settings
+
+from .imaging import make_image_bytes
+
+XHR = {"X-Requested-With": "yolo-trainer"}
+
+
+def _upload_png(client: TestClient, project_id: int, shade: int = 0) -> None:
+    data = make_image_bytes("PNG", size=(32 + shade, 24))
+    response = client.post(
+        f"/api/projects/{project_id}/images",
+        files=[("files", (f"i{shade}.png", data, "image/png"))],
+        headers=XHR,
+    )
+    assert response.status_code == 200
+    assert response.json()["results"][0]["status"] == "added"
+
+
+def _count_rows(settings: Settings, table: str, project_id: int) -> int:
+    connection = sqlite3.connect(settings.db_path)
+    try:
+        return connection.execute(
+            f"SELECT COUNT(*) FROM {table} WHERE project_id = ?",  # noqa: S608
+            (project_id,),
+        ).fetchone()[0]
+    finally:
+        connection.close()
 
 
 def test_health_ok(client: TestClient) -> None:
@@ -247,3 +277,54 @@ def test_concurrent_renames_to_same_name_one_wins_one_409s(
                 session_b.commit()
     finally:
         sync_engine.dispose()
+
+
+def test_delete_removes_project_folder_and_all_rows(client: TestClient, settings: Settings) -> None:
+    project_id = client.post("/api/projects", json={"name": "Full", "task_type": "detect"}).json()[
+        "id"
+    ]
+    _upload_png(client, project_id)
+    assert (
+        client.post(f"/api/projects/{project_id}/classes", json={"name": "car"}).status_code == 201
+    )
+    folder = settings.projects_dir / str(project_id)
+    assert folder.is_dir()
+
+    assert client.delete(f"/api/projects/{project_id}").status_code == 204
+
+    assert not folder.exists()
+    assert _count_rows(settings, "images", project_id) == 0
+    assert _count_rows(settings, "classes", project_id) == 0
+
+
+def test_delete_succeeds_and_logs_when_folder_removal_fails(
+    client: TestClient,
+    settings: Settings,
+    monkeypatch: pytest.MonkeyPatch,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    project_id = client.post("/api/projects", json={"name": "Stuck", "task_type": "detect"}).json()[
+        "id"
+    ]
+    _upload_png(client, project_id)
+
+    def fail(*args: object, **kwargs: object) -> None:
+        raise OSError("locked by another process")
+
+    monkeypatch.setattr(shutil, "rmtree", fail)
+    with caplog.at_level(logging.ERROR):
+        response = client.delete(f"/api/projects/{project_id}")
+
+    assert response.status_code == 204
+    assert project_id not in [p["id"] for p in client.get("/api/projects").json()]
+    assert any(str(project_id) in record.getMessage() for record in caplog.records)
+    assert (settings.projects_dir / str(project_id)).exists()
+
+
+def test_delete_project_without_a_folder_is_fine(client: TestClient, settings: Settings) -> None:
+    project_id = client.post("/api/projects", json={"name": "Empty", "task_type": "detect"}).json()[
+        "id"
+    ]
+    assert not (settings.projects_dir / str(project_id)).exists()
+
+    assert client.delete(f"/api/projects/{project_id}").status_code == 204
