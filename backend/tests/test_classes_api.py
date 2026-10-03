@@ -232,3 +232,117 @@ def test_classes_survive_app_restart(settings: Settings) -> None:
     assert len(after) == 2
     assert after == before
     assert [(c["index"], c["color"]) for c in after] == [(0, "#E6194B"), (1, "#3CB44B")]
+
+
+# --- PATCH /classes/{class_id}: rename and recolor (PROJ-03, D-15) ---
+
+
+def _add_class(client: TestClient, project_id: int, name: str) -> dict:
+    response = client.post(f"/api/projects/{project_id}/classes", json={"name": name})
+    assert response.status_code == 201
+    return response.json()
+
+
+def test_patch_renames_class_and_keeps_index(client: TestClient) -> None:
+    project_id = _project(client)
+    car = _add_class(client, project_id, "car")
+    _add_class(client, project_id, "plane")
+
+    response = client.patch(f"/api/projects/{project_id}/classes/{car['id']}", json={"name": "Car"})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["name"] == "Car"
+    assert body["index"] == 0
+    assert body["color"] == car["color"]
+    assert body["id"] == car["id"]
+
+
+def test_patch_to_a_case_variant_of_another_class_returns_409_naming_the_stored_class(
+    client: TestClient,
+) -> None:
+    project_id = _project(client)
+    car = _add_class(client, project_id, "car")
+    _add_class(client, project_id, "plane")
+
+    response = client.patch(
+        f"/api/projects/{project_id}/classes/{car['id']}", json={"name": "PLANE"}
+    )
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == 'A class named "plane" already exists.'
+    listed = client.get(f"/api/projects/{project_id}/classes").json()
+    assert [c["name"] for c in listed] == ["car", "plane"]
+
+
+def test_patch_recolors_and_uppercases_the_color(client: TestClient) -> None:
+    project_id = _project(client)
+    car = _add_class(client, project_id, "car")
+
+    response = client.patch(
+        f"/api/projects/{project_id}/classes/{car['id']}", json={"color": "#00ff00"}
+    )
+
+    assert response.status_code == 200
+    assert response.json()["color"] == "#00FF00"
+    assert response.json()["name"] == "car"
+    stored = client.get(f"/api/projects/{project_id}/classes").json()[0]
+    assert stored["color"] == "#00FF00"
+
+
+@pytest.mark.parametrize(
+    "body",
+    [{"color": "green"}, {"color": "#12345"}, {"name": None}, {"color": None}, {"index": 3}],
+)
+def test_patch_rejects_invalid_bodies_with_422(client: TestClient, body: dict) -> None:
+    project_id = _project(client)
+    car = _add_class(client, project_id, "car")
+
+    response = client.patch(f"/api/projects/{project_id}/classes/{car['id']}", json=body)
+
+    assert response.status_code == 422
+    unchanged = client.get(f"/api/projects/{project_id}/classes").json()[0]
+    assert unchanged["name"] == "car"
+    assert unchanged["index"] == 0
+
+
+def test_patch_with_empty_body_is_a_noop_and_repeating_is_idempotent(client: TestClient) -> None:
+    project_id = _project(client)
+    car = _add_class(client, project_id, "car")
+    url = f"/api/projects/{project_id}/classes/{car['id']}"
+
+    empty = client.patch(url, json={})
+    assert empty.status_code == 200
+    assert empty.json() == car
+
+    first = client.patch(url, json={"color": "#112233"})
+    second = client.patch(url, json={"color": "#112233"})
+    assert first.status_code == second.status_code == 200
+    assert first.json() == second.json()
+
+
+def test_patch_class_of_another_project_returns_404(client: TestClient) -> None:
+    project_id = _project(client, "First")
+    other_id = _project(client, "Second")
+    other_class = _add_class(client, other_id, "car")
+
+    response = client.patch(
+        f"/api/projects/{project_id}/classes/{other_class['id']}", json={"name": "bus"}
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Class not found."
+    unchanged = client.get(f"/api/projects/{other_id}/classes").json()[0]
+    assert unchanged["name"] == "car"
+
+
+def test_patch_unknown_class_and_project_return_404(client: TestClient) -> None:
+    project_id = _project(client)
+
+    missing_class = client.patch(f"/api/projects/{project_id}/classes/999", json={"name": "x"})
+    assert missing_class.status_code == 404
+    assert missing_class.json()["detail"] == "Class not found."
+
+    missing_project = client.patch("/api/projects/999/classes/1", json={"name": "x"})
+    assert missing_project.status_code == 404
+    assert missing_project.json()["detail"] == "Project not found."
