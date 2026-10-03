@@ -1,14 +1,18 @@
 ---
-status: diagnosed
+status: testing
 phase: 02-image-upload-classes
-source: [02-VERIFICATION.md]
+source: [02-VERIFICATION.md, 02-13-SUMMARY.md]
 started: 2026-10-03T15:30:00Z
-updated: 2026-10-03T17:20:00Z
+updated: 2026-10-03T17:56:38Z
 ---
 
 ## Current Test
 
-[testing complete]
+number: 6
+name: Повтор UAT 5 / WR-01 — удаление > 1000 выделенных изображений (после 02-13)
+expected: |
+  Seed 1100 изображений, выделить 1067, удалить: нет 422, тост «Удалено изображений: 1067», счётчик уменьшился на 1067
+awaiting: user response
 
 ## Tests
 
@@ -34,12 +38,20 @@ result: issue
 reported: "Ошибка ids: List should have at most 1000 items after validation, not 1067 — да, получил (WR-01 воспроизведён: Shift-выделение 1067 изображений и удаление). CR-01 вручную недостижим: при прокрутке до последней плитки подгружается следующая страница; дефект подтверждён код-ревью. Владелец согласен исправлять сейчас."
 severity: major
 
+### 6. Повтор UAT 5 / WR-01 — удаление > 1000 выделенных изображений (после 02-13)
+expected: Seed 1100 изображений, выделить 1067, удалить: нет 422, тост «Удалено изображений: 1067», счётчик уменьшился на 1067
+result: [pending]
+
+### 7. CR-01 — удаление всех загруженных плиток при наличии следующей страницы (после 02-13)
+expected: В Chrome DevTools заблокировать запросы `*cursor=*`, удалить все загруженные плитки: вместо пустого состояния — inline-ошибка «Could not load more images.» с «Try again»; после снятия блокировки и «Try again» подгружаются следующие изображения
+result: [pending]
+
 ## Summary
 
-total: 5
+total: 7
 passed: 4
 issues: 1
-pending: 0
+pending: 2
 skipped: 0
 blocked: 0
 
@@ -47,7 +59,8 @@ blocked: 0
 
 - gap_id: G-02-5
   truth: "Удаление выделенных изображений работает при любом размере выделения (> 1000 id) и после удаления всех загруженных элементов подгружается следующая страница, а не пустое состояние при счётчике > 0"
-  status: failed
+  status: fix_applied
+  fix_plan: 02-13 (commits eb79200..9e7d5f6) — ожидает повторной проверки тестами 6 и 7
   reason: "User reported: Ошибка ids: List should have at most 1000 items after validation, not 1067 (WR-01). CR-01 подтверждён код-ревью (02-REVIEW.md)."
   severity: major
   test: 5
