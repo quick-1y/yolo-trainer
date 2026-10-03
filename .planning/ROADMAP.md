@@ -94,7 +94,7 @@ Plans:
   3. User creates, renames, recolors, and deletes classes in a project; each class shows a stable index and color
   4. Uploaded images and classes are still present after a service restart
 
-**Plans:** 3/12 plans executed
+**Plans:** 4/12 plans executed
 
 Plans:
 **Wave 1**
@@ -105,7 +105,7 @@ Plans:
 
 - [x] 02-02-PLAN.md — Classes: create and list with contiguous index and palette color; Classes page and sidebar entry (wave 2)
 - [x] 02-03-PLAN.md — Upload validation hardening: decode/EXIF matrix, size limits, filename hygiene, concurrent duplicates (wave 2)
-- [ ] 02-04-PLAN.md — nginx per-route upload limit via MAX_UPLOAD_MB template, compose/env/README wiring, smoke limit checks (wave 2)
+- [x] 02-04-PLAN.md — nginx per-route upload limit via MAX_UPLOAD_MB template, compose/env/README wiring, smoke limit checks (wave 2)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
@@ -370,7 +370,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Runnable Skeleton & Projects | 10/10 | Complete    | 2026-09-29 |
-| 2. Image Upload & Classes | 3/12 | In Progress|  |
+| 2. Image Upload & Classes | 4/12 | In Progress|  |
 | 3. Box Annotation Editor | 0/TBD | Not started | - |
 | 4. Train & Download | 0/TBD | Not started | - |
 | 5. Live Training Monitoring & Control | 0/TBD | Not started | - |

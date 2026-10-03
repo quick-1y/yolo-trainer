@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 02
 current_phase_name: Image Upload & Classes
 status: executing
-stopped_at: Completed 02-03-PLAN.md
-last_updated: "2026-10-03T08:18:30.701Z"
+stopped_at: Completed 02-04-PLAN.md
+last_updated: "2026-10-03T08:30:46.048Z"
 last_activity: 2026-10-03
 last_activity_desc: Phase 02 execution started
-state_head: 5ba7785d1766d2c8863dde84de15c3c31e0f3783
+state_head: c608199d5748c3cc889b2dd639471926a2ac593d
 progress:
   total_phases: 12
   completed_phases: 1
   total_plans: 22
-  completed_plans: 13
+  completed_plans: 14
   percent: 8
 ---
 
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-09-29)
 ## Current Position
 
 Phase: 02 (Image Upload & Classes) — EXECUTING
-Plan: 4 of 12
+Plan: 5 of 12
 Status: Ready to execute
 Last activity: 2026-10-03 — Phase 02 execution started
 
@@ -70,6 +70,7 @@ Progress: [█░░░░░░░░░] 8%
 | Phase 02 P01 | 19min | 2 tasks | 33 files |
 | Phase 02 P02 | 5min | 2 tasks | 22 files |
 | Phase 02 P03 | 4 min | 2 tasks | 3 files |
+| Phase 02 P04 | 15 min | 2 tasks | 9 files |
 
 ## Accumulated Context
 
@@ -103,6 +104,8 @@ Recent decisions affecting current work:
 - [Phase 02]: Plan 02-01: Dockerfile.frontend runs npm ci --maxsockets=1 - parallel registry connections get ECONNRESET on Docker Desktop (Windows), reproduced on the pre-phase lockfile too. — Reliable image build on the dev machine; retries alone did not help
 - [Phase 02]: Plan 02-02: class index is computed inside the INSERT (scalar subquery COALESCE(MAX(position), -1) + 1); default color is chosen before it, so concurrent creates may share a color (cosmetic). — Atomic index guarantees contiguous 0..N-1 under concurrency; 20-way test passes
 - [Phase 02]: 02-03: no production changes needed; upload pipeline pinned by characterization tests, verified by mutation
+- [Phase 02]: 02-04: upload body limit is per-route (regex location, MAX_UPLOAD_MB MiB) with 1m kept elsewhere; web image defaults MAX_UPLOAD_MB=50 — Keeps Phase 1 DoS protection on all other routes; nginx always starts
+- [Phase 02]: 02-04: worker image build serializes uv downloads (UV_CONCURRENT_DOWNLOADS=1, UV_HTTP_TIMEOUT=300) due to Docker Desktop body-read errors — Same class as the npm --maxsockets=1 workaround
 
 ### Pending Todos
 
@@ -124,6 +127,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-10-03T08:18:30.624Z
-Stopped at: Completed 02-03-PLAN.md
+Last session: 2026-10-03T08:30:45.975Z
+Stopped at: Completed 02-04-PLAN.md
 Resume file: None
