@@ -1,4 +1,4 @@
-import { screen, within } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { renderWithProviders } from "../../test/render";
@@ -97,7 +97,7 @@ describe("UploadPanel finished", () => {
 
     const rows = screen.getAllByTestId("rejected-row");
     expect(rows).toHaveLength(2);
-    expect(rows[0]).toBeVisible();
+    await waitFor(() => expect(rows[0]).toBeVisible());
     expect(within(rows[0]!).getByText("file-0.txt")).toHaveAttribute("title", "file-0.txt");
     expect(
       within(rows[0]!).getByText("Not a supported image (JPG, PNG, WEBP, BMP)."),

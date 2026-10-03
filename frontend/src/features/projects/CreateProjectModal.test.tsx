@@ -56,7 +56,8 @@ describe("CreateProjectModal", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const { user } = renderWithProviders(<CreateProjectModal opened onClose={vi.fn()} />);
-    await user.type(screen.getByLabelText(i18n.t("projects:modal.nameLabel")), "a".repeat(101));
+    await user.click(screen.getByLabelText(i18n.t("projects:modal.nameLabel")));
+    await user.paste("a".repeat(101));
     await user.click(screen.getByRole("button", { name: i18n.t("projects:modal.submit") }));
 
     expect(
