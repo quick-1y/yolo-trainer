@@ -8,6 +8,8 @@ export COMPOSE_PROJECT_NAME=yolo-trainer-smoke
 export DATA_DIR=./.smoke-data
 export PORT=18080
 export BIND_ADDR=127.0.0.1
+# Small upload limit so the limit checks below need only a few MB of test data.
+export MAX_UPLOAD_MB=2
 
 cleanup() {
   if [ -n "${SMOKE_TMP:-}" ]; then
@@ -200,6 +202,105 @@ if [ "$THUMB_AFTER_RESTART" != "200" ]; then
   echo "FAIL: thumbnail returned HTTP ${THUMB_AFTER_RESTART} after down/up (expected 200)" >&2
   exit 1
 fi
+
+echo "==> Checking upload limits through nginx (D-03, MAX_UPLOAD_MB=2)..."
+NGINX_CONF=$(docker compose exec -T web nginx -T 2>/dev/null)
+case "$NGINX_CONF" in
+  *'client_max_body_size 2m;'*) ;;
+  *)
+    echo "FAIL: rendered nginx config lacks 'client_max_body_size 2m;' for the upload route" >&2
+    exit 1
+    ;;
+esac
+case "$NGINX_CONF" in
+  *'client_max_body_size 1m;'*) ;;
+  *)
+    echo "FAIL: rendered nginx config lacks the server-level 'client_max_body_size 1m;'" >&2
+    exit 1
+    ;;
+esac
+
+# A separate project keeps the tracer assertions above (total 1 before/after
+# restart) untouched.
+LIMITS_NAME="smoke-limits-$(date +%s)"
+LIMITS_CREATE=$(curl -fsS -X POST "${BASE_URL}/api/projects" \
+  -H "Content-Type: application/json" \
+  -d "{\"name\": \"${LIMITS_NAME}\", \"task_type\": \"detect\"}")
+LIMITS_ID=$(printf '%s' "$LIMITS_CREATE" | sed -n 's/.*"id":\([0-9][0-9]*\).*/\1/p')
+if [ -z "$LIMITS_ID" ]; then
+  echo "FAIL: could not parse the limits project id from: $LIMITS_CREATE" >&2
+  exit 1
+fi
+LIMITS_URL="${BASE_URL}/api/projects/${LIMITS_ID}/images"
+
+# Solid-color BMPs (uncompressed, so size is exact) generated inside the api
+# container into the bind-mounted data root. Scoped MSYS_NO_PATHCONV so the
+# absolute interpreter path is not rewritten by Git Bash.
+MSYS_NO_PATHCONV=1 docker compose exec -T api /app/.venv/bin/python -c "
+from PIL import Image
+for name, size, color in (
+    ('smoke-medium.bmp', (800, 600), (200, 30, 30)),
+    ('smoke-edge.bmp', (830, 823), (30, 200, 30)),
+    ('smoke-large.bmp', (1100, 1000), (30, 30, 200)),
+):
+    Image.new('RGB', size, color).save('/data/' + name)
+"
+for BMP in smoke-medium.bmp smoke-edge.bmp smoke-large.bmp; do
+  if [ ! -f "${DATA_DIR}/${BMP}" ]; then
+    echo "FAIL: ${DATA_DIR}/${BMP} was not generated" >&2
+    exit 1
+  fi
+done
+
+MEDIUM_BODY=$(cd "$DATA_DIR" && curl -sS -H "X-Requested-With: yolo-trainer" -F "files=@smoke-medium.bmp;type=image/bmp" "$LIMITS_URL")
+case "$MEDIUM_BODY" in
+  *'"status":"added"'*) ;;
+  *)
+    echo "FAIL: 1.44 MB BMP was not added through nginx (got: $MEDIUM_BODY)" >&2
+    exit 1
+    ;;
+esac
+
+EDGE_BODY=$(cd "$DATA_DIR" && curl -sS -H "X-Requested-With: yolo-trainer" -F "files=@smoke-edge.bmp;type=image/bmp" "$LIMITS_URL")
+case "$EDGE_BODY" in
+  *'"status":"rejected"'*'larger than 2 MB'*) ;;
+  *)
+    echo "FAIL: 2.05 MB BMP was not rejected by the api as 'larger than 2 MB' (got: $EDGE_BODY)" >&2
+    exit 1
+    ;;
+esac
+
+LARGE_STATUS=$(cd "$DATA_DIR" && curl -s -o /dev/null -w "%{http_code}" -H "X-Requested-With: yolo-trainer" -F "files=@smoke-large.bmp;type=image/bmp" "$LIMITS_URL" || true)
+if [ "$LARGE_STATUS" != "413" ]; then
+  echo "FAIL: 3.3 MB BMP returned HTTP ${LARGE_STATUS} (expected 413 from nginx)" >&2
+  exit 1
+fi
+
+# Other routes keep the 1 MiB body limit.
+head -c 1500000 /dev/zero | tr '\0' 'a' > "${SMOKE_TMP}/big.json"
+BIGJSON_STATUS=$(cd "$SMOKE_TMP" && curl -s -o /dev/null -w "%{http_code}" -X POST "${BASE_URL}/api/projects" \
+  -H "Content-Type: application/json" --data-binary @big.json || true)
+if [ "$BIGJSON_STATUS" != "413" ]; then
+  echo "FAIL: 1.5 MB JSON body to /api/projects returned HTTP ${BIGJSON_STATUS} (expected 413)" >&2
+  exit 1
+fi
+
+# The upload location must still carry the server-level security headers.
+LIMITS_HEADERS=$(curl -sS -D - -o /dev/null "$LIMITS_URL")
+case "$LIMITS_HEADERS" in
+  *[Xx]-[Cc]ontent-[Tt]ype-[Oo]ptions:*nosniff*) ;;
+  *)
+    echo "FAIL: upload route response lacks X-Content-Type-Options: nosniff" >&2
+    exit 1
+    ;;
+esac
+case "$LIMITS_HEADERS" in
+  *[Cc]ontent-[Ss]ecurity-[Pp]olicy:*) ;;
+  *)
+    echo "FAIL: upload route response lacks Content-Security-Policy" >&2
+    exit 1
+    ;;
+esac
 
 echo "==> Creating 10 projects in quick succession (burst-write check, RESEARCH Pitfall 1)..."
 BURST_NAMES=()
