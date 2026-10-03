@@ -48,6 +48,9 @@ Out of this phase: polygons, click-to-segment and segment-project tools (Phase 6
 - **D-16:** **"Next unannotated"** searches in grid order (D-03) starting **after the current image**, wraps around to the start, and shows an "All images are annotated" message when there is nothing left. It is also available from the Images grid as an "Annotate next" entry point.
 - **D-17:** The grid shows a **status badge on each tile** (unannotated / annotated / reviewed / background) plus the box count, and a summary above the grid ("annotated N of M") with the "Annotate next" button. Filtering the grid by status stays in Phase 10.
 
+### Project task type
+- **D-18:** The box tool is **allowed in all projects, including `segment` projects**, before Phase 6 (resolves RESEARCH Open Question 2, decided 2026-10-04 at plan time). The annotation data model stays geometry-agnostic (`kind` column), and Phase 4/9 export must convert boxes to 4-point polygons for `segment` projects (`docs/roadmap.md` §7.4).
+
 ### Data model notes for the planner (from the decisions above)
 - Image-level state needed: background flag, reviewed flag (or status enum), and the annotation version (D-12). "Annotated" can be derived or stored, but it must stay consistent with the box count and background flag.
 - Box geometry is stored normalized to [0,1] relative to the oriented image (§7.5). Whether geometry is a polymorphic column or separate tables (`docs/roadmap.md` §13.4) is the planner's call, but it must not block Phase 6 polygons or Phase 8's AI-suggested flag.
@@ -69,7 +72,7 @@ Out of this phase: polygons, click-to-segment and segment-project tools (Phase 6
 
 ### Annotation architecture
 - `docs/roadmap.md` §7.1 — Classes vs. tags; class index = position in `names:`.
-- `docs/roadmap.md` §7.2 — Per-project task type (detect vs. segment homogeneity). This phase is box-only for `detect` projects; segment projects get polygons in Phase 6.
+- `docs/roadmap.md` §7.2 — Per-project task type (detect vs. segment homogeneity). This phase adds the box tool for all projects (D-18); segment projects get polygons in Phase 6.
 - `docs/roadmap.md` §7.3 — Manual box tool; react-konva with a shared `Transformer`-based edit model.
 - `docs/roadmap.md` §7.4 — Box↔polygon conversion (relevant to keeping the geometry model Phase 6-ready).
 - `docs/roadmap.md` §7.5 — Normalized coordinates, snapshot-per-gesture undo storing plain serializable data. Its "manual save primary" recommendation is **overridden by D-09**.

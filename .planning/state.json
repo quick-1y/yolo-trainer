@@ -1,0 +1,73 @@
+{
+  "contract": "1.0.0",
+  "flavor": "core",
+  "milestone": null,
+  "phases": [
+    {
+      "number": "1",
+      "name": "Runnable Skeleton & Projects",
+      "status": "complete"
+    },
+    {
+      "number": "2",
+      "name": "Image Upload & Classes",
+      "status": "complete"
+    },
+    {
+      "number": "3",
+      "name": "Box Annotation Editor",
+      "status": "pending"
+    },
+    {
+      "number": "4",
+      "name": "Train & Download",
+      "status": "pending"
+    },
+    {
+      "number": "5",
+      "name": "Live Training Monitoring & Control",
+      "status": "pending"
+    },
+    {
+      "number": "6",
+      "name": "Polygons & Segmentation Projects",
+      "status": "pending"
+    },
+    {
+      "number": "7",
+      "name": "Model Library",
+      "status": "pending"
+    },
+    {
+      "number": "8",
+      "name": "AI-Assisted Annotation",
+      "status": "pending"
+    },
+    {
+      "number": "9",
+      "name": "Dataset Import & Export",
+      "status": "pending"
+    },
+    {
+      "number": "10",
+      "name": "Tags, Filters & Dataset Statistics",
+      "status": "pending"
+    },
+    {
+      "number": "11",
+      "name": "Training Tuning & Evaluation",
+      "status": "pending"
+    },
+    {
+      "number": "12",
+      "name": "GPU Acceleration & Hardware Diagnostics",
+      "status": "pending"
+    }
+  ],
+  "next": {
+    "command": "/gsd:progress --next",
+    "label": "Advance to the next step (plan phase 3)",
+    "reason": "Phase 3 of 12 — needs a plan"
+  },
+  "updated_at": "2026-10-03T19:48:40.180Z"
+}
