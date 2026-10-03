@@ -52,7 +52,9 @@ function stubPatch(
 }
 
 function renderRow(item: ProjectClassItem = ITEM) {
-  return renderWithProviders(<ClassRow item={item} projectId={7} />);
+  return renderWithProviders(
+    <ClassRow item={item} projectId={7} hasLaterClasses />,
+  );
 }
 
 describe("ClassRow rename", () => {

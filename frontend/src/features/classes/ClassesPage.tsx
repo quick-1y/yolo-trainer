@@ -107,6 +107,7 @@ export function ClassesPage() {
               key={item.id}
               item={item}
               projectId={project.id}
+              hasLaterClasses={item.index < items.length - 1}
               isFirst={position === 0}
             />
           ))}

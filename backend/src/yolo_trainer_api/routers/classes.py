@@ -1,4 +1,4 @@
-"""GET/POST /api/projects/{project_id}/classes and PATCH /classes/{class_id}.
+"""GET/POST /api/projects/{project_id}/classes and PATCH/DELETE /classes/{class_id}.
 
 Classes carry a stored, contiguous `position` (the YOLO index, 0..N-1 in
 creation order). The index is never client-supplied and there is no reorder
@@ -8,7 +8,7 @@ operation (D-13, D-14): annotations reference a class by `id`.
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -145,3 +145,28 @@ async def update_class(
         ) from None
     await session.refresh(project_class)
     return project_class
+
+
+@router.delete("/{project_id}/classes/{class_id}", status_code=204)
+async def delete_class(
+    project_id: int, class_id: int, session: AsyncSession = Depends(get_session)
+) -> None:
+    await get_project_or_404(session, project_id)
+    project_class = await get_class_or_404(session, project_id, class_id)
+    deleted_position = project_class.position
+
+    await session.delete(project_class)
+    # Same transaction: close the gap so indices stay exactly 0..N-1 (D-13).
+    # `position` has no unique constraint, so statement order cannot fail.
+    # Annotations (Phase 3) reference classes.id with ON DELETE CASCADE, so the
+    # class's objects go with the row above (D-16); nothing references the index.
+    await session.execute(
+        update(ProjectClass)
+        .where(
+            ProjectClass.project_id == project_id,
+            ProjectClass.position > deleted_position,
+        )
+        .values(position=ProjectClass.position - 1)
+        .execution_options(synchronize_session=False)
+    )
+    await session.commit()

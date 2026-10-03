@@ -16,10 +16,13 @@ import { useUpdateClass } from "../../api/classes";
 import type { ProjectClassItem } from "../../api/classes";
 import { ApiError } from "../../api/client";
 import { CLASS_PALETTE } from "../../lib/classPalette";
+import { DeleteClassModal } from "./DeleteClassModal";
 
 interface ClassRowProps {
   item: ProjectClassItem;
   projectId: number;
+  /** True when other classes come after this one (shown in the delete dialog). */
+  hasLaterClasses: boolean;
   /** The first row has no top border (the header row already draws one). */
   isFirst?: boolean;
 }
@@ -32,7 +35,12 @@ function errorMessage(error: unknown): string {
 // ellipsis, native title with the full name) · Rename. The swatch background
 // only ever receives a server-validated `#RRGGBB` value (or one the picker
 // itself produced, which the server re-validates before storing).
-export function ClassRow({ item, projectId, isFirst = false }: ClassRowProps) {
+export function ClassRow({
+  item,
+  projectId,
+  hasLaterClasses,
+  isFirst = false,
+}: ClassRowProps) {
   const { t } = useTranslation(["classes", "common"]);
   const rename = useUpdateClass(projectId);
   const recolor = useUpdateClass(projectId);
@@ -99,6 +107,9 @@ export function ClassRow({ item, projectId, isFirst = false }: ClassRowProps) {
       },
     );
   }
+
+  // --- delete -------------------------------------------------------------
+  const [deleteOpened, setDeleteOpened] = useState(false);
 
   // --- recolor ------------------------------------------------------------
   // The swatch shows the chosen color at once; the server answer (or a revert
@@ -220,7 +231,22 @@ export function ClassRow({ item, projectId, isFirst = false }: ClassRowProps) {
         >
           {t("classes:row.rename")}
         </Button>
+        <Button
+          variant="light"
+          color="red"
+          size="compact-sm"
+          onClick={() => setDeleteOpened(true)}
+        >
+          {t("classes:row.delete")}
+        </Button>
       </Group>
+      <DeleteClassModal
+        opened={deleteOpened}
+        onClose={() => setDeleteOpened(false)}
+        projectId={projectId}
+        projectClass={item}
+        hasLaterClasses={hasLaterClasses}
+      />
     </Box>
   );
 }

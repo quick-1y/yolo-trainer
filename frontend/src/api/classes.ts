@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { apiRequest } from "./client";
+import { ApiError, apiRequest } from "./client";
 
 export interface ProjectClassItem {
   id: number;
@@ -65,6 +65,31 @@ export function useUpdateClass(projectId: number) {
         (current) =>
           current?.map((item) => (item.id === updated.id ? updated : item)),
       );
+      void queryClient.invalidateQueries({
+        queryKey: classKeys.list(projectId),
+      });
+    },
+  });
+}
+
+export function useDeleteClass(projectId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: number) => {
+      try {
+        await apiRequest<void>(`/projects/${projectId}/classes/${id}`, {
+          method: "DELETE",
+        });
+      } catch (error) {
+        // Deleting an already-deleted class is idempotent - a 404 means the
+        // desired end state (the class is gone) is already true.
+        if (error instanceof ApiError && error.status === 404) {
+          return;
+        }
+        throw error;
+      }
+    },
+    onSuccess: () => {
       void queryClient.invalidateQueries({
         queryKey: classKeys.list(projectId),
       });

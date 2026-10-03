@@ -24,6 +24,14 @@
   },
   "row": {
     "rename": "Rename",
-    "changeColor": "Change color of {{name}}"
+    "changeColor": "Change color of {{name}}",
+    "delete": "Delete"
+  },
+  "delete": {
+    "title": "Delete class",
+    "body": "Class \"{{name}}\" will be permanently deleted.",
+    "shiftNote": "Classes after it will move up by one index.",
+    "confirm": "Delete class",
+    "done": "Class \"{{name}}\" deleted."
   }
 }

@@ -129,7 +129,9 @@ describe("DeleteClassModal", () => {
     const dialog = await openDeleteDialog(user, "plane");
 
     expect(
-      within(dialog).getByText(i18n.t("classes:delete.title")),
+      within(dialog).getByRole("heading", {
+        name: i18n.t("classes:delete.title"),
+      }),
     ).toBeInTheDocument();
     expect(deletes).toHaveLength(0);
 
