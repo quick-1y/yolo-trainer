@@ -21,5 +21,9 @@
   "emptyState": {
     "title": "No classes yet",
     "body": "Add the first class above. Each class gets an index and a color automatically."
+  },
+  "row": {
+    "rename": "Rename",
+    "changeColor": "Change color of {{name}}"
   }
 }

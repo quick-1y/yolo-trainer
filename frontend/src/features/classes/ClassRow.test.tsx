@@ -32,17 +32,21 @@ interface PatchCall {
   body: Record<string, unknown>;
 }
 
-function stubPatch(respond: (body: Record<string, unknown>) => Response | Promise<Response>) {
+function stubPatch(
+  respond: (body: Record<string, unknown>) => Response | Promise<Response>,
+) {
   const patches: PatchCall[] = [];
-  const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
-    const url = typeof input === "string" ? input : input.toString();
-    if (init?.method === "PATCH") {
-      const body = JSON.parse(String(init.body)) as Record<string, unknown>;
-      patches.push({ url, body });
-      return respond(body);
-    }
-    return json([]);
-  });
+  const fetchMock = vi.fn(
+    async (input: string | URL | Request, init?: RequestInit) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (init?.method === "PATCH") {
+        const body = JSON.parse(String(init.body)) as Record<string, unknown>;
+        patches.push({ url, body });
+        return respond(body);
+      }
+      return json([]);
+    },
+  );
   vi.stubGlobal("fetch", fetchMock);
   return patches;
 }
@@ -56,7 +60,9 @@ describe("ClassRow rename", () => {
     const patches = stubPatch((body) => json({ ...ITEM, ...body }));
     const { user } = renderRow();
 
-    await user.click(screen.getByRole("button", { name: i18n.t("classes:row.rename") }));
+    await user.click(
+      screen.getByRole("button", { name: i18n.t("classes:row.rename") }),
+    );
     const input = (await screen.findByRole("textbox")) as HTMLInputElement;
     expect(input).toHaveFocus();
     expect(input.value).toBe("car");
@@ -69,14 +75,18 @@ describe("ClassRow rename", () => {
     await waitFor(() => expect(patches).toHaveLength(1));
     expect(patches[0].url).toBe("/api/projects/7/classes/11");
     expect(patches[0].body).toEqual({ name: "Car" });
-    await waitFor(() => expect(screen.queryByRole("textbox")).not.toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.queryByRole("textbox")).not.toBeInTheDocument(),
+    );
   });
 
   it("Escape restores the name without sending a request", async () => {
     const patches = stubPatch((body) => json({ ...ITEM, ...body }));
     const { user } = renderRow();
 
-    await user.click(screen.getByRole("button", { name: i18n.t("classes:row.rename") }));
+    await user.click(
+      screen.getByRole("button", { name: i18n.t("classes:row.rename") }),
+    );
     const input = await screen.findByRole("textbox");
     await user.clear(input);
     await user.type(input, "bus{Escape}");
@@ -90,7 +100,9 @@ describe("ClassRow rename", () => {
     const patches = stubPatch((body) => json({ ...ITEM, ...body }));
     const { user } = renderRow();
 
-    await user.click(screen.getByRole("button", { name: i18n.t("classes:row.rename") }));
+    await user.click(
+      screen.getByRole("button", { name: i18n.t("classes:row.rename") }),
+    );
     const input = await screen.findByRole("textbox");
     await user.clear(input);
     await user.type(input, "   {Enter}");
@@ -104,21 +116,29 @@ describe("ClassRow rename", () => {
   });
 
   it("keeps the input open with the API message after a 409 and re-enables it", async () => {
-    const patches = stubPatch(() => json({ detail: 'A class named "plane" already exists.' }, 409));
+    const patches = stubPatch(() =>
+      json({ detail: 'A class named "plane" already exists.' }, 409),
+    );
     const { user } = renderRow();
 
-    await user.click(screen.getByRole("button", { name: i18n.t("classes:row.rename") }));
+    await user.click(
+      screen.getByRole("button", { name: i18n.t("classes:row.rename") }),
+    );
     const input = await screen.findByRole("textbox");
     await user.clear(input);
     await user.type(input, "PLANE{Enter}");
 
-    expect(await screen.findByText('A class named "plane" already exists.')).toBeInTheDocument();
+    expect(
+      await screen.findByText('A class named "plane" already exists.'),
+    ).toBeInTheDocument();
     expect(patches).toHaveLength(1);
     expect(screen.getByRole("textbox")).toBeEnabled();
 
     await user.keyboard("{Escape}");
     expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
-    expect(screen.queryByText('A class named "plane" already exists.')).not.toBeInTheDocument();
+    expect(
+      screen.queryByText('A class named "plane" already exists.'),
+    ).not.toBeInTheDocument();
     expect(screen.getByText("car")).toBeInTheDocument();
   });
 
@@ -132,20 +152,26 @@ describe("ClassRow rename", () => {
     );
     const { user } = renderRow();
 
-    await user.click(screen.getByRole("button", { name: i18n.t("classes:row.rename") }));
+    await user.click(
+      screen.getByRole("button", { name: i18n.t("classes:row.rename") }),
+    );
     const input = await screen.findByRole("textbox");
     await user.clear(input);
     await user.type(input, "Car{Enter}");
 
     await waitFor(() => expect(screen.getByRole("textbox")).toBeDisabled());
     release(json({ ...ITEM, name: "Car" }));
-    await waitFor(() => expect(screen.queryByRole("textbox")).not.toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.queryByRole("textbox")).not.toBeInTheDocument(),
+    );
   });
 });
 
 describe("ClassRow recolor", () => {
   const swatchButton = () =>
-    screen.getByRole("button", { name: i18n.t("classes:row.changeColor", { name: "car" }) });
+    screen.getByRole("button", {
+      name: i18n.t("classes:row.changeColor", { name: "car" }),
+    });
 
   it("labels the swatch button and sends one PATCH {color} for a palette preset, updating the swatch immediately", async () => {
     let release: (response: Response) => void = () => undefined;
@@ -170,7 +196,9 @@ describe("ClassRow recolor", () => {
   });
 
   it("restores the previous color and shows a red notification when the PATCH fails", async () => {
-    const patches = stubPatch(() => json({ detail: "Database is unavailable." }, 500));
+    const patches = stubPatch(() =>
+      json({ detail: "Database is unavailable." }, 500),
+    );
     const { user } = renderRow();
 
     await user.click(swatchButton());
@@ -178,7 +206,10 @@ describe("ClassRow recolor", () => {
 
     await waitFor(() =>
       expect(notifications.show).toHaveBeenCalledWith(
-        expect.objectContaining({ color: "red", message: "Database is unavailable." }),
+        expect.objectContaining({
+          color: "red",
+          message: "Database is unavailable.",
+        }),
       ),
     );
     expect(patches).toHaveLength(1);

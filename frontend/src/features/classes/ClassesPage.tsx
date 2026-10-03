@@ -54,7 +54,9 @@ export function ClassesPage() {
         <Alert color="red" title={t("common:error.title")}>
           <Stack gap={8} align="flex-start">
             <Text size="sm">
-              {classes.error instanceof ApiError ? classes.error.message : String(classes.error)}
+              {classes.error instanceof ApiError
+                ? classes.error.message
+                : String(classes.error)}
             </Text>
             <Button
               variant="light"
@@ -73,7 +75,13 @@ export function ClassesPage() {
           py={48}
         />
       ) : (
-        <Paper radius={8} style={{ background: "var(--mantine-color-dark-6)", overflow: "hidden" }}>
+        <Paper
+          radius={8}
+          style={{
+            background: "var(--mantine-color-dark-6)",
+            overflow: "hidden",
+          }}
+        >
           <Box
             style={{
               display: "flex",
@@ -95,7 +103,12 @@ export function ClassesPage() {
             </Text>
           </Box>
           {items.map((item, position) => (
-            <ClassRow key={item.id} item={item} isFirst={position === 0} />
+            <ClassRow
+              key={item.id}
+              item={item}
+              projectId={project.id}
+              isFirst={position === 0}
+            />
           ))}
         </Paper>
       )}
