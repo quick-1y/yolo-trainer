@@ -4,9 +4,32 @@
     "count": "Images: {{count}}"
   },
   "upload": {
-    "files": "Upload images"
+    "files": "Upload images",
+    "folder": "Upload folder"
   },
   "progress": {
-    "counters": "Added: {{added}} · Already present: {{duplicates}} · Rejected: {{rejected}}"
-  }
+    "title": "Uploading: {{done}} of {{total}}",
+    "counters": "Added: {{added}} · Already present: {{duplicates}} · Rejected: {{rejected}}",
+    "cancel": "Cancel"
+  },
+  "summary": {
+    "done": "Upload complete",
+    "cancelled": "Upload cancelled: {{done}} of {{total}} files processed",
+    "added": "Added: {{count, number}}",
+    "duplicates": "Already present: {{count, number}}",
+    "rejected": "Rejected: {{count, number}}",
+    "showRejected": "Show rejected files ({{count, number}})",
+    "hideRejected": "Hide rejected files",
+    "more": "…and {{count, number}} more",
+    "copy": "Copy list",
+    "copied": "Copied",
+    "retryHint": "Files that failed to send can be uploaded again. Images that were already added are skipped.",
+    "dismiss": "Dismiss"
+  },
+  "reject": {
+    "unsupported": "Not a supported image (JPG, PNG, WEBP, BMP).",
+    "tooLarge": "Larger than {{max}} MB.",
+    "requestFailed": "Upload failed. Try again."
+  },
+  "busy": "An upload is already in progress."
 }

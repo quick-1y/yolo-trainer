@@ -8,10 +8,12 @@ export interface AppConfig {
   accepted_extensions: string[];
 }
 
+export const configQueryKey = ["config"] as const;
+
 /** Server-provided upload limits; constant for the lifetime of the page. */
 export function useAppConfig() {
   return useQuery({
-    queryKey: ["config"],
+    queryKey: configQueryKey,
     queryFn: () => apiRequest<AppConfig>("/config"),
     staleTime: Infinity,
   });

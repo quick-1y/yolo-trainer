@@ -1,9 +1,10 @@
-import { Alert, Box, Group, NavLink, Stack, Text } from "@mantine/core";
+import { Alert, Box, Group, Loader, NavLink, Stack, Text } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 import { Link, Outlet, useLocation, useParams } from "react-router-dom";
 
 import { ApiError } from "../../api/client";
 import { useProject } from "../../api/projects";
+import { UploadProvider, useUpload } from "../images/UploadContext";
 import { ProjectNotFound } from "./ProjectNotFound";
 
 interface SectionLink {
@@ -59,23 +60,45 @@ export function ProjectLayout() {
       : pathname.startsWith(`${projectBase}/${section.to}`);
 
   return (
-    <Group align="flex-start" gap="xl" wrap="nowrap">
-      <Stack w={200} gap={4}>
-        <NavLink component={Link} to="/projects" label={`← ${t("nav.back")}`} />
-        {SECTIONS.map((section) => (
-          <NavLink
-            key={section.key}
-            component={Link}
-            to={section.to === "." ? projectBase : `${projectBase}/${section.to}`}
-            label={t(section.labelKey)}
-            active={isActive(section)}
-            variant="light"
-          />
-        ))}
-      </Stack>
-      <Box style={{ flex: 1, minWidth: 0 }}>
-        <Outlet context={{ project: query.data }} />
-      </Box>
-    </Group>
+    <UploadProvider key={parsedId} projectId={parsedId}>
+      <Group align="flex-start" gap="xl" wrap="nowrap">
+        <ProjectSidebar projectBase={projectBase} isActive={isActive} />
+        <Box style={{ flex: 1, minWidth: 0 }}>
+          <Outlet context={{ project: query.data }} />
+        </Box>
+      </Group>
+    </UploadProvider>
+  );
+}
+
+interface ProjectSidebarProps {
+  projectBase: string;
+  isActive: (section: SectionLink) => boolean;
+}
+
+function ProjectSidebar({ projectBase, isActive }: ProjectSidebarProps) {
+  const { t } = useTranslation("project");
+  const { state } = useUpload();
+  const uploading = state.status === "running";
+
+  return (
+    <Stack w={200} gap={4}>
+      <NavLink component={Link} to="/projects" label={`← ${t("nav.back")}`} />
+      {SECTIONS.map((section) => (
+        <NavLink
+          key={section.key}
+          component={Link}
+          to={section.to === "." ? projectBase : `${projectBase}/${section.to}`}
+          label={t(section.labelKey)}
+          active={isActive(section)}
+          variant="light"
+          rightSection={
+            section.key === "images" && uploading ? (
+              <Loader size={16} data-testid="images-nav-loader" />
+            ) : undefined
+          }
+        />
+      ))}
+    </Stack>
   );
 }

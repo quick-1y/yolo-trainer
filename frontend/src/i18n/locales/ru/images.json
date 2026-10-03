@@ -4,9 +4,32 @@
     "count": "Изображений: {{count}}"
   },
   "upload": {
-    "files": "Загрузить изображения"
+    "files": "Загрузить изображения",
+    "folder": "Загрузить папку"
   },
   "progress": {
-    "counters": "Добавлено: {{added}} · Уже есть: {{duplicates}} · Отклонено: {{rejected}}"
-  }
+    "title": "Загрузка: {{done}} из {{total}}",
+    "counters": "Добавлено: {{added}} · Уже есть: {{duplicates}} · Отклонено: {{rejected}}",
+    "cancel": "Отмена"
+  },
+  "summary": {
+    "done": "Загрузка завершена",
+    "cancelled": "Загрузка отменена: обработано {{done}} из {{total}}",
+    "added": "Добавлено: {{count, number}}",
+    "duplicates": "Уже есть: {{count, number}}",
+    "rejected": "Отклонено: {{count, number}}",
+    "showRejected": "Показать отклонённые файлы ({{count, number}})",
+    "hideRejected": "Скрыть отклонённые файлы",
+    "more": "…и ещё {{count, number}}",
+    "copy": "Копировать список",
+    "copied": "Скопировано",
+    "retryHint": "Файлы, которые не удалось отправить, можно загрузить повторно. Уже добавленные изображения будут пропущены.",
+    "dismiss": "Закрыть"
+  },
+  "reject": {
+    "unsupported": "Неподдерживаемый формат (нужны JPG, PNG, WEBP, BMP).",
+    "tooLarge": "Больше {{max}} МБ.",
+    "requestFailed": "Не удалось загрузить. Повторите попытку."
+  },
+  "busy": "Загрузка уже идёт."
 }
