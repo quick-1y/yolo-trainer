@@ -1,10 +1,37 @@
 ---
 phase: 02-image-upload-classes
 verified: 2026-10-03T21:00:00Z
-status: human_needed
+status: passed
 score: 4/4 roadmap success criteria verified; 5/5 truths of gap-closure plan 02-13 verified by code and tests; 0 blocking gaps
 covered_files:
+
   - .planning/REQUIREMENTS.md
+  - .planning/phases/02-image-upload-classes/02-01-PLAN.md
+  - .planning/phases/02-image-upload-classes/02-01-SUMMARY.md
+  - .planning/phases/02-image-upload-classes/02-02-PLAN.md
+  - .planning/phases/02-image-upload-classes/02-02-SUMMARY.md
+  - .planning/phases/02-image-upload-classes/02-03-PLAN.md
+  - .planning/phases/02-image-upload-classes/02-03-SUMMARY.md
+  - .planning/phases/02-image-upload-classes/02-04-PLAN.md
+  - .planning/phases/02-image-upload-classes/02-04-SUMMARY.md
+  - .planning/phases/02-image-upload-classes/02-05-PLAN.md
+  - .planning/phases/02-image-upload-classes/02-05-SUMMARY.md
+  - .planning/phases/02-image-upload-classes/02-06-PLAN.md
+  - .planning/phases/02-image-upload-classes/02-06-SUMMARY.md
+  - .planning/phases/02-image-upload-classes/02-07-PLAN.md
+  - .planning/phases/02-image-upload-classes/02-07-SUMMARY.md
+  - .planning/phases/02-image-upload-classes/02-08-PLAN.md
+  - .planning/phases/02-image-upload-classes/02-08-SUMMARY.md
+  - .planning/phases/02-image-upload-classes/02-09-PLAN.md
+  - .planning/phases/02-image-upload-classes/02-09-SUMMARY.md
+  - .planning/phases/02-image-upload-classes/02-10-PLAN.md
+  - .planning/phases/02-image-upload-classes/02-10-SUMMARY.md
+  - .planning/phases/02-image-upload-classes/02-11-PLAN.md
+  - .planning/phases/02-image-upload-classes/02-11-SUMMARY.md
+  - .planning/phases/02-image-upload-classes/02-12-PLAN.md
+  - .planning/phases/02-image-upload-classes/02-12-SUMMARY.md
+  - .planning/phases/02-image-upload-classes/02-13-PLAN.md
+  - .planning/phases/02-image-upload-classes/02-13-SUMMARY.md
   - backend/src/yolo_trainer_api/routers/classes.py
   - backend/src/yolo_trainer_api/routers/images.py
   - backend/src/yolo_trainer_api/schemas.py
@@ -15,7 +42,8 @@ covered_files:
   - frontend/src/features/images/ImagesDeletePaging.test.tsx
   - frontend/src/features/images/ImagesPage.tsx
   - frontend/src/features/images/UploadContext.tsx
-covered_digest: "v1:sha256:c50bcf050ff07048fa24cb45417e1a98cd5bbd76c289c277a83987963777f73c"
+
+covered_digest: "v1:sha256:e4062d5d6617cc18f97cbb66ede320c10a78550e27ac621c5d9bcc70a9e4703f"
 behavior_unverified: 0
 overrides_applied: 0
 re_verification:
@@ -28,6 +56,7 @@ re_verification:
   gaps_remaining: []
   regressions: []
 advisory:
+
   - finding: "WR-09: после частичного отказа удаления (чанк N>=2) selected и снимок deleteIds содержат уже удалённые id; SelectionBar показывает прежнее число, повтор шлёт все чанки заново"
     category: other
     reason: "Данные не теряются, бэкенд идемпотентен; рассинхронизация только в UI после редкого сбоя сети/БД посреди большого удаления"
@@ -41,6 +70,7 @@ advisory:
     reason: "Несовпадение проявится 422 на первом чанке, без потери данных"
     evidence_status: "none provided"
 human_verification:
+
   - test: "Повтор UAT-теста 5 (WR-01) на живом стеке: docker compose up --build; uv run python scripts/seed_images.py --count 1100 --project-id <id>; открыть Images, прокрутить до > 1000 загруженных плиток, отметить первую, Shift-кликнуть плитку за 1000 (например 1067), Delete, Delete permanently"
     expected: "Нет 422 в диалоге; тост «Удалено изображений: 1067» (RU) / «Deleted images: 1067» (EN); плитки исчезают, счётчик падает на 1067"
     why_human: "Большое выделение на реальном стеке и реальный бэкенд; jsdom-тесты используют заглушку fetch"
