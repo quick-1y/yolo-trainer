@@ -9,15 +9,20 @@ from __future__ import annotations
 
 import io
 import sqlite3
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
 
+from yolo_trainer_api import storage
+from yolo_trainer_api.image_processing import Rejected
+from yolo_trainer_api.image_processing import process_image as real_process_image
 from yolo_trainer_api.settings import Settings
 
 from .conftest import make_client
+from .imaging import make_image_bytes
 
 XHR = {"X-Requested-With": "yolo-trainer"}
 
@@ -458,3 +463,158 @@ def test_common_pixel_modes_are_accepted(client: TestClient, mode: str) -> None:
     ][0]
 
     assert result["status"] == "added", result
+
+
+# --------------------------------------------------------------------------
+# Edge cases: size limit, names, duplicates, races (D-01, D-02, D-18)
+# --------------------------------------------------------------------------
+
+
+def incoming_files(settings: Settings, project_id: int) -> list[Path]:
+    root = storage.incoming_dir(settings, project_id)
+    return [path for path in root.rglob("*") if path.is_file()] if root.exists() else []
+
+
+def final_files(settings: Settings, project_id: int) -> list[Path]:
+    return [
+        path
+        for folder in (
+            storage.images_dir(settings, project_id),
+            storage.thumbs_dir(settings, project_id),
+        )
+        if folder.exists()
+        for path in folder.rglob("*")
+        if path.is_file()
+    ]
+
+
+def test_valid_image_over_the_limit_is_rejected_and_leaves_no_staged_file(
+    tmp_path: Path,
+) -> None:
+    capped = Settings(data_dir=tmp_path / "data", allowed_hosts=["testserver"], max_upload_mb=1)
+    big_bmp = make_image_bytes("BMP", size=(600, 600))
+    assert len(big_bmp) > 1_000_000
+    with make_client(capped) as client:
+        project_id = create_project(client)
+
+        result = upload(client, project_id, [("big.bmp", big_bmp, "image/bmp")]).json()["results"][
+            0
+        ]
+
+        assert result["status"] == "rejected"
+        assert result["reason"] == "The file is larger than 1 MB."
+        assert image_rows(capped) == []
+        assert incoming_files(capped, project_id) == []
+        assert final_files(capped, project_id) == []
+
+
+def test_stage_and_hash_stops_at_the_cap_and_removes_its_partial_file(tmp_path: Path) -> None:
+    capped = Settings(data_dir=tmp_path / "data", max_upload_mb=1)
+
+    with pytest.raises(Rejected) as caught:
+        storage.stage_and_hash(capped, 1, io.BytesIO(b"0" * 2_500_000))
+
+    assert caught.value.reason == "The file is larger than 1 MB."
+    assert incoming_files(capped, 1) == []
+
+
+def test_zero_byte_file_is_rejected_as_empty(client: TestClient, settings: Settings) -> None:
+    project_id = create_project(client)
+
+    result = upload(client, project_id, [("none.jpg", b"", "image/jpeg")]).json()["results"][0]
+
+    assert result["status"] == "rejected"
+    assert result["reason"] == "The file is empty."
+    assert image_rows(settings) == []
+    assert incoming_files(settings, project_id) == []
+
+
+def test_same_bytes_twice_in_one_request_are_added_then_duplicate(
+    client: TestClient, settings: Settings
+) -> None:
+    project_id = create_project(client)
+    data = make_png(color=(9, 99, 199))
+
+    response = upload(
+        client, project_id, [("one.png", data, "image/png"), ("two.png", data, "image/png")]
+    )
+
+    results = response.json()["results"]
+    assert [item["status"] for item in results] == ["added", "duplicate"]
+    assert [item["filename"] for item in results] == ["one.png", "two.png"]
+    assert len(image_rows(settings)) == 1
+    assert incoming_files(settings, project_id) == []
+
+
+def test_utf8_filename_round_trips(client: TestClient) -> None:
+    project_id = create_project(client)
+
+    result = upload(client, project_id, [("файл 猫.png", make_png(), "image/png")]).json()[
+        "results"
+    ][0]
+
+    assert result["status"] == "added"
+    assert result["filename"] == "файл 猫.png"
+    assert result["image"]["filename"] == "файл 猫.png"
+
+
+def test_overlong_filename_is_capped_keeping_the_extension(client: TestClient) -> None:
+    project_id = create_project(client)
+
+    result = upload(client, project_id, [("n" * 300 + ".png", make_png(), "image/png")]).json()[
+        "results"
+    ][0]
+
+    assert result["status"] == "added"
+    assert len(result["filename"]) == 255
+    assert result["filename"].endswith(".png")
+
+
+def test_eight_concurrent_identical_uploads_store_exactly_one_image(
+    client: TestClient, settings: Settings
+) -> None:
+    project_id = create_project(client)
+    data = make_png(size=(120, 90), color=(77, 33, 11))
+
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        futures = [
+            pool.submit(upload, client, project_id, [(f"copy{index}.png", data, "image/png")])
+            for index in range(8)
+        ]
+        responses = [future.result() for future in futures]
+
+    assert [response.status_code for response in responses] == [200] * 8
+    statuses = sorted(response.json()["results"][0]["status"] for response in responses)
+    assert statuses == ["added"] + ["duplicate"] * 7
+    assert len(image_rows(settings)) == 1
+    assert len(list(storage.images_dir(settings, project_id).glob("*"))) == 1
+    assert len(list(storage.thumbs_dir(settings, project_id).glob("*"))) == 1
+    assert incoming_files(settings, project_id) == []
+
+
+def test_project_deleted_while_its_upload_is_processed_is_404_and_leaves_no_files(
+    client: TestClient, settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project_id = create_project(client)
+
+    def delete_project_then_process(*args, **kwargs):
+        connection = sqlite3.connect(settings.db_path)
+        try:
+            connection.execute("PRAGMA foreign_keys = ON")
+            connection.execute("DELETE FROM projects WHERE id = ?", (project_id,))
+            connection.commit()
+        finally:
+            connection.close()
+        return real_process_image(*args, **kwargs)
+
+    monkeypatch.setattr(
+        "yolo_trainer_api.routers.images.process_image", delete_project_then_process
+    )
+
+    response = upload(client, project_id, [("late.png", make_png(), "image/png")])
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Project not found."}
+    assert image_rows(settings) == []
+    assert final_files(settings, project_id) == []
+    assert incoming_files(settings, project_id) == []
