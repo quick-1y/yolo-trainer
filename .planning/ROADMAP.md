@@ -94,7 +94,7 @@ Plans:
   3. User creates, renames, recolors, and deletes classes in a project; each class shows a stable index and color
   4. Uploaded images and classes are still present after a service restart
 
-**Plans:** 12/12 plans executed
+**Plans:** 12/13 plans executed
 
 Plans:
 **Wave 1**
@@ -132,6 +132,10 @@ Plans:
 **Wave 8** *(blocked on Wave 7 completion)*
 
 - [x] 02-12-PLAN.md — Seed script for a 5000-image project, smoke test for image + class persistence, full suite, end-of-phase browser checks (wave 8)
+
+**Wave 9** *(gap closure, blocked on Wave 8 completion)*
+
+- [ ] 02-13-PLAN.md — Gap G-02-5: delete selections over 1000 images in sequential chunks of 1000 (WR-01), and load the next page instead of an empty state after deleting every loaded image (CR-01), with tests (wave 9)
 
 **UI hint**: yes
 **Notes**:
