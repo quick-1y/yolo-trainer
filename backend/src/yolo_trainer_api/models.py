@@ -90,3 +90,41 @@ class Image(Base):
         Index("uq_images_project_sha256", "project_id", "sha256", unique=True),
         {"sqlite_autoincrement": True},
     )
+
+
+class ProjectClass(Base):
+    """One annotation class of a project (a label such as `car`).
+
+    Named `ProjectClass` to avoid the `class` keyword and any confusion with
+    tags (classes and tags are distinct concepts). `position` is the stored,
+    contiguous YOLO index (0..N-1). Later annotations reference `classes.id`
+    with ON DELETE CASCADE and never store the index (D-13, D-16). There is
+    deliberately no ORM relationship to `Project`: the FK cascade removes rows.
+    """
+
+    __tablename__ = "classes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    project_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
+    )
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    normalized_name: Mapped[str] = mapped_column(Text, nullable=False)
+    color: Mapped[str] = mapped_column(String(7), nullable=False)
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow
+    )
+
+    __table_args__ = (
+        CheckConstraint("length(color) = 7", name="ck_classes_color"),
+        Index("uq_classes_project_normalized_name", "project_id", "normalized_name", unique=True),
+        Index("ix_classes_project_position", "project_id", "position"),
+        {"sqlite_autoincrement": True},
+    )
+
+    def set_name(self, raw: str) -> None:
+        """Set both the display name (NFC-normalized, trimmed) and the
+        normalized name used for case-insensitive uniqueness checks."""
+        self.name = unicodedata.normalize("NFC", raw).strip()
+        self.normalized_name = normalize_project_name(raw)

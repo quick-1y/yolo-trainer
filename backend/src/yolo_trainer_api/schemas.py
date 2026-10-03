@@ -105,6 +105,56 @@ class ProjectRead(BaseModel):
         return value.isoformat().replace("+00:00", "Z")
 
 
+# Class names follow exactly the project-name rules (D-12).
+ClassName = ProjectName
+HexColor = Annotated[str, Field(pattern=r"^#[0-9A-Fa-f]{6}$"), AfterValidator(str.upper)]
+
+
+class ClassCreate(BaseModel):
+    """Create body. There is deliberately no index/position field: indices are
+    derived from creation order and `extra="forbid"` refuses one (D-13, D-14)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: ClassName
+    color: HexColor | None = None
+
+
+class ClassUpdate(BaseModel):
+    """Partial update (used by the rename/recolor endpoint); explicit nulls are refused."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: ClassName | None = None
+    color: HexColor | None = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def _reject_null_fields(cls, data: object) -> object:
+        if isinstance(data, dict):
+            if "name" in data and data["name"] is None:
+                raise ValueError("name must not be null")
+            if "color" in data and data["color"] is None:
+                raise ValueError("color must not be null")
+        return data
+
+
+class ClassRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True, populate_by_name=True)
+
+    id: int
+    name: str
+    color: str
+    index: int = Field(validation_alias="position")
+    created_at: datetime
+
+    @field_serializer("created_at")
+    def _serialize_utc(self, value: datetime) -> str:
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=UTC)
+        return value.isoformat().replace("+00:00", "Z")
+
+
 class ImageRead(BaseModel):
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 

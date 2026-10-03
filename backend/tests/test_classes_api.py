@@ -49,7 +49,9 @@ def test_create_assigns_contiguous_index_and_palette_color(client: TestClient) -
 def test_duplicate_name_is_case_and_spacing_insensitive_per_project(client: TestClient) -> None:
     project_id = _project(client, "First")
     other_id = _project(client, "Second")
-    assert client.post(f"/api/projects/{project_id}/classes", json={"name": "car"}).status_code == 201
+    assert (
+        client.post(f"/api/projects/{project_id}/classes", json={"name": "car"}).status_code == 201
+    )
 
     duplicate = client.post(f"/api/projects/{project_id}/classes", json={"name": " Car "})
     assert duplicate.status_code == 409
@@ -65,7 +67,9 @@ def test_duplicate_name_is_case_and_spacing_insensitive_per_project(client: Test
 def test_failed_create_does_not_consume_an_index(client: TestClient) -> None:
     project_id = _project(client)
     client.post(f"/api/projects/{project_id}/classes", json={"name": "car"})
-    assert client.post(f"/api/projects/{project_id}/classes", json={"name": "CAR"}).status_code == 409
+    assert (
+        client.post(f"/api/projects/{project_id}/classes", json={"name": "CAR"}).status_code == 409
+    )
 
     third = client.post(f"/api/projects/{project_id}/classes", json={"name": "plane"})
     assert third.json()["index"] == 1
@@ -97,8 +101,8 @@ def test_client_cannot_supply_an_index(client: TestClient, field: str) -> None:
 def test_no_reorder_surface_exists(client: TestClient) -> None:
     """D-14: classes expose list and create only; PATCH/PUT on the collection is not routed."""
     project_id = _project(client)
-    for method in ("patch", "put", "delete"):
-        response = getattr(client, method)(f"/api/projects/{project_id}/classes", json={})
+    for method in ("PATCH", "PUT", "DELETE"):
+        response = client.request(method, f"/api/projects/{project_id}/classes")
         assert response.status_code == 405
 
 

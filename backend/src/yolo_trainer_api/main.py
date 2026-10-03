@@ -11,6 +11,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from yolo_trainer_api.db import checkpoint_wal, create_engine_for, create_sessionmaker
 from yolo_trainer_api.errors import register_error_handlers
 from yolo_trainer_api.migrate import run_migrations
+from yolo_trainer_api.routers.classes import router as classes_router
 from yolo_trainer_api.routers.images import router as images_router
 from yolo_trainer_api.routers.projects import router as projects_router
 from yolo_trainer_api.settings import Settings, validate_data_dir
@@ -54,6 +55,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
 
     app.include_router(projects_router)
     app.include_router(images_router)
+    app.include_router(classes_router)
 
     return app
 
