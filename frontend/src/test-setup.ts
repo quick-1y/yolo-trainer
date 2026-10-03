@@ -1,6 +1,6 @@
 import "@testing-library/jest-dom/vitest";
 
-import { cleanup } from "@testing-library/react";
+import { cleanup, configure } from "@testing-library/react";
 import { afterEach, beforeEach } from "vitest";
 
 import i18n from "./i18n";
@@ -10,6 +10,9 @@ import i18n from "./i18n";
 // global `afterEach`) never fires - register it explicitly instead, or a
 // modal from one test leaks into the next test's DOM.
 afterEach(cleanup);
+
+// findBy*/waitFor default to 1 s, too tight for Mantine transitions under parallel load.
+configure({ asyncUtilTimeout: 4000 });
 
 // Mantine reads `window.matchMedia` (color-scheme detection) and
 // `ResizeObserver` (several components) - jsdom implements neither.

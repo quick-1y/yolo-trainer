@@ -28,6 +28,9 @@ export default defineConfig({
     environment: "jsdom",
     setupFiles: ["./src/test-setup.ts"],
     css: false,
+    // Component tests mount Mantine + a virtualized grid in jsdom; under parallel
+    // load a few take more than the 5 s default.
+    testTimeout: 15000,
     restoreMocks: true,
   },
 });
