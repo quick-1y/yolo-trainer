@@ -31,7 +31,7 @@ created: "2026-09-29"
 |-----------|----------|-----------|----------|-------------|------------|--------|
 | T-01-01 | Information Disclosure / Elevation of Privilege | docker-compose.yml `web.ports` | high | mitigate | compose: only `web` has `ports:` bound to `${BIND_ADDR:-127.0.0.1}`; smoke asserts 127.0.0.1; `.env.example` 0.0.0.0 warning | closed |
 | T-01-02 | Tampering | routers/projects.py | medium | mitigate | no raw SQL in `routers/`; ORM only | closed |
-| T-01-03 | Denial of Service | schemas.py, nginx.conf | low | mitigate | `schemas.py` length limits 100/2000 + `extra="forbid"`; nginx `client_max_body_size 1m` | closed |
+| T-01-03 | Denial of Service | schemas.py, nginx.conf | low | mitigate | `schemas.py` length limits 100/2000 + `extra="forbid"`; nginx `client_max_body_size 1m` (applies to every route except the image-upload route `/api/projects/{id}/images`, which uses `MAX_UPLOAD_MB`; Phase 2 Plan 02-04) | closed |
 | T-01-04 | Tampering (stored XSS) | ProjectCard / CreateProjectModal | medium | mitigate | no `dangerouslySetInnerHTML` in `frontend/src`; CSP `script-src 'self'` | closed |
 | T-01-05 | Information Disclosure | index.html / nginx CSP | medium | mitigate | nginx CSP `default-src 'self'`, `connect-src 'self'`; no http(s) URLs in `frontend/src` | closed |
 | T-01-06 | Tampering (integrity) | SQLite WAL on Docker Desktop bind mount | medium | mitigate | `db.py` WAL/synchronous/busy_timeout pragmas; smoke down/up | closed |
@@ -68,7 +68,7 @@ created: "2026-09-29"
 | T-08-03 | Tampering (XSS) | ProjectOverviewPage description rendering | medium | mitigate | description rendered as React text; CSP | closed |
 | T-09-01 | Tampering (mass assignment) | ProjectUpdate | medium | mitigate | `ProjectUpdate` `extra="forbid"`, task_type refused; `model_fields_set` applied | closed |
 | T-09-02 | Tampering / Denial of Service (data loss) | DeleteProjectModal | high | mitigate | DeleteProjectModal `disabled={!isMatch || isPending}` exact-name match | closed |
-| T-09-03 | Spoofing (CSRF from other origins) | PATCH/DELETE | medium | mitigate | no CORSMiddleware; Host allow-list | closed |
+| T-09-03 | Spoofing (CSRF from other origins) | PATCH/DELETE | medium | mitigate | no CORSMiddleware; Host allow-list; multipart uploads additionally require the `X-Requested-With` header (Phase 2 `require_xhr`), because multipart POSTs skip the CORS preflight | closed |
 | T-09-04 | Repudiation | hard delete | low | accept | Accepted — see Accepted Risks Log | closed |
 | T-09-SC | Tampering | @mantine/notifications install | medium | mitigate | `@mantine/notifications` from approved audit; lockfile | closed |
 | T-10-01 | Information Disclosure / Elevation of Privilege | README LAN instructions | high | mitigate | README security notice on `BIND_ADDR=0.0.0.0`; default loopback | closed |

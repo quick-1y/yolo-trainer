@@ -8,6 +8,23 @@ server {
     add_header Referrer-Policy same-origin always;
     add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'" always;
 
+    # Image upload route (Phase 2, D-03): the only route allowed a large body.
+    # proxy_set_header directives are inherited only when a level defines none
+    # of its own, so they are repeated in full here. No add_header on purpose:
+    # defining one would drop the server-level security headers (nosniff, CSP).
+    location ~ ^/api/projects/[0-9]+/images/?$ {
+        client_max_body_size ${MAX_UPLOAD_MB}m;
+        proxy_request_buffering off;
+        proxy_pass http://api:8000;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_buffering off;
+        proxy_cache off;
+        proxy_read_timeout 3600s;
+    }
+
     location /api/ {
         proxy_pass http://api:8000;
         proxy_http_version 1.1;

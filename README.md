@@ -48,6 +48,8 @@ Everything the app stores (the SQLite database today; images, models, and traini
 - Has database migrations applied automatically on every `api` container start.
 - Can be **backed up** by stopping the stack (`docker compose down`) and copying the folder.
 - On Linux, files inside it are owned by `root`, because the containers run as root.
+- Holds uploaded images in `data/projects/<project id>/images/`, with thumbnails in `data/projects/<project id>/thumbs/`. Originals are stored exactly as uploaded.
+- Has **no disk quota**: uploading many large images can fill the disk, so keep an eye on free space.
 
 ## Configuration
 
@@ -60,6 +62,7 @@ All variables are read from a `.env` file in the repo root (see `.env.example`).
 | `PORT` | `8080` | Host port the app is reachable on. |
 | `ALLOWED_HOSTS` | `localhost,127.0.0.1` | Comma-separated list of Host headers the API accepts (or `*` for any). Add your LAN address/hostname here if you set `BIND_ADDR=0.0.0.0`. |
 | `SQLITE_JOURNAL_MODE` | `WAL` | SQLite journal mode. See [Troubleshooting](#troubleshooting) for when to change this to `DELETE`. |
+| `MAX_UPLOAD_MB` | `50` | Maximum size of one uploaded image, in MB. Applies to the image upload route only; every other API route keeps a 1 MiB request limit. |
 
 ## Developer setup
 

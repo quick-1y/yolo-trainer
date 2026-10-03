@@ -13,6 +13,7 @@ services:
       DATA_DIR: /data
       SQLITE_JOURNAL_MODE: ${SQLITE_JOURNAL_MODE:-WAL}
       ALLOWED_HOSTS: ${ALLOWED_HOSTS:-localhost,127.0.0.1}
+      MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-50}
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3)"]
       interval: 5s
@@ -53,6 +54,8 @@ services:
       context: .
       dockerfile: docker/Dockerfile.frontend
     image: yolo-trainer-web:local
+    environment:
+      MAX_UPLOAD_MB: ${MAX_UPLOAD_MB:-50}
     ports:
       - "${BIND_ADDR:-127.0.0.1}:${PORT:-8080}:80"
     depends_on:
