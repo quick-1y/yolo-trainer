@@ -1,7 +1,7 @@
 ---
 phase: "03"
 slug: "box-annotation-editor"
-status: draft
+status: approved
 shadcn_initialized: false
 preset: none
 created: "2026-10-03"
@@ -26,7 +26,7 @@ No upstream design question was left open, so no questions were asked of the use
 | Tool | none (shadcn not used; Mantine is locked by P1 D-03; no `components.json`, no Tailwind) |
 | Preset | not applicable |
 | Component library | Mantine `@mantine/core` 9.6.3 + `@mantine/hooks` + `@mantine/notifications` (installed, unchanged). New this phase (canvas and state only, not UI chrome): `konva` 10.7.0, `react-konva` 19.3.0, `zustand` 5.0.15, `zundo` 2.3.0 (versions from 03-RESEARCH.md, 2026-10-03). `react-virtuoso` 4.18.15 is already installed (P2) and is reused for the object list |
-| Icon library | none. Do NOT add an icon package. Text glyphs (`←` `→` `‹` `›` `×` `+` `−` `✓`) plus seven small inline SVG components in `features/editor/icons.tsx` (SelectIcon, BoxIcon, UndoIcon, RedoIcon, EyeIcon, EyeOffIcon, BackgroundIcon): 24 x 24 viewBox, rendered at 20 x 20, `stroke="currentColor"`, stroke-width 2, `fill="none"`, `aria-hidden`. Every glyph-only or icon-only control has an `aria-label` |
+| Icon library | none. Do NOT add an icon package. Text glyphs (`←` `→` `‹` `›` `×` `+` `−` `✓`) plus eight small inline SVG components in `features/editor/icons.tsx` (SelectIcon, BoxIcon, UndoIcon, RedoIcon, EyeIcon, EyeOffIcon, BackgroundIcon, NextUnannotatedIcon): 24 x 24 viewBox, rendered at 20 x 20, `stroke="currentColor"`, stroke-width 2, `fill="none"`, `aria-hidden`. Every glyph-only or icon-only control has an `aria-label` |
 | Font | `system-ui, -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif` (theme.ts, unchanged). Konva `Text` uses the same family |
 | Color scheme | dark only, `forceColorScheme="dark"` (P1 D-04) |
 | Radius | `md` (8px) for panels, chips, modals; 4px for status chips and swatches (as P2 class swatch) |
@@ -193,7 +193,8 @@ Confirmation approach: only two dialogs exist in the editor. "Changes could not 
 | topBar.shortcutsAria | Keyboard shortcuts | Горячие клавиши |
 | save.saved | Saved | Сохранено |
 | save.saving | Saving… | Сохранение… |
-| save.error | Not saved — retrying… | Не сохранено — повторяем попытку… |
+| save.error | Not saved | Не сохранено |
+| save.errorHint | Not saved — retrying… | Не сохранено — повторяем попытку… |
 | conflict.message | This image was changed elsewhere. Reload to continue. | Это изображение было изменено в другом месте. Перезагрузите, чтобы продолжить. |
 | conflict.reload | Reload | Перезагрузить |
 | leave.title | Changes could not be saved | Не удалось сохранить изменения |
@@ -291,7 +292,7 @@ Left to right:
 9. `‹` `›` — `ActionIcon variant="default"` 32 x 32 with `aria-label`s; between them the counter `{{index}} of {{total}}` (12px, `dark-1`, tabular). Prev disabled on position 1, next disabled on the last position (grid order; no wrap for plain prev/next).
 10. `?` — `ActionIcon variant="subtle"` 32 x 32, `aria-label` `topBar.shortcutsAria`, opens the shortcut modal.
 
-Group gaps 8px; the button group 6-8 is separated from 9-10 by a 1 x 24 `Divider`. Below 1280px the labels of 6-8 stay (they fit at 1024: bar content width is 1024 - 32 = 992).
+Group gaps 8px; the button group 6-8 is separated from 9-10 by a 1 x 24 `Divider`. Below 1440px viewport width, buttons 6-8 collapse to icon-only `ActionIcon` 32 x 32 (same variant, `aria-pressed` kept on toggles) with `aria-label` = their full label and a `Tooltip` showing the label plus `Kbd` (`Next unannotated` uses a `NextUnannotatedIcon` inline SVG, Reviewed uses `✓`, Background uses `BackgroundIcon`). The filename is the first item to shrink (`flex-shrink: 1`, min-width 120px); all other items are `flex-shrink: 0`. At 1024 in ru the bar then fits 992px of content width (decision 2026-10-04, UI probe).
 
 ### Tool bar (left, 48 wide, `#242424`, right border 1px `dark-4`, padding 4, `role="toolbar"` `aria-orientation="vertical"`)
 - Stack gap 8, top aligned: Select (`SelectIcon`, `V`), Box (`BoxIcon`, `B`), `Divider` 24 wide, Undo (`UndoIcon`, `Mod+Z`), Redo (`RedoIcon`, `Mod+Shift+Z`).
@@ -339,7 +340,7 @@ Group gaps 8px; the button group 6-8 is separated from 9-10 by a 1 x 24 `Divider
 - Next unannotated (button or `N`): awaits flush, searches after the current image in grid order, wraps, and navigates. If there is none, it stays on the image and shows a gray notification `nav.noOther` (4 s). Failure of the lookup shows a red notification with the API message.
 
 ### Save contract (D-09, D-11, D-12)
-- Indicator states: **Saved** (green dot + `save.saved`), **Saving…** (Loader + `save.saving`, shown from the first unsaved edit through the debounce and the request), **Error** (red dot + `save.error`, while retrying with backoff). The three states occupy the same 96px-wide slot so the top bar does not shift.
+- Indicator states: **Saved** (green dot + `save.saved`), **Saving…** (Loader + `save.saving`, shown from the first unsaved edit through the debounce and the request), **Error** (red dot + short `save.error`, while retrying with backoff; the full `save.errorHint` is in a `Tooltip` and the region's `aria-label`). The three states occupy the same 120px-wide slot so the top bar does not shift; every en and ru label fits it at 12px (decision 2026-10-04, UI probe).
 - Accessibility: the indicator is a `role="status"` region with `aria-live="polite"` only while in Error; Saved/Saving change `aria-live="off"` so screen readers are not flooded on every gesture. Conflict is announced by its banner (`role="alert"`).
 - Ctrl+S (`Mod+S`) flushes immediately and calls `preventDefault` to suppress the browser's save dialog. There is no Save button.
 - Conflict (409, D-12): a red `Alert` banner (`role="alert"`, 40px tall, full width of the center column, under the top bar) with `conflict.message` and a `Reload` button (`variant="white"` on red, `size="compact-sm"`). The editor becomes read-only (tools disabled, canvas non-drawing, shortcuts for editing disabled; navigation still works) until Reload refetches the image's annotations and discards local history for that image.
@@ -397,7 +398,7 @@ All bindings use `usePhysicalKeys` so they work on the Russian layout. Navigatio
 
 ## UI Considerations
 
-Authored by gsd-ui-researcher from the contract above (the ui-phase probe replaces these rows idempotently on re-run). Applicable state considerations resolved: 36 covered, 3 backstop, 0 unresolved (5 dismissed as not applicable).
+Authored by gsd-ui-researcher, then reconciled with the ui-consideration-probe run of 2026-10-04 (9 elements, 55 applicable categories; element kinds confirmed by the user). Re-runs replace this section idempotently. Resolved: 44 covered, 3 backstop, 0 unresolved (19 dismissed with reasons).
 
 Status legend: ✅ covered — the Resolution column is the truth to lift into `must_haves.truths`; 🧪 backstop — lift as `{ statement: <Resolution>, verification: backstop }`; ➖ dismissed — not applicable, reason given, not lifted. Empty/error COPY lives in the Copywriting Contract; rows below reference it.
 
@@ -430,7 +431,7 @@ Status legend: ✅ covered — the Resolution column is the truth to lift into `
 | error | ObjectList | ➖ | N/A — the list has no request of its own; load errors surface at the editor level (EditorCanvas error) |
 | loading | SaveIndicator | ✅ | "Saving…" with a 12px Loader from the first unsaved edit until the request succeeds |
 | error | SaveIndicator | ✅ | Failed saves keep changes queued, show "Not saved — retrying…" with a red dot, and announce politely once |
-| populated | SaveIndicator | ✅ | "Saved" with a green dot after the last pending save succeeds; all three states share a fixed 96px slot |
+| populated | SaveIndicator | ✅ | "Saved" with a green dot after the last pending save succeeds; all three states share a fixed 120px slot |
 | partial | SaveIndicator | ✅ | A 409 shows the red conflict banner with "Reload", makes the editor read-only and stops retrying |
 | empty | SaveIndicator | ➖ | N/A — the indicator always shows one of Saved, Saving or Error |
 | populated | StatusBadge (tile and top bar) | ✅ | Four statuses, each with a distinct glyph and color (gray ○, cyan ●, green ✓, grape ∅), never color alone |
@@ -447,6 +448,28 @@ Status legend: ✅ covered — the Resolution column is the truth to lift into `
 | long-text | TopBar filename | ✅ | The filename truncates to one line with an ellipsis, max 30% of the bar, full name in `title` |
 | zero-one-many | TopBar position | ✅ | "1 of 1" disables both arrows; the first and last positions disable prev and next respectively |
 | error | TopBar next-unannotated | ✅ | A failed lookup shows a red notification with the API message and leaves the user on the current image |
+| loading | TopBar navigation | ✅ | While `goTo()` awaits the saver flush, the clicked control (prev, next, Next unannotated, Back) shows `loading` and the canvas is interactive-disabled |
+| overflow | TopBar | ✅ | Below 1440px viewport width, Background / Reviewed / Next unannotated collapse to 32 x 32 icon buttons with `aria-label` and Tooltip (label + Kbd); the filename shrinks first (min 120px); at 1024px in ru everything fits 992px |
+| long-text | TopBar buttons | ✅ | Long ru labels ("Следующее неразмеченное", "Отметить проверенным") are shown in full only at 1440px and wider; below that they live in the tooltip and `aria-label`, so they never wrap or clip |
+| long-text | SaveIndicator | ✅ | The visible Error label is the short `save.error` ("Not saved" / "Не сохранено"); the full `save.errorHint` is in a Tooltip and `aria-label`; all three states fit the fixed 120px slot in en and ru |
+| loading | ToolBar | ✅ | While an image loads, the Box tool is disabled; Select, Undo and Redo follow their own enablement rules |
+| error | ToolBar | ✅ | In read-only states (conflict, orientation mismatch, load failure) Box is disabled with the `tools.boxDisabled` tooltip; Undo/Redo are disabled |
+| empty | ToolBar | ➖ | N/A — a fixed set of four tools, never empty |
+| populated | ToolBar | ➖ | N/A — fixed tool set; visual states already specified in Tool bar |
+| long-text | ToolBar | ➖ | N/A — icon-only; labels exist only in tooltips and `aria-label`s |
+| loading | StatusBadge | ➖ | N/A — the status is derived from the image record the tile or editor has already loaded; it renders with its host |
+| error | StatusBadge | ➖ | N/A — no request of its own; host errors (grid, editor) cover it |
+| partial | StatusBadge | ➖ | N/A — status is always one of four values derived server-side |
+| overflow | StatusBadge | ➖ | N/A — fixed 24 x 24 chip on tiles; short fixed labels in the top bar badge |
+| zero-one-many | StatusBadge | ➖ | N/A — single value, not a collection |
+| partial | GridSummary | ➖ | N/A — one status-counts query, all-or-nothing; the row is hidden until it resolves |
+| overflow | GridSummary | ✅ | The summary row wraps onto a second line (`Group wrap`) at narrow widths instead of truncating; the title row's buttons are unaffected |
+| long-text | GridSummary | ✅ | ru "Размечено: N из M · Проверено: R · Все изображения размечены." wraps at the separators; numbers use tabular figures |
+| empty | ShortcutsModal | ➖ | N/A — static content generated from `shortcuts.ts`, never empty |
+| loading | ShortcutsModal | ➖ | N/A — static, no request |
+| error | ShortcutsModal | ➖ | N/A — static, no request |
+| partial | ShortcutsModal | ➖ | N/A — every binding row is generated with its keys |
+| zero-one-many | ShortcutsModal | ➖ | N/A — fixed 17-row reference |
 
 ---
 
@@ -476,12 +499,12 @@ No third-party shadcn registries are declared, so the registry view/vetting gate
 
 ## Checker Sign-Off
 
-- [ ] Dimension 1 Copywriting: PASS
-- [ ] Dimension 2 Visuals: PASS
-- [ ] Dimension 3 Color: PASS
-- [ ] Dimension 4 Typography: PASS
-- [ ] Dimension 5 Spacing: PASS
-- [ ] Dimension 6 Registry Safety: PASS
-- [ ] Dimension 7 Inventory Provenance: PASS
+- [x] Dimension 1 Copywriting: PASS
+- [x] Dimension 2 Visuals: PASS
+- [x] Dimension 3 Color: PASS
+- [x] Dimension 4 Typography: PASS
+- [x] Dimension 5 Spacing: PASS
+- [x] Dimension 6 Registry Safety: PASS
+- [x] Dimension 7 Inventory Provenance: PASS
 
-**Approval:** pending
+**Approval:** approved 2026-10-04 (gsd-ui-checker, 7/7 PASS)
