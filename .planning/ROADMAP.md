@@ -94,7 +94,7 @@ Plans:
   3. User creates, renames, recolors, and deletes classes in a project; each class shows a stable index and color
   4. Uploaded images and classes are still present after a service restart
 
-**Plans:** 8/12 plans executed
+**Plans:** 9/12 plans executed
 
 Plans:
 **Wave 1**
@@ -119,7 +119,7 @@ Plans:
 
 **Wave 5** *(blocked on Wave 4 completion)*
 
-- [ ] 02-09-PLAN.md — Find images: server-side filename search and by-filename sort on the keyset API, toolbar (wave 5)
+- [x] 02-09-PLAN.md — Find images: server-side filename search and by-filename sort on the keyset API, toolbar (wave 5)
 
 **Wave 6** *(blocked on Wave 5 completion)*
 
@@ -370,7 +370,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Runnable Skeleton & Projects | 10/10 | Complete    | 2026-09-29 |
-| 2. Image Upload & Classes | 8/12 | In Progress|  |
+| 2. Image Upload & Classes | 9/12 | In Progress|  |
 | 3. Box Annotation Editor | 0/TBD | Not started | - |
 | 4. Train & Download | 0/TBD | Not started | - |
 | 5. Live Training Monitoring & Control | 0/TBD | Not started | - |
