@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 02
 current_phase_name: Image Upload & Classes
 status: executing
-stopped_at: Completed 02-04-PLAN.md
-last_updated: "2026-10-03T08:30:46.048Z"
+stopped_at: Completed 02-05-PLAN.md
+last_updated: "2026-10-03T08:39:34.734Z"
 last_activity: 2026-10-03
 last_activity_desc: Phase 02 execution started
-state_head: c608199d5748c3cc889b2dd639471926a2ac593d
+state_head: 5f1d60dd1200d3ff5985084425ecdeb6e38afb9a
 progress:
   total_phases: 12
   completed_phases: 1
   total_plans: 22
-  completed_plans: 14
+  completed_plans: 15
   percent: 8
 ---
 
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-09-29)
 ## Current Position
 
 Phase: 02 (Image Upload & Classes) — EXECUTING
-Plan: 5 of 12
+Plan: 6 of 12
 Status: Ready to execute
 Last activity: 2026-10-03 — Phase 02 execution started
 
@@ -71,6 +71,7 @@ Progress: [█░░░░░░░░░] 8%
 | Phase 02 P02 | 5min | 2 tasks | 22 files |
 | Phase 02 P03 | 4 min | 2 tasks | 3 files |
 | Phase 02 P04 | 15 min | 2 tasks | 9 files |
+| Phase 02 P05 | 6 min | 2 tasks | 10 files |
 
 ## Accumulated Context
 
@@ -106,6 +107,7 @@ Recent decisions affecting current work:
 - [Phase 02]: 02-03: no production changes needed; upload pipeline pinned by characterization tests, verified by mutation
 - [Phase 02]: 02-04: upload body limit is per-route (regex location, MAX_UPLOAD_MB MiB) with 1m kept elsewhere; web image defaults MAX_UPLOAD_MB=50 — Keeps Phase 1 DoS protection on all other routes; nginx always starts
 - [Phase 02]: 02-04: worker image build serializes uv downloads (UV_CONCURRENT_DOWNLOADS=1, UV_HTTP_TIMEOUT=300) due to Docker Desktop body-read errors — Same class as the npm --maxsockets=1 workaround
+- [Phase 02]: 02-05: class delete shifts later positions down in the same transaction as the DELETE; recolor sends PATCH only from ColorPicker onChangeEnd — Indices stay exactly 0..N-1 (fixed-seed sequence test); no per-tick requests while dragging
 
 ### Pending Todos
 
@@ -127,6 +129,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-10-03T08:30:45.975Z
-Stopped at: Completed 02-04-PLAN.md
+Last session: 2026-10-03T08:39:34.667Z
+Stopped at: Completed 02-05-PLAN.md
 Resume file: None
