@@ -17,6 +17,7 @@ interface SectionLink {
 const SECTIONS: SectionLink[] = [
   { key: "overview", to: ".", labelKey: "project:nav.overview" },
   { key: "images", to: "images", labelKey: "project:nav.images" },
+  { key: "classes", to: "classes", labelKey: "project:nav.classes" },
   { key: "settings", to: "settings", labelKey: "project:nav.settings" },
 ];
 

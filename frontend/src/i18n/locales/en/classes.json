@@ -1,0 +1,25 @@
+{
+  "page": {
+    "title": "Classes",
+    "count": "Classes: {{count}}",
+    "indexHint": "A class's index is its position in the YOLO class list (starting at 0). Deleting a class moves the classes after it up by one."
+  },
+  "add": {
+    "label": "Class name",
+    "placeholder": "e.g. car",
+    "submit": "Add class"
+  },
+  "columns": {
+    "index": "Index",
+    "color": "Color",
+    "name": "Name"
+  },
+  "validation": {
+    "nameRequired": "Name is required.",
+    "nameTooLong": "Name must be at most 100 characters."
+  },
+  "emptyState": {
+    "title": "No classes yet",
+    "body": "Add the first class above. Each class gets an index and a color automatically."
+  }
+}

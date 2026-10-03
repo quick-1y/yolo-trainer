@@ -6,6 +6,7 @@
     "title": "Ошибка"
   },
   "loading": "Загрузка...",
+  "retry": "Повторить",
   "language": {
     "label": "Язык",
     "en": "English",
