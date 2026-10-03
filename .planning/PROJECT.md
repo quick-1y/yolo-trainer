@@ -24,6 +24,8 @@ The full loop works end-to-end in the browser: **upload images → annotate them
 - ✓ Reproducible project setup with pinned dependencies (Python 3.12, PyTorch 2.14.0, Ultralytics 8.4.159) and a test framework (pytest + Vitest) — Phase 1
 - ✓ User can create, list, open, rename and delete projects with a fixed task type (`detect` / `segment`) in a bilingual (en/ru) web UI — Phase 1
 - ✓ CPU stack (web + api + worker) runs via `docker compose up` on Windows/Linux/macOS, bound to 127.0.0.1, data persists across down/up — Phase 1 (GPU image still pending, Phase 12)
+- ✓ User can upload images via browser (files / folder, drag & drop) with a per-file added/duplicate/rejected report, and browse thousands of them in a virtualized grid — Phase 2
+- ✓ User can create, rename, recolor, and delete classes (labels) per project with contiguous indices — Phase 2
 
 ### Active
 
@@ -34,11 +36,9 @@ The full loop works end-to-end in the browser: **upload images → annotate them
 - [ ] Web UI (browser SPA) backed by an API service; training runs in a separate worker process/container so the UI stays responsive
 
 **Projects, classes, tags**
-- [ ] User can create, rename, recolor, and delete classes (labels) per project
 - [ ] User can tag images (e.g. `night`, `rain`) and filter the image list by tags; tags are workflow metadata, never exported into label files
 
 **Dataset ingestion & export**
-- [ ] User can upload images via browser (files / folder, drag & drop)
 - [ ] User can import an existing YOLO-format dataset (e.g. a Roboflow export like `example_ready_dataset/`) including its labels and splits
 - [ ] User can point a project at a folder on disk (mounted into Docker) without uploading through the browser
 - [ ] Import validates label format and surfaces mixed box/polygon rows as an actionable warning (Phase 0 finding)
@@ -114,6 +114,8 @@ The full loop works end-to-end in the browser: **upload images → annotate them
 | Training settings: basic + collapsible "Advanced" | Balance of usability and control | — Pending |
 | Subprocess + DB job model, SSE progress streaming | Right-sized for single server; validated in Phase 0 spike | ✓ Good (Phase 0) |
 | Host allow-list (`TrustedHostMiddleware`) + loopback bind instead of auth | No-auth single-operator tool must still resist DNS rebinding and LAN exposure | ✓ Good (Phase 1) |
+| Images stored by integer id (decoded + validated by Pillow), keyset-paged listing, AUTOINCREMENT ids | Paths never derive from user filenames; stable cursors at 5000+ images; immutable thumbnail caching is safe | ✓ Good (Phase 2) |
+| Bulk image delete chunked client-side (1000 ids per request), backend cap kept | Keeps request-size limit while allowing arbitrary selections (UAT gap G-02-5) | ✓ Good (Phase 2) |
 | Existing `docs/roadmap.md` retained as detailed technical reference | Avoid losing research; GSD ROADMAP.md becomes the execution plan | — Pending |
 
 ## Evolution
@@ -134,4 +136,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-09-29 after Phase 1*
+*Last updated: 2026-10-03 after Phase 2*

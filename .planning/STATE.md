@@ -1,44 +1,44 @@
 ---
 gsd_state_version: "1.0"
-current_phase: 02
-current_phase_name: Image Upload & Classes
-status: executing
-stopped_at: Completed 02-13-PLAN.md
-last_updated: "2026-10-03T16:36:36.590Z"
+current_phase: 3
+current_phase_name: Box Annotation Editor
+status: planning
+stopped_at: Phase 02 complete, ready to plan Phase 3
+last_updated: "2026-10-03T19:48:40.120Z"
 last_activity: 2026-10-03
-last_activity_desc: Phase 02 execution started
-state_head: e03f65a422540fcfd662e88d7a49b56be82055a2
+last_activity_desc: Phase 02 complete, transitioned to Phase 3
+state_head: fbb5a62f64ff2c89ce961e684e53c268c3ed7e21
 progress:
   total_phases: 12
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 23
   completed_plans: 23
-  percent: 8
+  percent: 17
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-09-29)
+See: .planning/PROJECT.md (updated 2026-10-03)
 
 **Core value:** The full loop works end-to-end in the browser: upload images → annotate → train with configurable settings → download a working `.pt`
-**Current focus:** Phase 02 — Image Upload & Classes
+**Current focus:** Phase 3 — Box Annotation Editor
 
 ## Current Position
 
-Phase: 02 (Image Upload & Classes) — EXECUTING
-Plan: 13 of 13 (all plans executed; verification pending)
-Status: Phase 02 plans complete - ready for verify-work
-Last activity: 2026-10-03 — Completed 02-13 (G-02-5 gap closure)
+Phase: 3 — Box Annotation Editor
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-10-03 — Phase 02 complete, transitioned to Phase 3
 
-Progress: [█░░░░░░░░░] 8%
+Progress: [██░░░░░░░░] 17%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 10
+- Total plans completed: 23
 - Average duration: -
 - Total execution time: 0.0 hours
 
@@ -47,6 +47,7 @@ Progress: [█░░░░░░░░░] 8%
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 01 | 10 | - | - |
+| 02 | 13 | - | - |
 
 **Recent Trend:**
 
@@ -135,6 +136,7 @@ None yet.
 - [Phase 12]: GPU-path acceptance (DEPL-02 and GPU memory freed after cancel) needs separate NVIDIA hardware, because the dev machine has none. It does not block Phases 1-11.
 - [Phase 4]: How jobs cross from the API container to the worker is undecided. The API cannot `Popen` into another container; resolve this during planning.
 - [Phase 6]: Prior research does not cover click-to-segment (SAM). It needs phase research on model choice and CPU latency.
+- [Phase 02 follow-up]: CSRF hardening of `POST /images/delete` (02-REVIEW WR-03) is still open; the route relies on the JSON CORS preflight (accepted as T-02-13-05).
 
 ## Deferred Items
 
@@ -146,6 +148,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-10-03T16:36:36.502Z
-Stopped at: Completed 02-13-PLAN.md
+Last session: 2026-10-03T19:50:00Z
+Stopped at: Phase 02 complete, ready to plan Phase 3
 Resume file: None
