@@ -97,6 +97,13 @@ function makeStub({ manual = false }: { manual?: boolean } = {}) {
   return { fetchMock, pending, posts };
 }
 
+function capturedProps(): CapturedDropzoneProps {
+  if (captured.props === null) {
+    throw new Error("Dropzone.FullScreen was not rendered");
+  }
+  return captured.props;
+}
+
 async function renderImagesPage(stub: ReturnType<typeof makeStub>) {
   captured.props = null;
   vi.stubGlobal("fetch", stub.fetchMock);
@@ -105,10 +112,7 @@ async function renderImagesPage(stub: ReturnType<typeof makeStub>) {
   await waitFor(() => {
     expect(screen.getByRole("button", { name: "Upload images" })).toBeEnabled();
   });
-  if (captured.props === null) {
-    throw new Error("Dropzone.FullScreen was not rendered");
-  }
-  return captured.props;
+  return capturedProps();
 }
 
 describe("UploadDropzone", () => {

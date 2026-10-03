@@ -9,6 +9,7 @@ import type { Project } from "../../api/projects";
 import { ImageGrid } from "./ImageGrid";
 import { UploadButtons } from "./UploadButtons";
 import { useUpload } from "./UploadContext";
+import { UploadDropzone } from "./UploadDropzone";
 import { UploadPanel } from "./UploadPanel";
 
 interface ProjectOutletContext {
@@ -29,6 +30,7 @@ export function ImagesPage() {
 
   return (
     <Box style={{ display: "flex", flexDirection: "column", height: "calc(100dvh - 92px)" }}>
+      <UploadDropzone />
       <Group justify="space-between" mb="md">
         <Group align="baseline" gap="sm">
           <Title order={2}>{t("images:page.title")}</Title>

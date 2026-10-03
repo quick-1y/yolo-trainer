@@ -123,8 +123,10 @@ async function renderImagesPage(stub: ReturnType<typeof makeStub>) {
   await waitFor(() => {
     expect(screen.getByRole("button", { name: "Upload images" })).toBeEnabled();
   });
+  // The window-wide Dropzone renders its own hidden input (no accept
+  // attribute, pointer-events none); the picker button's input has accept.
   const input = document.querySelector<HTMLInputElement>(
-    'input[type="file"]:not([webkitdirectory])',
+    'input[type="file"][accept]:not([webkitdirectory])',
   );
   const folderInput = document.querySelector<HTMLInputElement>('input[webkitdirectory]');
   if (input === null || folderInput === null) {
@@ -163,7 +165,8 @@ describe("Upload flow", () => {
     expect(uploadedNames(stub.posts()[0]?.[1]?.body as FormData)).toEqual(["a.jpg", "b.png"]);
 
     await user.click(screen.getByRole("button", { name: "Show rejected files (1)" }));
-    expect(screen.getByText("notes.txt")).toBeVisible();
+    // Collapse reveals its content (React Activity) after a render pass.
+    await waitFor(() => expect(screen.getByText("notes.txt")).toBeVisible());
     expect(screen.getByText("Not a supported image (JPG, PNG, WEBP, BMP).")).toBeVisible();
   });
 

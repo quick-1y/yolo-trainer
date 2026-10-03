@@ -1,4 +1,5 @@
 import "@mantine/core/styles.css";
+import "@mantine/dropzone/styles.css";
 import "./i18n";
 
 import { StrictMode } from "react";

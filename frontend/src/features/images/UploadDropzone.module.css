@@ -1,0 +1,20 @@
+/* Idle state is invisible (Dropzone.FullScreen has opacity 0 until a file is
+   dragged over the window). While dragging: dashed 2px accent border and a
+   12% accent tint. The doubled selectors win over Mantine's scheme and
+   accept/reject rules regardless of stylesheet order. */
+.fullScreen.fullScreen {
+  background-color: color-mix(in srgb, var(--mantine-primary-color-filled) 12%, var(--mantine-color-body));
+}
+
+.dropzone.dropzone,
+.dropzone.dropzone[data-accept],
+.dropzone.dropzone[data-reject] {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: transparent;
+  border: 2px dashed var(--mantine-primary-color-filled);
+  border-radius: var(--mantine-radius-md);
+  color: var(--mantine-color-text);
+}

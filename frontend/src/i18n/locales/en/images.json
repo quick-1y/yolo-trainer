@@ -31,5 +31,6 @@
     "tooLarge": "Larger than {{max}} MB.",
     "requestFailed": "Upload failed. Try again."
   },
-  "busy": "An upload is already in progress."
+  "busy": "An upload is already in progress.",
+  "dropOverlay": "Drop images or a folder to upload"
 }
