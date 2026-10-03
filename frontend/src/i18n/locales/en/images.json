@@ -62,6 +62,9 @@
   "viewer": {
     "dimensions": "{{width}} × {{height}} px",
     "position": "{{index}} of {{total}}",
-    "close": "Close"
+    "close": "Close",
+    "prev": "Previous image",
+    "next": "Next image",
+    "loadFailed": "Could not load this image."
   }
 }

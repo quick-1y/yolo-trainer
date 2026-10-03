@@ -62,6 +62,9 @@
   "viewer": {
     "dimensions": "{{width}} × {{height}} px",
     "position": "{{index}} из {{total}}",
-    "close": "Закрыть"
+    "close": "Закрыть",
+    "prev": "Предыдущее изображение",
+    "next": "Следующее изображение",
+    "loadFailed": "Не удалось загрузить это изображение."
   }
 }

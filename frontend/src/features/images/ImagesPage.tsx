@@ -1,5 +1,5 @@
 import { Alert, Box, Button, EmptyState, Group, Skeleton, Stack, Text, Title } from "@mantine/core";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useOutletContext } from "react-router-dom";
 
@@ -47,6 +47,8 @@ export function ImagesPage() {
   const [sort, setSort] = useState<ImageSort>("newest");
   const [search, setSearch] = useState("");
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
+  // Set when the viewer asked for the next page: advance once it is in `items`.
+  const [advancePending, setAdvancePending] = useState(false);
   const query = search.trim();
   const images = useImagesInfinite(project.id, sort, query);
   const config = useAppConfig();
@@ -57,6 +59,18 @@ export function ImagesPage() {
     [images.data],
   );
   const total = images.data?.pages[0]?.total ?? 0;
+
+  useEffect(() => {
+    if (!advancePending) {
+      return;
+    }
+    if (viewerIndex !== null && viewerIndex + 1 < items.length) {
+      setViewerIndex(viewerIndex + 1);
+      setAdvancePending(false);
+    } else if (images.isFetchNextPageError) {
+      setAdvancePending(false);
+    }
+  }, [advancePending, viewerIndex, items.length, images.isFetchNextPageError]);
   const searching = query !== "";
 
   return (
@@ -152,7 +166,17 @@ export function ImagesPage() {
           items={items}
           index={viewerIndex}
           total={total}
-          onClose={() => setViewerIndex(null)}
+          hasNextPage={images.hasNextPage}
+          isFetchingNextPage={images.isFetchingNextPage}
+          onIndexChange={setViewerIndex}
+          onRequestMore={() => {
+            setAdvancePending(true);
+            void images.fetchNextPage();
+          }}
+          onClose={() => {
+            setViewerIndex(null);
+            setAdvancePending(false);
+          }}
         />
       )}
     </Box>
