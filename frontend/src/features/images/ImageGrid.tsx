@@ -17,6 +17,8 @@ interface ImageGridProps extends PagingState {
   projectId: number;
   items: ImageItem[];
   onOpen: (index: number) => void;
+  selected: ReadonlySet<number>;
+  onToggleSelect: (index: number, shiftKey: boolean) => void;
 }
 
 /**
@@ -76,6 +78,8 @@ export function ImageGrid({
   projectId,
   items,
   onOpen,
+  selected,
+  onToggleSelect,
   hasNextPage,
   isFetchingNextPage,
   isFetchNextPageError,
@@ -99,7 +103,15 @@ export function ImageGrid({
       listClassName={classes.list}
       itemClassName={classes.item}
       itemContent={(index, image) => (
-        <ImageTile projectId={projectId} image={image} index={index} onOpen={onOpen} />
+        <ImageTile
+          projectId={projectId}
+          image={image}
+          index={index}
+          onOpen={onOpen}
+          selected={selected.has(image.id)}
+          selecting={selected.size > 0}
+          onToggleSelect={onToggleSelect}
+        />
       )}
     />
   );

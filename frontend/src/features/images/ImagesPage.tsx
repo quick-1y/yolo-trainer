@@ -1,5 +1,5 @@
 import { Alert, Box, Button, EmptyState, Group, Skeleton, Stack, Text, Title } from "@mantine/core";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useOutletContext } from "react-router-dom";
 
@@ -7,9 +7,11 @@ import { ApiError } from "../../api/client";
 import { useAppConfig } from "../../api/config";
 import { type ImageSort, useImagesInfinite } from "../../api/images";
 import type { Project } from "../../api/projects";
+import { DeleteImagesModal } from "./DeleteImagesModal";
 import { ImageGrid } from "./ImageGrid";
 import { ImagesToolbar } from "./ImagesToolbar";
 import { ImageViewerModal } from "./ImageViewerModal";
+import { SelectionBar } from "./SelectionBar";
 import { UploadButtons } from "./UploadButtons";
 import { useUpload } from "./UploadContext";
 import { UploadDropzone } from "./UploadDropzone";
@@ -47,6 +49,11 @@ export function ImagesPage() {
   const [sort, setSort] = useState<ImageSort>("newest");
   const [search, setSearch] = useState("");
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
+  // Ids of the selected images (D-11) and the dialog that deletes them.
+  const [selected, setSelected] = useState<ReadonlySet<number>>(() => new Set());
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  // Snapshot taken when the dialog opens, so its text survives the clearing of the selection.
+  const [deleteIds, setDeleteIds] = useState<number[]>([]);
   // Set when the viewer asked for the next page: advance once it is in `items`.
   const [advancePending, setAdvancePending] = useState(false);
   const query = search.trim();
@@ -59,6 +66,24 @@ export function ImagesPage() {
     [images.data],
   );
   const total = images.data?.pages[0]?.total ?? 0;
+
+  // Read through a ref so the callback below keeps a stable identity (ImageTile is memoized).
+  const itemsRef = useRef(items);
+  itemsRef.current = items;
+  const toggleSelect = useCallback((index: number, _shiftKey: boolean) => {
+    const image = itemsRef.current[index];
+    if (image === undefined) {
+      return;
+    }
+    setSelected((previous) => {
+      const next = new Set(previous);
+      if (!next.delete(image.id)) {
+        next.add(image.id);
+      }
+      return next;
+    });
+  }, []);
+  const clearSelection = useCallback(() => setSelected(new Set()), []);
 
   useEffect(() => {
     if (!advancePending) {
@@ -96,12 +121,23 @@ export function ImagesPage() {
       {state.status !== "idle" && (
         <UploadPanel state={state} onCancel={cancel} onDismiss={dismiss} />
       )}
-      <ImagesToolbar
-        search={search}
-        onSearchChange={setSearch}
-        sort={sort}
-        onSortChange={setSort}
-      />
+      {selected.size > 0 ? (
+        <SelectionBar
+          count={selected.size}
+          onClear={clearSelection}
+          onDelete={() => {
+            setDeleteIds(Array.from(selected));
+            setDeleteOpen(true);
+          }}
+        />
+      ) : (
+        <ImagesToolbar
+          search={search}
+          onSearchChange={setSearch}
+          sort={sort}
+          onSortChange={setSort}
+        />
+      )}
       <Box style={{ flex: 1, minHeight: 320 }}>
         {images.isPending ? (
           <GridSkeleton />
@@ -153,6 +189,8 @@ export function ImagesPage() {
             projectId={project.id}
             items={items}
             onOpen={setViewerIndex}
+            selected={selected}
+            onToggleSelect={toggleSelect}
             hasNextPage={images.hasNextPage}
             isFetchingNextPage={images.isFetchingNextPage}
             isFetchNextPageError={images.isFetchNextPageError}
@@ -160,6 +198,13 @@ export function ImagesPage() {
           />
         )}
       </Box>
+      <DeleteImagesModal
+        projectId={project.id}
+        ids={deleteIds}
+        opened={deleteOpen}
+        onClose={() => setDeleteOpen(false)}
+        onDeleted={clearSelection}
+      />
       {viewerIndex !== null && (
         <ImageViewerModal
           projectId={project.id}

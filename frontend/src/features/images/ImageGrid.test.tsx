@@ -41,6 +41,8 @@ function renderGrid({
           projectId={7}
           items={items}
           onOpen={() => undefined}
+          selected={new Set()}
+          onToggleSelect={() => undefined}
           hasNextPage={hasNextPage}
           isFetchingNextPage={isFetchingNextPage}
           isFetchNextPageError={isFetchNextPageError}

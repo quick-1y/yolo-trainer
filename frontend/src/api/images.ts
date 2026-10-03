@@ -1,6 +1,12 @@
-import { useInfiniteQuery } from "@tanstack/react-query";
+import {
+  type InfiniteData,
+  useInfiniteQuery,
+  useMutation,
+  useQueryClient,
+} from "@tanstack/react-query";
 
 import { apiRequest } from "./client";
+import { projectKeys } from "./projects";
 
 export interface ImageItem {
   id: number;
@@ -28,6 +34,10 @@ export interface UploadResult {
 
 export interface UploadResponse {
   results: UploadResult[];
+}
+
+export interface DeleteImagesResult {
+  deleted: number;
 }
 
 export type ImageSort = "newest" | "name";
@@ -101,4 +111,59 @@ export function thumbnailUrl(projectId: number, imageId: number): string {
 /** The stored original; only the open viewer image ever requests it. */
 export function fileUrl(projectId: number, imageId: number): string {
   return `/api/projects/${projectId}/images/${imageId}/file`;
+}
+
+/**
+ * Remove the deleted ids from every cached page of every list of this project
+ * and lower each page's `total` by the number removed from that list, so the
+ * grid updates in place without refetching every loaded page.
+ */
+export function pruneDeletedImages(
+  data: InfiniteData<ImagePage, string | null> | undefined,
+  ids: ReadonlySet<number>,
+): InfiniteData<ImagePage, string | null> | undefined {
+  if (data === undefined) {
+    return data;
+  }
+  const removed = data.pages.reduce(
+    (count, page) => count + page.items.filter((item) => ids.has(item.id)).length,
+    0,
+  );
+  if (removed === 0) {
+    return data;
+  }
+  return {
+    ...data,
+    pages: data.pages.map((page) => ({
+      ...page,
+      items: page.items.filter((item) => !ids.has(item.id)),
+      total: Math.max(0, page.total - removed),
+    })),
+  };
+}
+
+export function useDeleteImages(projectId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (ids: number[]) =>
+      apiRequest<DeleteImagesResult>(`/projects/${projectId}/images/delete`, {
+        method: "POST",
+        body: JSON.stringify({ ids }),
+      }),
+    onSuccess: (_result, ids) => {
+      const deleted = new Set(ids);
+      queryClient.setQueriesData<InfiniteData<ImagePage, string | null>>(
+        { queryKey: imageKeys.project(projectId) },
+        (data) => pruneDeletedImages(data, deleted),
+      );
+      // Lists that were not loaded far enough (or are not on screen) may still
+      // hold stale totals: mark them stale without refetching what is visible.
+      void queryClient.invalidateQueries({
+        queryKey: imageKeys.project(projectId),
+        refetchType: "none",
+      });
+      void queryClient.invalidateQueries({ queryKey: projectKeys.all });
+      void queryClient.invalidateQueries({ queryKey: projectKeys.detail(projectId) });
+    },
+  });
 }

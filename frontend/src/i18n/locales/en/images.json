@@ -52,7 +52,19 @@
     "nextPage": "Could not load more images."
   },
   "tile": {
-    "noPreview": "No preview"
+    "noPreview": "No preview",
+    "select": "Select {{name}}"
+  },
+  "selection": {
+    "count": "Selected: {{count}}",
+    "clear": "Clear selection",
+    "delete": "Delete"
+  },
+  "delete": {
+    "title": "Delete images",
+    "body": "Selected: {{count}}. These images and their files will be permanently deleted from this project. This cannot be undone.",
+    "confirm": "Delete permanently",
+    "done": "Deleted images: {{count}}"
   },
   "noResults": {
     "title": "No matching images",

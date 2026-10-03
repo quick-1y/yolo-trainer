@@ -62,3 +62,40 @@
   color: var(--mantine-color-dark-1);
   background: var(--mantine-color-dark-5);
 }
+
+/* Selection checkbox: 32 x 32 hit area around the 20px checkbox (D-11). */
+.select {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  cursor: pointer;
+  opacity: 0;
+}
+
+.tile:hover .select,
+.tile:focus-within .select,
+.tile[data-selecting] .select {
+  opacity: 1;
+}
+
+/* Selected tile: a 2px accent ring replaces the border (drawn above the image). */
+.tile[data-selected] {
+  border-color: transparent;
+}
+
+.tile[data-selected]::after {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  z-index: 1;
+  box-sizing: border-box;
+  border: 2px solid var(--mantine-primary-color-filled);
+  border-radius: 8px;
+  pointer-events: none;
+}
