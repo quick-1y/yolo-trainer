@@ -7,14 +7,18 @@ user-supplied filename never reaches the filesystem.
 from __future__ import annotations
 
 import hashlib
+import logging
 import os
 import shutil
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import BinaryIO
 from uuid import uuid4
 
 from yolo_trainer_api.image_processing import EXT_MEDIA, Rejected
 from yolo_trainer_api.settings import Settings
+
+logger = logging.getLogger(__name__)
 
 _CHUNK_SIZE = 1024 * 1024
 
@@ -125,3 +129,31 @@ def remove_project_dir(settings: Settings, project_id: int) -> None:
     if not target.exists():
         return
     shutil.rmtree(target)
+
+
+@dataclass
+class ProjectDirListing:
+    """Plain names found directly inside one child of the projects root."""
+
+    is_symlink: bool = False
+    images: list[str] = field(default_factory=list)
+    thumbs: list[str] = field(default_factory=list)
+    incoming: list[str] = field(default_factory=list)
+
+
+def scan_projects_root(projects_root: Path) -> dict[str, ProjectDirListing]:
+    return {}
+
+
+def find_orphans(
+    listing: dict[str, ProjectDirListing],
+    project_ids: set[int],
+    image_keys: set[tuple[int, int, str]],
+) -> list[Path]:
+    return []
+
+
+def reconcile_orphans(
+    settings: Settings, project_ids: set[int], image_keys: set[tuple[int, int, str]]
+) -> int:
+    return 0
