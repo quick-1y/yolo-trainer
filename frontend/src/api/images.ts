@@ -142,28 +142,58 @@ export function pruneDeletedImages(
   };
 }
 
+// Must equal ImageDeleteRequest.ids max_length in backend/src/yolo_trainer_api/schemas.py:
+// the backend keeps that bound on request size and the client splits the ids instead.
+export const DELETE_BATCH_SIZE = 1000;
+
 export function useDeleteImages(projectId: number) {
   const queryClient = useQueryClient();
+
+  // Drop rows that are already gone server-side from every cached list and
+  // refresh the counts. Used for a fully successful delete and, on a failure
+  // part-way, for the chunks that did succeed.
+  const syncDeleted = (ids: number[]) => {
+    const deleted = new Set(ids);
+    queryClient.setQueriesData<InfiniteData<ImagePage, string | null>>(
+      { queryKey: imageKeys.project(projectId) },
+      (data) => pruneDeletedImages(data, deleted),
+    );
+    // Lists that were not loaded far enough (or are not on screen) may still
+    // hold stale totals: mark them stale without refetching what is visible.
+    void queryClient.invalidateQueries({
+      queryKey: imageKeys.project(projectId),
+      refetchType: "none",
+    });
+    void queryClient.invalidateQueries({ queryKey: projectKeys.all });
+    void queryClient.invalidateQueries({ queryKey: projectKeys.detail(projectId) });
+  };
+
   return useMutation({
-    mutationFn: (ids: number[]) =>
-      apiRequest<DeleteImagesResult>(`/projects/${projectId}/images/delete`, {
-        method: "POST",
-        body: JSON.stringify({ ids }),
-      }),
+    // Sequential on purpose: SQLite has a single writer, and on a failure the
+    // deleted ids form a well-defined prefix of the selection.
+    mutationFn: async (ids: number[]): Promise<DeleteImagesResult> => {
+      let deleted = 0;
+      let succeeded = 0;
+      try {
+        for (let start = 0; start < ids.length; start += DELETE_BATCH_SIZE) {
+          const slice = ids.slice(start, start + DELETE_BATCH_SIZE);
+          const result = await apiRequest<DeleteImagesResult>(
+            `/projects/${projectId}/images/delete`,
+            { method: "POST", body: JSON.stringify({ ids: slice }) },
+          );
+          deleted += result.deleted;
+          succeeded += slice.length;
+        }
+      } catch (error) {
+        if (succeeded > 0) {
+          syncDeleted(ids.slice(0, succeeded));
+        }
+        throw error;
+      }
+      return { deleted };
+    },
     onSuccess: (_result, ids) => {
-      const deleted = new Set(ids);
-      queryClient.setQueriesData<InfiniteData<ImagePage, string | null>>(
-        { queryKey: imageKeys.project(projectId) },
-        (data) => pruneDeletedImages(data, deleted),
-      );
-      // Lists that were not loaded far enough (or are not on screen) may still
-      // hold stale totals: mark them stale without refetching what is visible.
-      void queryClient.invalidateQueries({
-        queryKey: imageKeys.project(projectId),
-        refetchType: "none",
-      });
-      void queryClient.invalidateQueries({ queryKey: projectKeys.all });
-      void queryClient.invalidateQueries({ queryKey: projectKeys.detail(projectId) });
+      syncDeleted(ids);
     },
   });
 }
