@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import os
+import shutil
 from pathlib import Path
 from typing import BinaryIO
 from uuid import uuid4
@@ -108,3 +109,19 @@ def commit_files(
 def remove_image_files(settings: Settings, project_id: int, image_id: int, ext: str) -> None:
     discard(image_path(settings, project_id, image_id, ext))
     discard(thumb_path(settings, project_id, image_id))
+
+
+def remove_project_dir(settings: Settings, project_id: int) -> None:
+    """Delete a project's whole folder (D-19). A missing folder is fine.
+
+    Refuses to act unless the target is a direct, non-symlink child of
+    `settings.projects_dir` (T2-08-02); the path is built from an integer id.
+    """
+    target = project_dir(settings, project_id)
+    if target.parent != settings.projects_dir:
+        raise ValueError(f"Refusing to remove {target}: not a direct child of the projects root")
+    if target.is_symlink():
+        raise ValueError(f"Refusing to remove {target}: it is a symbolic link")
+    if not target.exists():
+        return
+    shutil.rmtree(target)

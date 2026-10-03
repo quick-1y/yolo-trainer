@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
+import asyncio
+import logging
+
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -10,6 +13,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from yolo_trainer_api.db import get_session
 from yolo_trainer_api.models import Project
 from yolo_trainer_api.schemas import ProjectCreate, ProjectRead, ProjectUpdate
+from yolo_trainer_api.storage import remove_project_dir
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
 
@@ -100,7 +106,16 @@ async def update_project(
 
 
 @router.delete("/{project_id}", status_code=204)
-async def delete_project(project_id: int, session: AsyncSession = Depends(get_session)) -> None:
+async def delete_project(
+    project_id: int, request: Request, session: AsyncSession = Depends(get_session)
+) -> None:
     project = await get_project_or_404(session, project_id)
     await session.delete(project)
+    # D-19: the database is the source of truth - rows first (FK cascade takes
+    # the images and classes rows with them), then the files.
     await session.commit()
+    try:
+        await asyncio.to_thread(remove_project_dir, request.app.state.settings, project_id)
+    except Exception:
+        # The project is already gone; the next startup cleanup removes leftovers.
+        logger.exception("Could not remove the folder of deleted project %s", project_id)

@@ -29,7 +29,7 @@
     "dangerZone": "Danger zone",
     "button": "Delete project",
     "title": "Delete project",
-    "warning": "This will permanently delete \"{{name}}\" and cannot be undone.",
+    "warning": "This will permanently delete \"{{name}}\", its images and its classes, and cannot be undone.",
     "typeToConfirm": "Type \"{{name}}\" to confirm",
     "confirm": "Delete permanently",
     "done": "Project \"{{name}}\" was deleted."
