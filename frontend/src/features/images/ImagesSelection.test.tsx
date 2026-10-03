@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor } from "@testing-library/react";
 import type { UserEvent } from "@testing-library/user-event";
 import { VirtuosoGridMockContext } from "react-virtuoso";
 import { describe, expect, it, vi } from "vitest";
@@ -164,10 +164,13 @@ describe("selection keyboard rules", () => {
   it("changing the search clears the selection", async () => {
     const { user } = await renderGrid();
 
-    // The debounced search commits 300 ms after typing; select a tile before that.
-    await user.type(screen.getByRole("textbox", { name: "Search by filename" }), "img");
+    // Select first, then change the search; the toolbar stays mounted (hidden) while
+    // the selection bar shows, so the debounced commit must clear the selection.
     await user.click(checkbox(1));
     expect(await screen.findByText("Selected: 1")).toBeInTheDocument();
+    fireEvent.change(screen.getByRole("textbox", { name: "Search by filename", hidden: true }), {
+      target: { value: "img" },
+    });
 
     await waitFor(() => expect(screen.queryByText("Selected: 1")).not.toBeInTheDocument());
     expect(selectedIndexes()).toEqual([]);
