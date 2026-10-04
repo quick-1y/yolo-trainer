@@ -1,6 +1,6 @@
 import { Alert, Box, Button, Loader, Stack, Text } from "@mantine/core";
 import { useQueryClient } from "@tanstack/react-query";
-import { type ReactNode, useMemo } from "react";
+import { type ReactNode, useLayoutEffect, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useParams } from "react-router-dom";
 import { useStore } from "zustand";
@@ -12,12 +12,14 @@ import { fileUrl, useImage } from "../../api/images";
 import { useProject } from "../../api/projects";
 import { ProjectNotFound } from "../project/ProjectNotFound";
 import { EditorTopBar } from "./EditorTopBar";
+import { ToolBar } from "./ToolBar";
 import { AnnotationCanvas } from "./canvas/AnnotationCanvas";
 import { useLoadedImage } from "./canvas/useLoadedImage";
 import { newId } from "./lib/ids";
 import { imagesPath } from "./lib/urls";
 import type { NormBox } from "./lib/geometry";
 import { docFromSet } from "./store/annotationStore";
+import { useEditorUi } from "./store/editorUiStore";
 import { type EditorEntry, getEditor } from "./store/storeRegistry";
 
 const MATTE = "#141414";
@@ -195,6 +197,17 @@ function Workspace({ projectId, imageId, filename, imgW, imgH, classes, entry }:
   const boxes = useStore(entry.store, (state) => state.doc.boxes);
   const loaded = useLoadedImage(fileUrl(projectId, imageId));
 
+  const tool = useEditorUi((state) => state.tool);
+  const rawSelectedId = useEditorUi((state) => state.selectedId);
+  const hoveredId = useEditorUi((state) => state.hoveredId);
+  const select = useEditorUi((state) => state.select);
+  const hover = useEditorUi((state) => state.hover);
+
+  // A new image starts with nothing selected or hovered (the tool is kept).
+  useLayoutEffect(() => {
+    useEditorUi.getState().resetForImage();
+  }, [imageId]);
+
   const classList = classes ?? [];
   // The class panel and digit keys arrive later; until then the first class by index is active (D-05).
   const activeClass = classList[0];
@@ -203,8 +216,14 @@ function Workspace({ projectId, imageId, filename, imgW, imgH, classes, entry }:
     // `classes` is the stable query data.
     [classes],
   );
+  const labels = useMemo(
+    () => Object.fromEntries(classList.map((item) => [item.id, item.name])),
+    [classes],
+  );
+  // A selection whose box is gone (undo, delete) is no selection.
+  const selectedId = boxes.some((box) => box.id === rawSelectedId) ? rawSelectedId : null;
   // Neither the editor nor the API looks at the project's task type (D-18).
-  const canDraw = loaded.status === "loaded" && activeClass !== undefined;
+  const canDraw = tool === "box" && loaded.status === "loaded" && activeClass !== undefined;
 
   const handleCreate = (norm: NormBox) => {
     if (activeClass === undefined) {
@@ -225,8 +244,7 @@ function Workspace({ projectId, imageId, filename, imgW, imgH, classes, entry }:
       }}
     >
       <EditorTopBar projectId={projectId} filename={filename} store={entry.store} />
-      {/* Tool bar: filled by a later plan. */}
-      <Box style={{ ...CHROME, borderRight: "1px solid var(--mantine-color-dark-4)" }} />
+      <ToolBar hasClasses={classList.length > 0} imageLoaded={loaded.status === "loaded"} />
       <Box style={{ minWidth: 0, minHeight: 0, position: "relative" }}>
         <AnnotationCanvas
           image={loaded.image}
@@ -234,10 +252,16 @@ function Workspace({ projectId, imageId, filename, imgW, imgH, classes, entry }:
           imgH={imgH}
           boxes={boxes}
           classColors={classColors}
+          labels={labels}
           activeColor={activeClass?.color ?? "#FFFFFF"}
+          tool={tool}
+          selectedId={selectedId}
+          hoveredId={hoveredId}
           canDraw={canDraw}
           noClasses={classes !== undefined && classes.length === 0}
           onCreate={handleCreate}
+          onSelect={select}
+          onHover={hover}
         />
         {loaded.status === "error" && (
           <Alert

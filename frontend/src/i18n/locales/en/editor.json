@@ -9,6 +9,12 @@
     "error": "Not saved",
     "errorHint": "Not saved — retrying…"
   },
+  "tools": {
+    "aria": "Tools",
+    "select": "Select",
+    "box": "Box",
+    "boxDisabled": "Add a class to start drawing."
+  },
   "canvas": {
     "aria": "Annotation canvas",
     "noClassesHint": "Add a class to start drawing.",

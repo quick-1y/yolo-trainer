@@ -1,8 +1,8 @@
-import { Loader, Paper } from "@mantine/core";
+import { Loader, Paper, useMantineTheme } from "@mantine/core";
 import type Konva from "konva";
-import { useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Image as KonvaImage, Layer, Rect, Stage } from "react-konva";
+import { Image as KonvaImage, Layer, Rect, Stage, Transformer } from "react-konva";
 
 import type { Box } from "../../../api/annotations";
 import {
@@ -12,7 +12,9 @@ import {
   rectFromDrag,
   toNorm,
 } from "../lib/geometry";
+import type { EditorTool } from "../store/editorUiStore";
 import { BoxShape, withAlpha } from "./BoxShape";
+import { Crosshair, type CrosshairHandle } from "./Crosshair";
 
 /** Free space kept around the image when it is fitted to the window (24 px a side). */
 const FIT_MARGIN = 48;
@@ -36,17 +38,25 @@ interface AnnotationCanvasProps {
   boxes: Box[];
   /** Class id to hex color. */
   classColors: Record<number, string>;
+  /** Class id to name, drawn on the box chips. */
+  labels: Record<number, string>;
   activeColor: string;
+  tool: EditorTool;
+  selectedId: string | null;
+  hoveredId: string | null;
   canDraw: boolean;
   /** The project has no classes yet: show the hint instead of letting a drag draw. */
   noClasses: boolean;
   onCreate: (box: NormBox) => void;
+  onSelect: (id: string | null) => void;
+  onHover: (id: string | null) => void;
 }
 
 /**
- * The react-konva stage: the original on one layer, boxes and the draft on a
- * second. Zoom and pan live on the Stage (it is fitted to the window here), so
- * `getRelativePointerPosition()` is always in image pixels.
+ * The react-konva stage: the original on one layer, boxes + Transformer + the
+ * draft on a second, crosshair guides on a third. Zoom and pan live on the
+ * Stage (it is fitted to the window here), so `getRelativePointerPosition()` is
+ * always in image pixels.
  */
 export function AnnotationCanvas({
   image,
@@ -54,14 +64,25 @@ export function AnnotationCanvas({
   imgH,
   boxes,
   classColors,
+  labels,
   activeColor,
+  tool,
+  selectedId,
+  hoveredId,
   canDraw,
   noClasses,
   onCreate,
+  onSelect,
+  onHover,
 }: AnnotationCanvasProps) {
   const { t } = useTranslation("editor");
+  // react-konva does not carry React context into the stage, so the font is read here.
+  const { fontFamily } = useMantineTheme();
   const containerRef = useRef<HTMLDivElement>(null);
+  const stageRef = useRef<Konva.Stage>(null);
   const draftRef = useRef<Konva.Rect>(null);
+  const transformerRef = useRef<Konva.Transformer>(null);
+  const crosshairRef = useRef<CrosshairHandle>(null);
   const startRef = useRef<Point | null>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
 
@@ -84,9 +105,45 @@ export function AnnotationCanvas({
     return () => observer.disconnect();
   }, []);
 
+  const hasStage = size.width > 0 && size.height > 0;
   const scale = fitScale(size.width, size.height, imgW, imgH);
   const offsetX = (size.width - imgW * scale) / 2;
   const offsetY = (size.height - imgH * scale) / 2;
+  const selectTool = tool === "select";
+
+  // The Transformer follows the selected box, only in the Select tool.
+  useEffect(() => {
+    const transformer = transformerRef.current;
+    const stage = stageRef.current;
+    if (transformer === null || stage === null) {
+      return;
+    }
+    const node = selectTool && selectedId !== null ? stage.findOne(`#box-${selectedId}`) : null;
+    transformer.nodes(node ? [node] : []);
+    transformer.getLayer()?.batchDraw();
+  }, [selectTool, selectedId, boxes, hasStage]);
+
+  // Guides exist only while a drag could start.
+  useEffect(() => {
+    if (!canDraw) {
+      crosshairRef.current?.hide();
+    }
+  }, [canDraw]);
+
+  // The guides hide when the pointer leaves the canvas (either event family).
+  useEffect(() => {
+    const content = stageRef.current?.content;
+    if (!content) {
+      return undefined;
+    }
+    const hide = () => crosshairRef.current?.hide();
+    content.addEventListener("mouseleave", hide);
+    content.addEventListener("pointerleave", hide);
+    return () => {
+      content.removeEventListener("mouseleave", hide);
+      content.removeEventListener("pointerleave", hide);
+    };
+  }, [hasStage]);
 
   const showDraft = (from: Point, to: Point) => {
     const draft = draftRef.current;
@@ -127,8 +184,14 @@ export function AnnotationCanvas({
   const handlePointerMove = (event: Konva.KonvaEventObject<PointerEvent>) => {
     const start = startRef.current;
     const point = event.target.getStage()?.getRelativePointerPosition();
-    if (start !== null && point) {
+    if (!point) {
+      return;
+    }
+    if (start !== null) {
       showDraft(start, point);
+    }
+    if (canDraw) {
+      crosshairRef.current?.show(point);
     }
   };
 
@@ -155,6 +218,18 @@ export function AnnotationCanvas({
     }
   };
 
+  // A click on empty canvas (the stage itself; the image layer does not listen) deselects.
+  const handleStageClick = (event: Konva.KonvaEventObject<Event>) => {
+    if (event.target === event.target.getStage()) {
+      onSelect(null);
+    }
+  };
+
+  let cursor = "default";
+  if (tool === "box") {
+    cursor = noClasses ? "not-allowed" : "crosshair";
+  }
+
   return (
     <div
       ref={containerRef}
@@ -167,12 +242,13 @@ export function AnnotationCanvas({
         height: "100%",
         overflow: "hidden",
         background: MATTE,
-        cursor: canDraw ? "crosshair" : "default",
+        cursor,
         outline: "none",
       }}
     >
-      {size.width > 0 && size.height > 0 && (
+      {hasStage && (
         <Stage
+          ref={stageRef}
           width={size.width}
           height={size.height}
           x={offsetX}
@@ -182,11 +258,14 @@ export function AnnotationCanvas({
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
+          onClick={handleStageClick}
+          onTap={handleStageClick}
+          onPointerClick={handleStageClick}
         >
           <Layer listening={false}>
             {image !== null && <KonvaImage image={image} width={imgW} height={imgH} />}
           </Layer>
-          <Layer listening={false}>
+          <Layer>
             {boxes.map((box) => (
               <BoxShape
                 key={box.id}
@@ -194,6 +273,14 @@ export function AnnotationCanvas({
                 imgW={imgW}
                 imgH={imgH}
                 color={classColors[box.class_id] ?? FALLBACK_COLOR}
+                label={labels[box.class_id] ?? ""}
+                fontFamily={fontFamily}
+                scale={scale}
+                interactive={selectTool}
+                selected={box.id === selectedId}
+                hovered={box.id === hoveredId}
+                onSelect={onSelect}
+                onHover={onHover}
               />
             ))}
             <Rect
@@ -206,7 +293,21 @@ export function AnnotationCanvas({
               dash={[6, 4]}
               fill={withAlpha(activeColor, 0.18)}
             />
+            <Transformer
+              ref={transformerRef}
+              rotateEnabled={false}
+              flipEnabled={false}
+              keepRatio={false}
+              ignoreStroke
+              anchorSize={10}
+              anchorFill="#FFFFFF"
+              anchorStroke="#141414"
+              anchorStrokeWidth={1}
+              borderStroke="#FFFFFF"
+              borderStrokeWidth={1}
+            />
           </Layer>
+          <Crosshair ref={crosshairRef} />
         </Stage>
       )}
       {image === null && (
