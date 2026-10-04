@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-10-04)
 Phase: 4 — Train & Download
 Plan: Not started
 Status: Ready to plan
-Last activity: 2026-10-04 — Phase 3 complete, transitioned to Phase 4
+Last activity: 2026-10-04 - Completed quick task 261004-rnk: Добавить GitHub Actions CI (backend uv+pytest+ruff, frontend npm test+build) и бейдж в README
 
 Progress: [███░░░░░░░] 25%
 
@@ -175,6 +175,12 @@ None yet.
 - [Phase 03 known limitations, accepted in UAT 2026-10-04]: a store-registry entry in conflict state counts as not dirty and can be evicted past MAX_ENTRIES = 30 (03-REVIEW WR-02); 408/429 on save are treated as rejections and resync instead of retrying (WR-03).
 - [Phase 03 UI review]: minor spacing follow-ups (ZoomOverlay gap 4 vs 8, background button icon gap, ClassPanel add-form spacing) — see 03-UI-REVIEW.md, 23/24.
 - [Phase 02 follow-up]: CSRF hardening of `POST /images/delete` (02-REVIEW WR-03) is still open; the route relies on the JSON CORS preflight (accepted as T-02-13-05).
+
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Status | Directory |
+|---|-------------|------|--------|--------|-----------|
+| 261004-rnk | Добавить GitHub Actions CI (backend uv+pytest+ruff, frontend npm test+build) и бейдж в README | 2026-10-04 | 430efec | Verified | [261004-rnk-dobavit-github-actions-ci-backend-uv-pyt](./quick/261004-rnk-dobavit-github-actions-ci-backend-uv-pyt/) |
 
 ## Deferred Items
 
