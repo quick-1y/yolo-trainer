@@ -175,6 +175,32 @@ describe("Images page keeps sort and search in the URL", () => {
     );
   });
 
+  it("opens the editor on a tile click and carries the grid's sort and search", async () => {
+    stubFetch();
+    const { user } = renderAt("/projects/7/images?sort=name&q=cat");
+    await screen.findByText("cat-1.jpg");
+
+    await user.click(screen.getByRole("button", { name: "cat-2.jpg" }));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("pathname")).toHaveTextContent("/projects/7/annotate/2"),
+    );
+    expect(screen.getByTestId("search")).toHaveTextContent(/^\?sort=name&q=cat$/);
+  });
+
+  it("opens the editor without params when the grid shows the defaults", async () => {
+    stubFetch();
+    const { user } = renderAt("/projects/7/images");
+    await screen.findByText("img-1.jpg");
+
+    await user.click(screen.getByRole("button", { name: "img-4.jpg" }));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("pathname")).toHaveTextContent("/projects/7/annotate/4"),
+    );
+    expect(screen.getByTestId("search")).toHaveTextContent(/^$/);
+  });
+
   it("writes the URL with replace, so typing and sorting never add history entries", async () => {
     stubFetch();
     const { user } = renderAt("/projects/7/images");

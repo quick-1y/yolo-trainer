@@ -1,5 +1,6 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import type { UserEvent } from "@testing-library/user-event";
+import { useLocation } from "react-router-dom";
 import { VirtuosoGridMockContext } from "react-virtuoso";
 import { describe, expect, it, vi } from "vitest";
 
@@ -56,19 +57,34 @@ function stubFetch() {
     if (url.pathname.endsWith("/projects/7")) {
       return jsonResponse(PROJECT);
     }
+    // The editor's own GETs after navigation (image detail, annotations, classes).
+    if (url.pathname.includes("/projects/7/images/") || url.pathname.endsWith("/classes")) {
+      return jsonResponse({ detail: "Not found." }, 404);
+    }
     throw new Error(`Unexpected request: ${url.pathname}`);
   });
   vi.stubGlobal("fetch", fetchMock);
   return fetchMock;
 }
 
-async function renderGrid() {
+function LocationProbe() {
+  const location = useLocation();
+  return (
+    <>
+      <div data-testid="pathname">{location.pathname}</div>
+      <div data-testid="search">{location.search}</div>
+    </>
+  );
+}
+
+async function renderGrid(route = "/projects/7/images") {
   stubFetch();
   const rendered = renderWithProviders(
     <VirtuosoGridMockContext.Provider value={MOCK_VIEWPORT}>
       <AppRoutes />
+      <LocationProbe />
     </VirtuosoGridMockContext.Provider>,
-    { route: "/projects/7/images" },
+    { route },
   );
   await screen.findByText("img-1.jpg");
   return rendered;
@@ -137,7 +153,7 @@ describe("range selection", () => {
 });
 
 describe("selection keyboard rules", () => {
-  it("Escape clears the selection when the viewer is closed", async () => {
+  it("Escape clears the selection", async () => {
     const { user } = await renderGrid();
 
     await user.click(checkbox(1));
@@ -148,17 +164,15 @@ describe("selection keyboard rules", () => {
     expect(selectedIndexes()).toEqual([]);
   });
 
-  it("Escape with the viewer open closes only the viewer and keeps the selection", async () => {
-    const { user } = await renderGrid();
+  it("clicking a tile opens the editor for that image with the grid's sort and search", async () => {
+    const { user } = await renderGrid("/projects/7/images?sort=name&q=img");
 
-    await user.click(checkbox(1));
     await user.click(tile(3));
-    await screen.findByRole("dialog");
-    await user.keyboard("{Escape}");
 
-    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
-    expect(screen.getByText("Selected: 1")).toBeInTheDocument();
-    expect(selectedIndexes()).toEqual([1]);
+    await waitFor(() =>
+      expect(screen.getByTestId("pathname")).toHaveTextContent("/projects/7/annotate/3"),
+    );
+    expect(screen.getByTestId("search")).toHaveTextContent(/^\?sort=name&q=img$/);
   });
 
   it("changing the search clears the selection", async () => {
@@ -176,7 +190,7 @@ describe("selection keyboard rules", () => {
     expect(selectedIndexes()).toEqual([]);
   });
 
-  it("Tab moves from the tile to its checkbox, Space toggles it, Enter on the tile opens the viewer", async () => {
+  it("Tab moves from the tile to its checkbox, Space toggles it, Enter on the tile opens the editor", async () => {
     const { user } = await renderGrid();
 
     tile(1).focus();
@@ -186,11 +200,13 @@ describe("selection keyboard rules", () => {
     await user.keyboard(" ");
     expect(await screen.findByText("Selected: 1")).toBeInTheDocument();
     expect(selectedIndexes()).toEqual([1]);
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(screen.getByTestId("pathname")).toHaveTextContent("/projects/7/images");
 
     tile(2).focus();
     await user.keyboard("{Enter}");
-    expect(await screen.findByRole("dialog")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByTestId("pathname")).toHaveTextContent("/projects/7/annotate/2"),
+    );
   });
 
   it("marks every tile as selecting while one is selected", async () => {
