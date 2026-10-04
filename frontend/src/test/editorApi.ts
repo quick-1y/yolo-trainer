@@ -55,6 +55,12 @@ export const NO_NEIGHBORS: NeighborsFixture = {
  */
 export type PutMode = "ok" | "hold" | "error" | "conflict";
 
+/**
+ * How GET /images/next-unannotated answers: the id (or null for "none"), optionally held open
+ * until `releaseNextUnannotated()`, or a 500 with the given detail.
+ */
+export type NextUnannotatedMode = { image_id: number | null; hold?: boolean } | { error: string };
+
 interface EditorApiOptions {
   classes?: unknown[];
   boxes?: unknown[];
@@ -70,6 +76,8 @@ interface EditorApiOptions {
   /** GET /images/5/neighbors (default: a single image with no neighbors). */
   neighbors?: NeighborsFixture;
   putMode?: PutMode;
+  /** GET /images/next-unannotated (default: no other unannotated image). */
+  nextUnannotated?: NextUnannotatedMode;
 }
 
 function json(body: unknown, status = 200): Response {
@@ -106,6 +114,13 @@ export function stubEditorApi(options: EditorApiOptions = {}) {
   resetGate();
   const neighbors = options.neighbors ?? NO_NEIGHBORS;
   const neighborRequests: URLSearchParams[] = [];
+  const nextUnannotatedRequests: URLSearchParams[] = [];
+  const nextUnannotated = options.nextUnannotated ?? { image_id: null };
+  // Resolves the next-unannotated lookups held open by `hold: true`.
+  let releaseLookup: () => void = () => {};
+  const lookupGate = new Promise<void>((resolve) => {
+    releaseLookup = resolve;
+  });
   // POST /classes appends here, so the next GET /classes answers with the new class.
   const classList: unknown[] = [...classes];
   const puts: Array<Record<string, unknown>> = [];
@@ -148,6 +163,16 @@ export function stubEditorApi(options: EditorApiOptions = {}) {
     if (method === "GET" && path === "/api/projects/1/images/5/neighbors") {
       neighborRequests.push(url.searchParams);
       return json(neighbors);
+    }
+    if (method === "GET" && path === "/api/projects/1/images/next-unannotated") {
+      nextUnannotatedRequests.push(url.searchParams);
+      if ("error" in nextUnannotated) {
+        return json({ detail: nextUnannotated.error }, 500);
+      }
+      if (nextUnannotated.hold) {
+        await lookupGate;
+      }
+      return json({ image_id: nextUnannotated.image_id });
     }
     const otherImage = /^\/api\/projects\/1\/images\/(\d+)(\/|$)/.exec(path);
     if (method === "GET" && otherImage !== null && otherImage[1] !== "5") {
@@ -207,7 +232,10 @@ export function stubEditorApi(options: EditorApiOptions = {}) {
     puts,
     posts,
     neighborRequests,
+    nextUnannotatedRequests,
     fetchMock,
+    /** Answer every next-unannotated lookup held open so far. */
+    releaseNextUnannotated: () => releaseLookup(),
     /** Switch what the next GET /classes does (a retry after a failure). */
     setClassesMode: (mode: "ok" | "pending" | "error") => {
       classesMode = mode;
