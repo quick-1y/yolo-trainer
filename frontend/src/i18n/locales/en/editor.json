@@ -68,5 +68,11 @@
     "showAria": "Show object {{index}}",
     "deleteAria": "Delete object {{index}}",
     "classAria": "Class of object {{index}}"
+  },
+  "leave": {
+    "title": "Changes could not be saved",
+    "body": "Your latest edits are not saved yet. Retry saving, or leave and lose them.",
+    "retry": "Retry",
+    "leave": "Leave anyway"
   }
 }

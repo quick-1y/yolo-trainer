@@ -1,5 +1,4 @@
 import { act, screen, waitFor, within } from "@testing-library/react";
-import { useEffect } from "react";
 import { useLocation } from "react-router-dom";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -104,10 +103,16 @@ describe("leave dialog", () => {
 
     press({ code: "KeyD", key: "d" });
     press({ code: "ArrowRight", key: "ArrowRight" });
+    press({ code: "KeyV", key: "v" });
     await sleep(100);
 
     expect(currentLocation()).toBe(ROUTE);
     expect(puts).toHaveLength(sent);
+    // No editor shortcut acts behind the dialog: the Box tool is still the active one.
+    expect(screen.getByRole("button", { name: "Box", hidden: true })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
   });
 
   it("Retry saves again and navigates once the save succeeds", async () => {

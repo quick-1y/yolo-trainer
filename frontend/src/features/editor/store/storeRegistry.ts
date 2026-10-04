@@ -24,6 +24,39 @@ const MAX_ENTRIES = 30;
 // editor unmounts. Map order is recency order (oldest first).
 const entries = new Map<string, EditorEntry>();
 
+/**
+ * True while any image holds work that is not safely on the server: a pending or in-flight
+ * save, a failed one, or a conflict. Entries outlive the editor route, so this also covers
+ * an image the user has already left.
+ */
+export function anyUnsaved(): boolean {
+  for (const entry of entries.values()) {
+    const { saveState } = entry.store.getState().meta;
+    if (entry.saver.isDirty() || saveState === "error" || saveState === "conflict") {
+      return true;
+    }
+  }
+  return false;
+}
+
+function guardUnload(event: BeforeUnloadEvent): void {
+  if (anyUnsaved()) {
+    // The browser shows its own prompt; the text cannot be customized (D-11).
+    event.preventDefault();
+    event.returnValue = "";
+  }
+}
+
+let guardInstalled = false;
+
+/** Install the tab-close guard once, when the first entry is created. */
+function installUnloadGuard(): void {
+  if (!guardInstalled && typeof window !== "undefined") {
+    window.addEventListener("beforeunload", guardUnload);
+    guardInstalled = true;
+  }
+}
+
 function keyOf(key: EditorKey): string {
   return `${key.projectId}:${key.imageId}`;
 }
@@ -78,6 +111,7 @@ export function getEditor(
 
   const entry: EditorEntry = { store, saver };
   entries.set(id, entry);
+  installUnloadGuard();
   evictIfNeeded();
   return entry;
 }
@@ -92,4 +126,8 @@ export function resetEditors(): void {
     entry.saver.dispose();
   }
   entries.clear();
+  if (guardInstalled) {
+    window.removeEventListener("beforeunload", guardUnload);
+    guardInstalled = false;
+  }
 }

@@ -13,6 +13,7 @@ import { useProject } from "../../api/projects";
 import { ProjectNotFound } from "../project/ProjectNotFound";
 import { EditorTopBar } from "./EditorTopBar";
 import { ClassPanel } from "./ClassPanel";
+import { LeaveDialog } from "./LeaveDialog";
 import { ObjectList } from "./ObjectList";
 import { ToolBar } from "./ToolBar";
 import { AnnotationCanvas, type AnnotationCanvasHandle } from "./canvas/AnnotationCanvas";
@@ -455,6 +456,13 @@ function Workspace({
           />
         </Box>
       </Box>
+      <LeaveDialog
+        opened={navigation.leave.open}
+        retrying={navigation.leave.retrying}
+        onRetry={() => void navigation.leave.retry()}
+        onLeave={navigation.leave.leaveAnyway}
+        onClose={navigation.leave.close}
+      />
     </EditorModalGateContext>
   );
 }
