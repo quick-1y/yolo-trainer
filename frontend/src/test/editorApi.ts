@@ -117,6 +117,8 @@ export function stubEditorApi(options: EditorApiOptions = {}) {
   const putQueue: PutMode[] = [...(options.putQueue ?? [])];
   let annotationsError: string | null = options.annotationsError ?? null;
   let imageError: string | null = options.imageError ?? null;
+  // A "gone" PUT deletes the image: later GETs of it answer 404 like the real server.
+  let deleted = false;
   // What GET annotations answers once a test replaced the stored set: a refetch after a 409
   // or 422 sees the other tab's (or the server's) version.
   let serverSet: { version: number; boxes: unknown[] } | null = null;
@@ -203,10 +205,16 @@ export function stubEditorApi(options: EditorApiOptions = {}) {
       if (imageError !== null) {
         return json({ detail: imageError }, 500);
       }
+      if (deleted) {
+        return json({ detail: "Image not found." }, 404);
+      }
       return imageStatus === 200 ? json(IMAGE) : json({ detail: "Image not found." }, imageStatus);
     }
     if (method === "GET" && path === "/api/projects/1/images/5/annotations") {
       annotationGets.push(1);
+      if (deleted) {
+        return json({ detail: "Image not found." }, 404);
+      }
       if (annotationsError !== null) {
         return json({ detail: annotationsError }, 500);
       }
@@ -245,6 +253,7 @@ export function stubEditorApi(options: EditorApiOptions = {}) {
       } else if (mode === "rejected") {
         return json({ detail: REJECTED_DETAIL }, 422);
       } else if (mode === "gone") {
+        deleted = true;
         return json({ detail: "Image not found." }, 404);
       }
       return json({
