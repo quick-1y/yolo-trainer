@@ -9,8 +9,10 @@ import {
   type NormBox,
   type Point,
   isTiny,
+  normalizeTransform,
   rectFromDrag,
   toNorm,
+  toPx,
 } from "../lib/geometry";
 import type { EditorTool } from "../store/editorUiStore";
 import { BoxShape, withAlpha } from "./BoxShape";
@@ -50,6 +52,8 @@ interface AnnotationCanvasProps {
   onCreate: (box: NormBox) => void;
   onSelect: (id: string | null) => void;
   onHover: (id: string | null) => void;
+  /** A move or resize finished: the box's new geometry (one gesture, one call). */
+  onChange: (id: string, geometry: NormBox) => void;
 }
 
 /**
@@ -74,6 +78,7 @@ export function AnnotationCanvas({
   onCreate,
   onSelect,
   onHover,
+  onChange,
 }: AnnotationCanvasProps) {
   const { t } = useTranslation("editor");
   // react-konva does not carry React context into the stage, so the font is read here.
@@ -225,6 +230,27 @@ export function AnnotationCanvas({
     }
   };
 
+  // The real work happens on release: read the scaled size, reset the scale and
+  // commit once. `boundBoxFunc` only sees absolute screen-space boxes, so it is not used.
+  const handleTransformEnd = (id: string, node: Konva.Rect) => {
+    const rect = normalizeTransform(
+      {
+        x: node.x(),
+        y: node.y(),
+        w: node.width() * node.scaleX(),
+        h: node.height() * node.scaleY(),
+      },
+      imgW,
+      imgH,
+    );
+    const norm = toNorm(rect, imgW, imgH);
+    const px = toPx(norm, imgW, imgH);
+    // Bake the committed geometry into the node so the scale never lingers, even
+    // when the store ignores an unchanged box.
+    node.setAttrs({ x: px.x, y: px.y, width: px.w, height: px.h, scaleX: 1, scaleY: 1 });
+    onChange(id, norm);
+  };
+
   let cursor = "default";
   if (tool === "box") {
     cursor = noClasses ? "not-allowed" : "crosshair";
@@ -281,6 +307,8 @@ export function AnnotationCanvas({
                 hovered={box.id === hoveredId}
                 onSelect={onSelect}
                 onHover={onHover}
+                onChange={onChange}
+                onTransformEnd={handleTransformEnd}
               />
             ))}
             <Rect

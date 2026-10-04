@@ -2,6 +2,7 @@ import { temporal } from "zundo";
 import { createStore } from "zustand/vanilla";
 
 import type { AnnotationSaveInput, AnnotationSet, Box } from "../../../api/annotations";
+import type { NormBox } from "../lib/geometry";
 
 /** The part of an image's annotation state that history tracks and the server stores. */
 export interface EditorDoc {
@@ -23,6 +24,8 @@ export interface EditorState {
   meta: EditorMeta;
   /** One gesture = one `set` = one history entry. */
   createBox: (box: Box) => void;
+  /** Replace one box's geometry (a finished move or resize): one `set`, one history entry. */
+  updateBox: (id: string, geometry: NormBox) => void;
   /** Touches only `meta`; creates no history entry. */
   setMeta: (partial: Partial<EditorMeta>) => void;
 }
@@ -49,6 +52,30 @@ export function createEditorStore(doc: EditorDoc, version: number) {
               isReviewed: false,
             },
           })),
+        updateBox: (id, geometry) =>
+          set((state) => {
+            const current = state.doc.boxes.find((box) => box.id === id);
+            if (
+              current === undefined ||
+              (current.x === geometry.x &&
+                current.y === geometry.y &&
+                current.w === geometry.w &&
+                current.h === geometry.h)
+            ) {
+              // Unknown id or nothing moved: the same state means no history entry and no save.
+              return state;
+            }
+            return {
+              doc: {
+                ...state.doc,
+                boxes: state.doc.boxes.map((box) =>
+                  box.id === id ? { ...box, ...geometry } : box,
+                ),
+                // Any annotation change demotes a reviewed image, in the same entry (D-15).
+                isReviewed: false,
+              },
+            };
+          }),
         setMeta: (partial) => set((state) => ({ meta: { ...state.meta, ...partial } })),
       }),
       {

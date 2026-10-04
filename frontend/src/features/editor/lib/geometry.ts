@@ -79,3 +79,41 @@ export function isTiny(
 ): boolean {
   return rect.w * scale < minScreenPx || rect.h * scale < minScreenPx;
 }
+
+/** A box can never be thinner than this many IMAGE pixels after a resize (RESEARCH A5). */
+export const MIN_BOX_IMAGE_PX = 1;
+
+/**
+ * Shift a rectangle that is being dragged so it stays inside [0, imgW] x [0, imgH].
+ * The size is kept (capped to the image), only the position moves.
+ */
+export function clampMove(rect: PxRect, imgW: number, imgH: number): PxRect {
+  const w = Math.min(rect.w, imgW);
+  const h = Math.min(rect.h, imgH);
+  return {
+    x: clamp(rect.x, 0, imgW - w),
+    y: clamp(rect.y, 0, imgH - h),
+    w,
+    h,
+  };
+}
+
+/** One axis of normalizeTransform: ordered, clipped to [0, max], at least the minimum size. */
+function normalizeAxis(start: number, size: number, max: number): { start: number; size: number } {
+  const low = clamp(Math.min(start, start + size), 0, max);
+  const high = clamp(Math.max(start, start + size), 0, max);
+  const length = Math.max(high - low, MIN_BOX_IMAGE_PX);
+  // A box squeezed against the far edge grows back inside the image, not past it.
+  return { start: Math.min(low, Math.max(0, max - length)), size: length };
+}
+
+/**
+ * The rectangle a Transformer gesture ended with (position plus scaled size,
+ * possibly negative or past the edge) as a valid box: positive size, inside the
+ * image, at least one image pixel each way.
+ */
+export function normalizeTransform(rect: PxRect, imgW: number, imgH: number): PxRect {
+  const horizontal = normalizeAxis(rect.x, rect.w, imgW);
+  const vertical = normalizeAxis(rect.y, rect.h, imgH);
+  return { x: horizontal.start, y: vertical.start, w: horizontal.size, h: vertical.size };
+}

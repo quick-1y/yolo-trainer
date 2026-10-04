@@ -232,6 +232,11 @@ function Workspace({ projectId, imageId, filename, imgW, imgH, classes, entry }:
     entry.store.getState().createBox({ id: newId(), class_id: activeClass.id, ...norm });
   };
 
+  // Saved by the registry subscription, like every other doc change (D-09).
+  const handleChange = (id: string, geometry: NormBox) => {
+    entry.store.getState().updateBox(id, geometry);
+  };
+
   return (
     <Box
       style={{
@@ -262,6 +267,7 @@ function Workspace({ projectId, imageId, filename, imgW, imgH, classes, entry }:
           onCreate={handleCreate}
           onSelect={select}
           onHover={hover}
+          onChange={handleChange}
         />
         {loaded.status === "error" && (
           <Alert

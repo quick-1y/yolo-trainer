@@ -1,9 +1,9 @@
 import type Konva from "konva";
-import { memo } from "react";
+import { memo, useRef } from "react";
 import { Group, Label, Rect, Tag, Text } from "react-konva";
 
 import type { Box } from "../../../api/annotations";
-import { toPx } from "../lib/geometry";
+import { type NormBox, clampMove, toNorm, toPx } from "../lib/geometry";
 
 /** `#RRGGBB` plus an alpha in [0, 1] as a CSS color the canvas understands. */
 export function withAlpha(hex: string, alpha: number): string {
@@ -59,11 +59,16 @@ interface BoxShapeProps {
   hovered: boolean;
   onSelect: (id: string) => void;
   onHover: (id: string | null) => void;
+  /** A move finished: the new geometry. Never called during the drag itself. */
+  onChange: (id: string, geometry: NormBox) => void;
+  /** A Transformer gesture finished on this box's node; the owner commits it. */
+  onTransformEnd: (id: string, node: Konva.Rect) => void;
 }
 
 /**
  * One box: class-color stroke (2 screen px, 3 hovered at any zoom), an 18% fill
- * (30% hovered or selected) and a class-name chip.
+ * (30% hovered or selected) and a class-name chip. A drag is clamped to the
+ * image while it runs and committed once, on release.
  */
 export const BoxShape = memo(function BoxShape({
   box,
@@ -78,11 +83,53 @@ export const BoxShape = memo(function BoxShape({
   hovered,
   onSelect,
   onHover,
+  onChange,
+  onTransformEnd,
 }: BoxShapeProps) {
+  const labelRef = useRef<Konva.Label>(null);
   const rect = toPx(box, imgW, imgH);
   const chipHeight = CHIP_HEIGHT / scale;
   // Chip above the top-left corner; inside the box when that would leave the image.
   const chipY = rect.y - chipHeight < 0 ? rect.y : rect.y - chipHeight;
+
+  /** The chip follows a live drag or resize; it is never driven through React state. */
+  const placeLabel = (node: Konva.Rect) => {
+    const chip = labelRef.current;
+    if (chip === null) {
+      return;
+    }
+    chip.position({ x: node.x(), y: node.y() - chipHeight < 0 ? node.y() : node.y() - chipHeight });
+    chip.getLayer()?.batchDraw();
+  };
+
+  // Clamp in layer (image) coordinates; dragBoundFunc would work in absolute ones.
+  const clampedRect = (node: Konva.Rect) =>
+    clampMove({ x: node.x(), y: node.y(), w: node.width(), h: node.height() }, imgW, imgH);
+
+  const handleDragMove = (event: Konva.KonvaEventObject<DragEvent>) => {
+    const node = event.target as Konva.Rect;
+    const next = clampedRect(node);
+    node.position({ x: next.x, y: next.y });
+    placeLabel(node);
+  };
+
+  const handleDragEnd = (event: Konva.KonvaEventObject<DragEvent>) => {
+    const node = event.target as Konva.Rect;
+    const next = clampedRect(node);
+    node.position({ x: next.x, y: next.y });
+    placeLabel(node);
+    onChange(box.id, toNorm(next, imgW, imgH));
+  };
+
+  const handleTransform = (event: Konva.KonvaEventObject<Event>) => {
+    placeLabel(event.target as Konva.Rect);
+  };
+
+  const handleTransformEnd = (event: Konva.KonvaEventObject<Event>) => {
+    const node = event.target as Konva.Rect;
+    onTransformEnd(box.id, node);
+    placeLabel(node);
+  };
 
   const enter = (event: Konva.KonvaEventObject<Event>) => {
     onHover(box.id);
@@ -114,12 +161,16 @@ export const BoxShape = memo(function BoxShape({
         onPointerClick={() => onSelect(box.id)}
         onTap={() => onSelect(box.id)}
         onDragStart={() => onSelect(box.id)}
+        onDragMove={handleDragMove}
+        onDragEnd={handleDragEnd}
+        onTransform={handleTransform}
+        onTransformEnd={handleTransformEnd}
         onMouseEnter={enter}
         onPointerEnter={enter}
         onMouseLeave={leave}
         onPointerLeave={leave}
       />
-      <Label id={`label-${box.id}`} x={rect.x} y={chipY} listening={false}>
+      <Label ref={labelRef} id={`label-${box.id}`} x={rect.x} y={chipY} listening={false}>
         <Tag fill={color} />
         <Text
           text={truncateLabel(label)}
