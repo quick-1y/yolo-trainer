@@ -9,7 +9,8 @@ import {
 import { apiRequest } from "./client";
 import { projectKeys } from "./projects";
 
-export interface ImageItem {
+/** One image as the server lists it, annotation state included. */
+export interface ImageItem extends ImageAnnotationState {
   id: number;
   filename: string;
   width: number;
@@ -53,8 +54,25 @@ export interface ImageAnnotationState {
   status: ImageStatus;
 }
 
-/** GET /projects/{p}/images/{i}: the list item plus its annotation state. */
-export type ImageDetail = ImageItem & ImageAnnotationState;
+/** What a tile and the editor badge show: reviewed > background > annotated > unannotated. */
+export type DisplayStatus = "unannotated" | "annotated" | "reviewed" | "background";
+
+/**
+ * The status of an image for display. The server's `status` folds background into
+ * annotated, so the flags decide here; unannotated and background stay apart.
+ */
+export function displayStatus(state: ImageAnnotationState): DisplayStatus {
+  if (state.is_reviewed) {
+    return "reviewed";
+  }
+  if (state.is_background) {
+    return "background";
+  }
+  return state.box_count > 0 ? "annotated" : "unannotated";
+}
+
+/** GET /projects/{p}/images/{i}: the same item the list returns. */
+export type ImageDetail = ImageItem;
 
 /** GET /projects/{p}/images/{i}/neighbors: where an image sits in the grid order of one sort and search. */
 export interface Neighbors {

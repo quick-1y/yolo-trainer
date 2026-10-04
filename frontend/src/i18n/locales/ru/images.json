@@ -53,7 +53,9 @@
   },
   "tile": {
     "noPreview": "Нет превью",
-    "select": "Выбрать {{name}}"
+    "select": "Выбрать {{name}}",
+    "aria": "{{name}}, {{status}}",
+    "boxCountAria": "Объектов: {{count}}"
   },
   "selection": {
     "count": "Выбрано: {{count}}",

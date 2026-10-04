@@ -41,13 +41,35 @@
   text-overflow: ellipsis;
 }
 
-/* Reserved for the Phase 3 annotation-status badge (D-07). */
+/* Annotation-status chip (D-07, D-17); the slot never takes pointer events. */
 .badgeSlot {
   position: absolute;
   top: 0;
   right: 0;
   width: 24px;
   height: 24px;
+  pointer-events: none;
+}
+
+/*
+ * Box count pill: 4px inside the thumbnail's bottom-left corner. The thumbnail is
+ * 176px tall, so top 152px + 20px height leaves the 4px inset above the caption strip.
+ */
+.boxCount {
+  position: absolute;
+  top: 152px;
+  left: 4px;
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  height: 20px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: rgba(20, 20, 20, 0.8);
+  font-size: 12px;
+  line-height: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--mantine-color-dark-1);
   pointer-events: none;
 }
 

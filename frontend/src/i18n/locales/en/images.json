@@ -53,7 +53,9 @@
   },
   "tile": {
     "noPreview": "No preview",
-    "select": "Select {{name}}"
+    "select": "Select {{name}}",
+    "aria": "{{name}}, {{status}}",
+    "boxCountAria": "Objects: {{count}}"
   },
   "selection": {
     "count": "Selected: {{count}}",
