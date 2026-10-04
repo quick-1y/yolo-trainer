@@ -19,15 +19,24 @@ interface EditorUiState {
    * draw-many workflow keeps its class from image to image.
    */
   activeClassId: number | null;
+  /** Boxes hidden through the object list's eye toggle: not drawn, not hit-testable. Per image. */
+  hiddenIds: ReadonlySet<string>;
   setTool: (tool: EditorTool) => void;
   select: (id: string | null) => void;
   hover: (id: string | null) => void;
   setActiveClass: (id: number | null) => void;
-  /** A new image starts with nothing selected or hovered; the tool and the active class are kept. */
+  toggleHidden: (id: string) => void;
+  /** A new image starts with nothing selected, hovered or hidden; the tool and the active class are kept. */
   resetForImage: () => void;
 }
 
-const INITIAL = { tool: "box", selectedId: null, hoveredId: null, activeClassId: null } as const;
+const INITIAL = {
+  tool: "box",
+  selectedId: null,
+  hoveredId: null,
+  activeClassId: null,
+  hiddenIds: new Set<string>(),
+} as const;
 
 export const useEditorUi = create<EditorUiState>()((set) => ({
   ...INITIAL,
@@ -41,7 +50,15 @@ export const useEditorUi = create<EditorUiState>()((set) => ({
   select: (id) => set({ selectedId: id }),
   hover: (id) => set({ hoveredId: id }),
   setActiveClass: (id) => set({ activeClassId: id }),
-  resetForImage: () => set({ selectedId: null, hoveredId: null }),
+  toggleHidden: (id) =>
+    set((state) => {
+      const next = new Set(state.hiddenIds);
+      if (!next.delete(id)) {
+        next.add(id);
+      }
+      return { hiddenIds: next };
+    }),
+  resetForImage: () => set({ selectedId: null, hoveredId: null, hiddenIds: new Set<string>() }),
 }));
 
 /** Back to the defaults (tests). */

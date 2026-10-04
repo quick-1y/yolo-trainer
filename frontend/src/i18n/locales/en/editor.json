@@ -51,5 +51,16 @@
       "title": "No classes yet",
       "body": "Add a class to start drawing boxes."
     }
+  },
+  "objects": {
+    "title": "Objects: {{count}}",
+    "empty": {
+      "title": "No objects on this image",
+      "body": "Press B and drag on the image to draw a box. If the image contains nothing, mark it as background."
+    },
+    "hideAria": "Hide object {{index}}",
+    "showAria": "Show object {{index}}",
+    "deleteAria": "Delete object {{index}}",
+    "classAria": "Class of object {{index}}"
   }
 }

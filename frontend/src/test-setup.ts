@@ -50,6 +50,12 @@ if (!document.fonts) {
   };
 }
 
+// Mantine's Select/Combobox scrolls the selected option into view; jsdom has no layout
+// and no `scrollIntoView`.
+if (!Element.prototype.scrollIntoView) {
+  Element.prototype.scrollIntoView = () => undefined;
+}
+
 beforeEach(async () => {
   await i18n.changeLanguage("en");
 });

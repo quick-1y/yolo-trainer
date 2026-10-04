@@ -37,6 +37,8 @@ export interface AnnotationCanvasHandle {
   cancelDraft: () => void;
   /** A draft is being dragged out right now. */
   isDrawing: () => boolean;
+  /** Move keyboard focus to the canvas (after a control elsewhere took it). */
+  focus: () => void;
 }
 
 interface AnnotationCanvasProps {
@@ -200,6 +202,7 @@ export function AnnotationCanvas({
   useImperativeHandle(ref, () => ({
     cancelDraft,
     isDrawing: () => startRef.current !== null,
+    focus: () => containerRef.current?.focus(),
   }));
 
   const handlePointerDown = (event: Konva.KonvaEventObject<PointerEvent>) => {

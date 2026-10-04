@@ -13,6 +13,7 @@ import { useProject } from "../../api/projects";
 import { ProjectNotFound } from "../project/ProjectNotFound";
 import { EditorTopBar } from "./EditorTopBar";
 import { ClassPanel } from "./ClassPanel";
+import { ObjectList } from "./ObjectList";
 import { ToolBar } from "./ToolBar";
 import { AnnotationCanvas, type AnnotationCanvasHandle } from "./canvas/AnnotationCanvas";
 import { useLoadedImage } from "./canvas/useLoadedImage";
@@ -235,6 +236,7 @@ function Workspace({
   const hover = useEditorUi((state) => state.hover);
   const activeClassId = useEditorUi((state) => state.activeClassId);
   const setActiveClass = useEditorUi((state) => state.setActiveClass);
+  const hiddenIds = useEditorUi((state) => state.hiddenIds);
 
   // A new image starts with nothing selected or hovered (the tool is kept).
   useLayoutEffect(() => {
@@ -292,6 +294,12 @@ function Workspace({
       setActiveClass(target.id);
     }
   };
+
+  // A hidden box is neither drawn nor hit-testable: the canvas is only given the rest.
+  const visibleBoxes = useMemo(
+    () => (hiddenIds.size === 0 ? boxes : boxes.filter((box) => !hiddenIds.has(box.id))),
+    [boxes, hiddenIds],
+  );
 
   // Boxes of each class on this image, for the class rows.
   const classCounts = useMemo(() => {
@@ -356,7 +364,7 @@ function Workspace({
             image={loaded.image}
             imgW={imgW}
             imgH={imgH}
-            boxes={boxes}
+            boxes={visibleBoxes}
             classColors={classColors}
             labels={labels}
             activeColor={activeClass?.color ?? "#FFFFFF"}
@@ -398,6 +406,11 @@ function Workspace({
             counts={classCounts}
             hasSelection={selectedId !== null}
             onChoose={chooseClass}
+          />
+          <ObjectList
+            store={entry.store}
+            classes={classes}
+            onReleaseFocus={() => canvasRef.current?.focus()}
           />
         </Box>
       </Box>
