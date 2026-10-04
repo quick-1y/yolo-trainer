@@ -295,6 +295,26 @@ class Neighbors(BaseModel):
     next_id: int | None
 
 
+class NextUnannotated(BaseModel):
+    """The first unannotated image after the current one in grid order, or null (D-16)."""
+
+    image_id: int | None
+
+
+class StatusCounts(BaseModel):
+    """Project-wide status counts; unannotated + annotated + reviewed = total.
+
+    `background` counts the flagged images separately: they are also counted in
+    `annotated` (or `reviewed`), never in `unannotated`.
+    """
+
+    total: int
+    unannotated: int
+    annotated: int
+    reviewed: int
+    background: int
+
+
 class ImageDeleteRequest(BaseModel):
     """Ids to hard-delete; 1..1000 per request (T2-11-02)."""
 

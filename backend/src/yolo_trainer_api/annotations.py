@@ -15,7 +15,7 @@ leaves the version and the rows exactly as they were.
 from __future__ import annotations
 
 from fastapi import HTTPException
-from sqlalchemy import delete, select, update
+from sqlalchemy import ColumnElement, and_, delete, exists, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -36,6 +36,19 @@ IMAGE_NOT_FOUND_DETAIL = "Image not found."
 # Coordinates are compared after rounding so a JSON round trip cannot create a
 # false difference (the client rounds to 6 decimals as well).
 _PRECISION = 6
+
+
+def unannotated_clause() -> ColumnElement[bool]:
+    """SQL form of `derive_status(...) == "unannotated"`: no boxes, not background, not reviewed.
+
+    Background is an explicit flag, so an image without boxes and without the flag is
+    unannotated and never an empty-label negative example (ANNO-10).
+    """
+    return and_(
+        Image.is_background.is_(False),
+        Image.is_reviewed.is_(False),
+        ~exists().where(Annotation.image_id == Image.id),
+    )
 
 
 async def load_annotation_set(session: AsyncSession, image: Image) -> AnnotationSetRead:
