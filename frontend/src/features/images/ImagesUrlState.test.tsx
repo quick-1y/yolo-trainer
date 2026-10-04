@@ -166,9 +166,13 @@ describe("Images page keeps sort and search in the URL", () => {
 
     renderAt(`/projects/7/images?q=${long}`);
 
-    await screen.findByText("img-1.jpg");
+    await waitFor(() => expect(requests.length).toBeGreaterThan(0));
+    expect(requests[0]?.q).toBe("a".repeat(255));
     expect(requests.every((request) => (request.q ?? "").length <= 255)).toBe(true);
-    expect(screen.getByTestId("search").textContent ?? "").not.toContain("a".repeat(256));
+    // The page rewrites the oversized URL it was opened with to the capped search.
+    await waitFor(() =>
+      expect(screen.getByTestId("search").textContent ?? "").not.toContain("a".repeat(256)),
+    );
   });
 
   it("writes the URL with replace, so typing and sorting never add history entries", async () => {

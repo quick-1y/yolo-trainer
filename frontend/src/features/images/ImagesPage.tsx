@@ -1,12 +1,13 @@
 import { Alert, Box, Button, EmptyState, Group, Skeleton, Stack, Text, Title } from "@mantine/core";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useOutletContext } from "react-router-dom";
+import { useOutletContext, useSearchParams } from "react-router-dom";
 
 import { ApiError } from "../../api/client";
 import { useAppConfig } from "../../api/config";
 import { type ImageSort, useImagesInfinite } from "../../api/images";
 import type { Project } from "../../api/projects";
+import { readGridParams } from "../editor/lib/urls";
 import { DeleteImagesModal } from "./DeleteImagesModal";
 import { ImageGrid } from "./ImageGrid";
 import { ImagesToolbar } from "./ImagesToolbar";
@@ -22,6 +23,12 @@ interface ProjectOutletContext {
 }
 
 const SKELETON_TILES = 24;
+// The server rejects a longer `q`, so the page never reads, sends or writes one (T3-04-01).
+const MAX_QUERY_LENGTH = 255;
+
+function normalizeQuery(value: string): string {
+  return value.trim().slice(0, MAX_QUERY_LENGTH).trim();
+}
 
 /** First-page placeholder in the same flex-wrap layout as the real grid. */
 function GridSkeleton() {
@@ -46,8 +53,13 @@ function GridSkeleton() {
 export function ImagesPage() {
   const { t } = useTranslation(["images", "common"]);
   const { project } = useOutletContext<ProjectOutletContext>();
-  const [sort, setSort] = useState<ImageSort>("newest");
-  const [search, setSearch] = useState("");
+  // Sort and filename search live in the URL (D-03): reloadable, and the editor carries them
+  // to its own URL so "← Images" returns to the same view. Writes use `replace`, so typing
+  // never adds history entries.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const grid = readGridParams(searchParams);
+  const sort: ImageSort = grid.sort ?? "newest";
+  const query = normalizeQuery(grid.q ?? "");
   const [viewerIndex, setViewerIndex] = useState<number | null>(null);
   // Ids of the selected images (D-11) and the dialog that deletes them.
   const [selected, setSelected] = useState<ReadonlySet<number>>(() => new Set());
@@ -56,7 +68,6 @@ export function ImagesPage() {
   const [deleteIds, setDeleteIds] = useState<number[]>([]);
   // Set when the viewer asked for the next page: advance once it is in `items`.
   const [advancePending, setAdvancePending] = useState(false);
-  const query = search.trim();
   const images = useImagesInfinite(project.id, sort, query);
   const config = useAppConfig();
   const { state, cancel, dismiss } = useUpload();
@@ -67,9 +78,32 @@ export function ImagesPage() {
   );
   const total = images.data?.pages[0]?.total ?? 0;
 
-  // Read through a ref so the callback below keeps a stable identity (ImageTile is memoized).
+  // Read through a ref so the callbacks below keep a stable identity (ImageTile is memoized).
   const itemsRef = useRef(items);
   itemsRef.current = items;
+  const gridRef = useRef({ sort, query });
+  gridRef.current = { sort, query };
+  const writeGrid = useCallback(
+    (next: { sort: ImageSort; query: string }) => {
+      const params = new URLSearchParams();
+      if (next.sort === "name") {
+        params.set("sort", "name");
+      }
+      if (next.query !== "") {
+        params.set("q", next.query);
+      }
+      // Defaults are omitted; an unchanged URL is not written again (the toolbar echoes the
+      // committed search once on mount).
+      if (params.toString() !== searchParams.toString()) {
+        setSearchParams(params, { replace: true });
+      }
+    },
+    [searchParams, setSearchParams],
+  );
+  const handleSortChange = (value: ImageSort) =>
+    writeGrid({ sort: value, query: gridRef.current.query });
+  const handleSearchChange = (value: string) =>
+    writeGrid({ sort: gridRef.current.sort, query: normalizeQuery(value) });
   // Index (in the loaded list) of the last tile toggled without Shift: the start of a Shift range.
   const anchorIndex = useRef<number | null>(null);
   const toggleSelect = useCallback((index: number, shiftKey: boolean) => {
@@ -202,10 +236,10 @@ export function ImagesPage() {
       {/* Kept mounted (hidden) while selecting, so a pending debounced search still commits. */}
       <Box display={selecting ? "none" : undefined}>
         <ImagesToolbar
-          search={search}
-          onSearchChange={setSearch}
+          search={query}
+          onSearchChange={handleSearchChange}
           sort={sort}
-          onSortChange={setSort}
+          onSortChange={handleSortChange}
         />
       </Box>
       <Box style={{ flex: 1, minHeight: 320 }}>
@@ -236,7 +270,7 @@ export function ImagesPage() {
             py={64}
           >
             <EmptyState.Actions>
-              <Button variant="default" onClick={() => setSearch("")}>
+              <Button variant="default" onClick={() => handleSearchChange("")}>
                 {t("images:noResults.clear")}
               </Button>
             </EmptyState.Actions>
