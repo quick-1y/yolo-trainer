@@ -4,7 +4,17 @@
     "backAria": "Back to images",
     "position": "{{index}} of {{total}}",
     "prevAria": "Previous image",
-    "nextAria": "Next image"
+    "nextAria": "Next image",
+    "reviewed": {
+      "off": "Mark as reviewed",
+      "on": "Reviewed",
+      "disabledHint": "Annotate the image or mark it as background first."
+    },
+    "background": {
+      "label": "Background",
+      "hint": "Mark this image as having no objects",
+      "disabledHint": "Delete all boxes first to mark this image as background."
+    }
   },
   "save": {
     "saved": "Saved",
@@ -40,7 +50,9 @@
     "deselect": "Deselect or cancel drawing",
     "classDigit": "Choose class 1-9 (changes the class of the selected box)",
     "prev": "Previous image",
-    "next": "Next image"
+    "next": "Next image",
+    "reviewed": "Toggle reviewed",
+    "background": "Toggle background"
   },
   "notFound": {
     "title": "Image not found",
@@ -67,7 +79,11 @@
     "hideAria": "Hide object {{index}}",
     "showAria": "Show object {{index}}",
     "deleteAria": "Delete object {{index}}",
-    "classAria": "Class of object {{index}}"
+    "classAria": "Class of object {{index}}",
+    "background": {
+      "body": "Marked as background: this image has no objects.",
+      "clear": "Remove background mark"
+    }
   },
   "leave": {
     "title": "Changes could not be saved",

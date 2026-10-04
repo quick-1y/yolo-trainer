@@ -14,7 +14,7 @@ interface ToolTipLabelProps {
   caps: string[];
 }
 
-function ToolTipLabel({ label, caps }: ToolTipLabelProps) {
+export function ToolTipLabel({ label, caps }: ToolTipLabelProps) {
   return (
     <Group gap={8} wrap="nowrap">
       <span>{label}</span>

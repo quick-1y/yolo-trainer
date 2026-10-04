@@ -1,4 +1,4 @@
-import { ActionIcon, Box, Divider, EmptyState, Select, Skeleton, Stack, Text } from "@mantine/core";
+import { ActionIcon, Box, Button, Divider, EmptyState, Select, Skeleton, Stack, Text } from "@mantine/core";
 import { memo, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { Virtuoso } from "react-virtuoso";
@@ -163,6 +163,7 @@ function Rows({
     store,
     useShallow((state) => state.doc.boxes),
   );
+  const isBackground = useStore(store, (state) => state.doc.isBackground);
   const options = useMemo(
     () => classItems.map((item) => ({ value: String(item.id), label: item.name })),
     [classItems],
@@ -177,7 +178,21 @@ function Rows({
       <Text size="sm" fw={600}>
         {t("objects.title", { count: boxes.length })}
       </Text>
-      {boxes.length === 0 ? (
+      {isBackground ? (
+        // A background image has no boxes by rule (D-14): the body replaces the rows.
+        <Stack gap={8} align="flex-start" py={16}>
+          <Text size="sm" c="dark.1">
+            {t("objects.background.body")}
+          </Text>
+          <Button
+            size="compact-sm"
+            variant="subtle"
+            onClick={() => store.getState().toggleBackground()}
+          >
+            {t("objects.background.clear")}
+          </Button>
+        </Stack>
+      ) : boxes.length === 0 ? (
         <EmptyState
           title={t("objects.empty.title")}
           description={t("objects.empty.body")}

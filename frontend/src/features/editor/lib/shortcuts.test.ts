@@ -30,6 +30,8 @@ function allHandlers(): Spies {
     classDigit: spy(),
     prev: spy(),
     next: spy(),
+    reviewed: spy(),
+    background: spy(),
   };
 }
 
@@ -108,12 +110,16 @@ describe("buildHotkeys", () => {
       "classDigit",
       "prev",
       "next",
+      "reviewed",
+      "background",
     ]);
     expect(SHORTCUTS.filter((def) => def.editing).map((def) => def.id)).toEqual([
       "delete",
       "undo",
       "redo",
       "classDigit",
+      "reviewed",
+      "background",
     ]);
   });
 

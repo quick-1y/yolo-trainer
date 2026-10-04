@@ -362,6 +362,9 @@ function Workspace({
       classDigit: (event) => chooseClass(Number.parseInt(event.code.slice("Digit".length), 10) - 1),
       undo: () => entry.store.temporal.getState().undo(),
       redo: () => entry.store.temporal.getState().redo(),
+      // The store ignores both while the image's state forbids them (D-13, D-14).
+      reviewed: () => entry.store.getState().toggleReviewed(),
+      background: () => entry.store.getState().toggleBackground(),
       deselect: () => {
         if (canvasRef.current?.isDrawing()) {
           canvasRef.current.cancelDraft();

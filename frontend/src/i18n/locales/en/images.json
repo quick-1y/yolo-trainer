@@ -70,5 +70,11 @@
     "title": "No matching images",
     "body": "No filenames contain \"{{query}}\". Try a different search.",
     "clear": "Clear search"
+  },
+  "status": {
+    "unannotated": "Unannotated",
+    "annotated": "Annotated",
+    "reviewed": "Reviewed",
+    "background": "Background"
   }
 }

@@ -126,6 +126,24 @@ export const SHORTCUTS = [
     allowRepeat: false,
     editing: false,
   },
+  {
+    id: "reviewed",
+    group: "editing",
+    labelKey: "shortcuts.reviewed",
+    hotkeys: ["r"],
+    caps: [["R"]],
+    allowRepeat: false,
+    editing: true,
+  },
+  {
+    id: "background",
+    group: "editing",
+    labelKey: "shortcuts.background",
+    hotkeys: ["g"],
+    caps: [["G"]],
+    allowRepeat: false,
+    editing: true,
+  },
 ] as const satisfies readonly ShortcutDef[];
 
 export type ShortcutId = (typeof SHORTCUTS)[number]["id"];

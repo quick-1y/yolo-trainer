@@ -84,3 +84,13 @@ export function EyeOffIcon() {
     </Icon>
   );
 }
+
+/** Background: an empty frame with a diagonal slash (an image with no objects). */
+export function BackgroundIcon() {
+  return (
+    <Icon>
+      <rect x="4" y="4" width="16" height="16" rx="2" />
+      <path d="M4 20L20 4" />
+    </Icon>
+  );
+}

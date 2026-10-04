@@ -11,6 +11,23 @@ export interface EditorDoc {
   isReviewed: boolean;
 }
 
+/** What the top bar shows: reviewed > background > annotated > unannotated. */
+export type DocStatus = "reviewed" | "background" | "annotated" | "unannotated";
+
+/**
+ * The status of an image's document. Unannotated and background stay apart: only the
+ * explicit flag means "no objects", so an unlabeled image is never an empty-label example.
+ */
+export function docStatus(doc: EditorDoc): DocStatus {
+  if (doc.isReviewed) {
+    return "reviewed";
+  }
+  if (doc.isBackground) {
+    return "background";
+  }
+  return doc.boxes.length > 0 ? "annotated" : "unannotated";
+}
+
 export type SaveState = "saved" | "saving" | "error" | "conflict";
 
 /** Never part of history: where the save is, not what the user edited. */
@@ -30,6 +47,16 @@ export interface EditorState {
   deleteBox: (id: string) => void;
   /** Change one box's class: one `set`, one history entry. The same class or an unknown id changes nothing. */
   setBoxClass: (id: string, classId: number) => void;
+  /**
+   * Flip the background flag, allowed only while the image has no boxes (D-14); the same
+   * entry clears reviewed (D-15). Otherwise nothing changes.
+   */
+  toggleBackground: () => void;
+  /**
+   * Flip the reviewed flag, allowed only while the image has a box or is background
+   * (D-13). Otherwise nothing changes.
+   */
+  toggleReviewed: () => void;
   /** Touches only `meta`; creates no history entry. */
   setMeta: (partial: Partial<EditorMeta>) => void;
 }
@@ -112,6 +139,29 @@ export function createEditorStore(doc: EditorDoc, version: number) {
                 isReviewed: false,
               },
             };
+          }),
+        toggleBackground: () =>
+          set((state) => {
+            if (state.doc.boxes.length > 0) {
+              // Boxes and background exclude each other: the same state, no entry, no save.
+              return state;
+            }
+            return {
+              doc: {
+                ...state.doc,
+                isBackground: !state.doc.isBackground,
+                // Any annotation change demotes a reviewed image, in the same entry (D-15).
+                isReviewed: false,
+              },
+            };
+          }),
+        toggleReviewed: () =>
+          set((state) => {
+            if (state.doc.boxes.length === 0 && !state.doc.isBackground) {
+              // An unannotated image cannot be reviewed: the same state, no entry, no save.
+              return state;
+            }
+            return { doc: { ...state.doc, isReviewed: !state.doc.isReviewed } };
           }),
         setMeta: (partial) => set((state) => ({ meta: { ...state.meta, ...partial } })),
       }),
