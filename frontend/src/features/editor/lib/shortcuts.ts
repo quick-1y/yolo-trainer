@@ -153,6 +153,16 @@ export const SHORTCUTS = [
     allowRepeat: false,
     editing: false,
   },
+  {
+    // Zoom and pan are wheel and mouse gestures, so only the fit key has a row to bind.
+    id: "fit",
+    group: "view",
+    labelKey: "shortcuts.fit",
+    hotkeys: ["f", "digit0"],
+    caps: [["F"], ["0"]],
+    allowRepeat: false,
+    editing: false,
+  },
 ] as const satisfies readonly ShortcutDef[];
 
 export type ShortcutId = (typeof SHORTCUTS)[number]["id"];

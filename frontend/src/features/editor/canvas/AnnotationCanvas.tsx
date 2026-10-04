@@ -26,6 +26,35 @@ const FALLBACK_COLOR = "#FFFFFF";
 /** From this scale up the image is drawn without smoothing, so pixels stay crisp. */
 const CRISP_SCALE = 3;
 
+/** One pan in progress: where the pointer and the stage were when it started. */
+interface PanGesture {
+  pointerId: number;
+  startX: number;
+  startY: number;
+  originX: number;
+  originY: number;
+}
+
+/** A field that types: Space belongs to it, not to the canvas. */
+function isTextField(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) {
+    return false;
+  }
+  return (
+    target.tagName === "INPUT" ||
+    target.tagName === "TEXTAREA" ||
+    target.tagName === "SELECT" ||
+    target.isContentEditable === true
+  );
+}
+
+/** The middle button never starts the browser's autoscroll or a middle-click paste here. */
+function preventMiddleButton(event: { button: number; preventDefault: () => void }): void {
+  if (event.button === 1) {
+    event.preventDefault();
+  }
+}
+
 /** What the editor page may ask of the canvas (Esc cancels a draft in progress). */
 export interface AnnotationCanvasHandle {
   /** Drop the draft in progress: nothing is created when the pointer is released. */
@@ -58,6 +87,8 @@ interface AnnotationCanvasProps {
   canDraw: boolean;
   /** The project has no classes yet: show the hint instead of letting a drag draw. */
   noClasses: boolean;
+  /** False while a modal is open: Space no longer pans (and is left to the dialog). */
+  keyboardEnabled?: boolean;
   onCreate: (box: NormBox) => void;
   onSelect: (id: string | null) => void;
   onHover: (id: string | null) => void;
@@ -85,6 +116,7 @@ export function AnnotationCanvas({
   hoveredId,
   canDraw,
   noClasses,
+  keyboardEnabled = true,
   onCreate,
   onSelect,
   onHover,
@@ -100,6 +132,13 @@ export function AnnotationCanvas({
   const crosshairRef = useRef<CrosshairHandle>(null);
   const startRef = useRef<Point | null>(null);
   const pointerIdRef = useRef<number | null>(null);
+  // Pan: a hand-rolled gesture (never `Stage draggable`: a left drag draws, and Konva's drag
+  // would fight the shape drags). The stage moves imperatively; React sees the final position.
+  const panRef = useRef<PanGesture | null>(null);
+  const justPannedRef = useRef(false);
+  const spaceRef = useRef(false);
+  const [spaceHeld, setSpaceHeld] = useState(false);
+  const [panning, setPanning] = useState(false);
   const [size, setSize] = useState({ width: 0, height: 0 });
 
   useLayoutEffect(() => {
@@ -139,6 +178,45 @@ export function AnnotationCanvas({
     transformer.nodes(node ? [node] : []);
     transformer.getLayer()?.batchDraw();
   }, [selectTool, selectedId, boxes, hasStage]);
+
+  // Space turns the left button into a pan. It is read on window so it works wherever focus is
+  // (a focused tool button would otherwise be clicked by Space), except in a text field.
+  useEffect(() => {
+    const release = () => {
+      spaceRef.current = false;
+      setSpaceHeld(false);
+    };
+    if (!keyboardEnabled) {
+      release();
+      return undefined;
+    }
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.code !== "Space" || isTextField(event.target)) {
+        return;
+      }
+      event.preventDefault();
+      spaceRef.current = true;
+      setSpaceHeld(true);
+    };
+    const onKeyUp = (event: KeyboardEvent) => {
+      if (event.code !== "Space") {
+        return;
+      }
+      if (!isTextField(event.target)) {
+        event.preventDefault();
+      }
+      release();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("keyup", onKeyUp);
+    window.addEventListener("blur", release);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("keyup", onKeyUp);
+      window.removeEventListener("blur", release);
+      release();
+    };
+  }, [keyboardEnabled]);
 
   // Guides exist only while a drag could start.
   useEffect(() => {
@@ -204,9 +282,51 @@ export function AnnotationCanvas({
     fit: viewport.fit,
   }));
 
+  const startPan = (event: Konva.KonvaEventObject<PointerEvent>) => {
+    const stage = event.target.getStage();
+    if (!stage) {
+      return;
+    }
+    // Stops the browser's middle-button autoscroll and text selection while dragging.
+    event.evt.preventDefault();
+    stage.content.setPointerCapture(event.evt.pointerId);
+    panRef.current = {
+      pointerId: event.evt.pointerId,
+      startX: event.evt.clientX,
+      startY: event.evt.clientY,
+      originX: stage.x(),
+      originY: stage.y(),
+    };
+    crosshairRef.current?.hide();
+    setPanning(true);
+  };
+
+  const endPan = (event: Konva.KonvaEventObject<PointerEvent>) => {
+    const pan = panRef.current;
+    const stage = event.target.getStage();
+    if (pan === null || !stage) {
+      return;
+    }
+    panRef.current = null;
+    justPannedRef.current = true;
+    if (stage.content.hasPointerCapture(pan.pointerId)) {
+      stage.content.releasePointerCapture(pan.pointerId);
+    }
+    // Always commit, even for a zero move: the stage position changed outside React.
+    viewport.setView({ scale: stage.scaleX(), x: stage.x(), y: stage.y() });
+    setPanning(false);
+  };
+
   const handlePointerDown = (event: Konva.KonvaEventObject<PointerEvent>) => {
     containerRef.current?.focus();
-    if (!canDraw || event.evt.button !== 0) {
+    justPannedRef.current = false;
+    const { button } = event.evt;
+    // The middle button always pans; the left one pans while Space is held. Neither draws.
+    if (button === 1 || (button === 0 && spaceRef.current)) {
+      startPan(event);
+      return;
+    }
+    if (!canDraw || button !== 0) {
       return;
     }
     const stage = event.target.getStage();
@@ -223,6 +343,18 @@ export function AnnotationCanvas({
   };
 
   const handlePointerMove = (event: Konva.KonvaEventObject<PointerEvent>) => {
+    const pan = panRef.current;
+    if (pan !== null) {
+      const stage = event.target.getStage();
+      if (stage && event.evt.pointerId === pan.pointerId) {
+        stage.position({
+          x: pan.originX + event.evt.clientX - pan.startX,
+          y: pan.originY + event.evt.clientY - pan.startY,
+        });
+        stage.batchDraw();
+      }
+      return;
+    }
     const start = startRef.current;
     const point = event.target.getStage()?.getRelativePointerPosition();
     if (!point) {
@@ -237,6 +369,10 @@ export function AnnotationCanvas({
   };
 
   const handlePointerUp = (event: Konva.KonvaEventObject<PointerEvent>) => {
+    if (panRef.current !== null) {
+      endPan(event);
+      return;
+    }
     const start = startRef.current;
     if (start === null) {
       return;
@@ -265,7 +401,8 @@ export function AnnotationCanvas({
     event.evt.preventDefault();
     const pointer = event.target.getStage()?.getPointerPosition();
     const { deltaY } = event.evt;
-    if (!pointer || deltaY === 0) {
+    // A zoom mid-pan would build on a position React has not seen yet.
+    if (!pointer || deltaY === 0 || panRef.current !== null) {
       return;
     }
     zoomBy(deltaY < 0 ? ZOOM_STEP : 1 / ZOOM_STEP, pointer);
@@ -273,6 +410,10 @@ export function AnnotationCanvas({
 
   // A click on empty canvas (the stage itself; the image layer does not listen) deselects.
   const handleStageClick = (event: Konva.KonvaEventObject<Event>) => {
+    // The release that ends a pan is not a click on empty canvas.
+    if (justPannedRef.current) {
+      return;
+    }
     if (event.target === event.target.getStage()) {
       onSelect(null);
     }
@@ -303,6 +444,13 @@ export function AnnotationCanvas({
   if (tool === "box") {
     cursor = noClasses ? "not-allowed" : "crosshair";
   }
+  if (panning) {
+    cursor = "grabbing";
+  } else if (spaceHeld) {
+    cursor = "grab";
+  }
+  // Boxes and the Transformer are inert while a pan can start, so a press on them pans.
+  const panBlocked = spaceHeld || panning;
 
   return (
     <div
@@ -310,6 +458,8 @@ export function AnnotationCanvas({
       tabIndex={0}
       role="application"
       aria-label={t("canvas.aria")}
+      onMouseDown={preventMiddleButton}
+      onAuxClick={preventMiddleButton}
       style={{
         position: "relative",
         width: "100%",
@@ -333,6 +483,7 @@ export function AnnotationCanvas({
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
+          onPointerCancel={endPan}
           onClick={handleStageClick}
           onTap={handleStageClick}
           onPointerClick={handleStageClick}
@@ -351,7 +502,7 @@ export function AnnotationCanvas({
                 label={labels[box.class_id] ?? ""}
                 fontFamily={fontFamily}
                 scale={scale}
-                interactive={selectTool}
+                interactive={selectTool && !panBlocked}
                 selected={box.id === selectedId}
                 hovered={box.id === hoveredId}
                 onSelect={onSelect}
@@ -376,6 +527,7 @@ export function AnnotationCanvas({
               flipEnabled={false}
               keepRatio={false}
               ignoreStroke
+              listening={!panBlocked}
               anchorSize={10}
               anchorFill="#FFFFFF"
               anchorStroke="#141414"

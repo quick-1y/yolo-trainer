@@ -377,6 +377,7 @@ function Workspace({
       prev: () => stepTo(prevId, "prev"),
       next: () => stepTo(nextId, "next"),
       nextUnannotated: goNextUnannotated,
+      fit: () => canvasRef.current?.fit(),
     },
     // While a move waits for the save, editing keys are off too: nothing new may slip in.
     { enabled: openModals === 0 && navigation.pending === null, readOnly: false },
@@ -422,6 +423,7 @@ function Workspace({
             hoveredId={hoveredId}
             canDraw={canDraw}
             noClasses={classes !== undefined && classes.length === 0}
+            keyboardEnabled={openModals === 0}
             onCreate={handleCreate}
             onSelect={select}
             onHover={hover}

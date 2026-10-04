@@ -45,7 +45,8 @@
       "tools": "Tools",
       "editing": "Editing",
       "classes": "Classes",
-      "navigation": "Navigation"
+      "navigation": "Navigation",
+      "view": "View"
     },
     "select": "Select tool",
     "box": "Box tool",
@@ -58,7 +59,10 @@
     "next": "Next image",
     "reviewed": "Toggle reviewed",
     "background": "Toggle background",
-    "nextUnannotated": "Next unannotated image"
+    "nextUnannotated": "Next unannotated image",
+    "fit": "Fit image to window",
+    "zoom": "Zoom toward the cursor",
+    "pan": "Pan"
   },
   "nav": {
     "noOther": "No other unannotated images."
