@@ -16,6 +16,8 @@ from yolo_trainer_api.palette import CLASS_PALETTE, next_color
 from yolo_trainer_api.settings import Settings
 
 from .conftest import make_client
+from .imaging import make_image_bytes
+from .test_annotations_api import XHR, _box, _payload, _put, _stored
 
 
 def _project(client: TestClient, name: str = "Vehicles") -> int:
@@ -30,7 +32,8 @@ def test_create_assigns_contiguous_index_and_palette_color(client: TestClient) -
     first = client.post(f"/api/projects/{project_id}/classes", json={"name": "car"})
     assert first.status_code == 201
     body = first.json()
-    assert set(body) == {"id", "name", "color", "index", "created_at"}
+    assert set(body) == {"id", "name", "color", "index", "created_at", "object_count"}
+    assert body["object_count"] == 0
     assert body["name"] == "car"
     assert body["index"] == 0
     assert body["color"] == "#E6194B"
@@ -452,3 +455,105 @@ def test_random_create_delete_sequence_keeps_indices_contiguous(client: TestClie
         listed = _listed(client, project_id)
         assert [x["index"] for x in listed] == list(range(len(listed)))
         assert [x["id"] for x in listed] == [x["id"] for x in live]
+
+
+# --- object_count and the class-delete seam of the annotation editor (P3 D-12, D-15, D-16) ---
+
+
+def _upload(client: TestClient, project_id: int, size: tuple[int, int]) -> int:
+    response = client.post(
+        f"/api/projects/{project_id}/images",
+        files=[("files", ("x.png", make_image_bytes("PNG", size), "image/png"))],
+        headers=XHR,
+    )
+    assert response.status_code == 200
+    return response.json()["results"][0]["image"]["id"]
+
+
+def test_classes_report_how_many_boxes_they_own_across_the_project(client: TestClient) -> None:
+    project_id = _project(client)
+    car = _add_class(client, project_id, "car")
+    plane = _add_class(client, project_id, "plane")
+    first = _upload(client, project_id, (64, 48))
+    second = _upload(client, project_id, (50, 40))
+    assert car["object_count"] == 0
+
+    boxes_first = [_box(car["id"], 0.1, 0.1, 0.2, 0.2), _box(plane["id"], 0.5, 0.5, 0.2, 0.2)]
+    boxes_second = [_box(car["id"], 0.2, 0.2, 0.3, 0.3)]
+    assert _put(client, project_id, first, _payload(boxes_first)).status_code == 200
+    assert _put(client, project_id, second, _payload(boxes_second)).status_code == 200
+
+    counts = {c["name"]: c["object_count"] for c in _listed(client, project_id)}
+    assert counts == {"car": 2, "plane": 1}
+
+    renamed = client.patch(
+        f"/api/projects/{project_id}/classes/{car['id']}", json={"name": "Car"}
+    ).json()
+    assert renamed["object_count"] == 2
+    recolored = client.patch(
+        f"/api/projects/{project_id}/classes/{plane['id']}", json={"color": "#112233"}
+    ).json()
+    assert recolored["object_count"] == 1
+
+    other_id = _project(client, "Other")
+    assert _add_class(client, other_id, "car")["object_count"] == 0
+
+
+def test_deleting_a_class_rebumps_and_demotes_only_the_images_that_had_its_boxes(
+    client: TestClient, settings: Settings
+) -> None:
+    project_id = _project(client)
+    class_a = _add_class(client, project_id, "a")["id"]
+    class_b = _add_class(client, project_id, "b")["id"]
+    first = _upload(client, project_id, (64, 48))
+    second = _upload(client, project_id, (50, 40))
+    keep_b = _box(class_b, 0.5, 0.5, 0.2, 0.2)
+    boxes = [_box(class_a, 0.1, 0.1, 0.2, 0.2), keep_b]
+    assert _put(client, project_id, first, _payload(boxes)).status_code == 200
+    moved = [_box(class_a, 0.15, 0.15, 0.2, 0.2, boxes[0]["id"]), keep_b]
+    assert _put(client, project_id, first, _payload(moved, base=1)).status_code == 200
+    reviewed = _put(client, project_id, first, _payload(moved, base=2, is_reviewed=True))
+    assert reviewed.json()["version"] == 3
+    assert reviewed.json()["status"] == "reviewed"
+    only_b = _payload([_box(class_b, 0.3, 0.3, 0.2, 0.2)], is_reviewed=True)
+    assert _put(client, project_id, second, only_b).json()["version"] == 1
+    untouched = _stored(settings, second)
+
+    assert client.delete(f"/api/projects/{project_id}/classes/{class_a}").status_code == 204
+
+    annotations = f"/api/projects/{project_id}/images/{first}/annotations"
+    after = client.get(annotations).json()
+    assert [box["id"] for box in after["boxes"]] == [keep_b["id"]]
+    assert after["version"] == 4
+    assert after["is_reviewed"] is False
+    assert after["status"] == "annotated"
+    assert _stored(settings, second) == untouched
+    other = client.get(f"/api/projects/{project_id}/images/{second}/annotations").json()
+    assert (other["version"], other["is_reviewed"], other["status"]) == (1, True, "reviewed")
+
+    # The tab that still shows the deleted class's box saves with the old version.
+    stale = _put(client, project_id, first, _payload(moved, base=3))
+    assert stale.status_code == 409
+    assert stale.json() == {
+        "detail": "These annotations were changed elsewhere. Reload the image to continue."
+    }
+    assert client.get(annotations).json()["boxes"] == after["boxes"]
+    assert [(x["name"], x["index"]) for x in _listed(client, project_id)] == [("b", 0)]
+
+
+def test_deleting_a_class_without_boxes_leaves_every_image_version_alone(
+    client: TestClient, settings: Settings
+) -> None:
+    project_id = _project(client)
+    used = _add_class(client, project_id, "used")["id"]
+    empty = _add_class(client, project_id, "empty")["id"]
+    image = _upload(client, project_id, (64, 48))
+    assert (
+        _put(client, project_id, image, _payload([_box(used, 0.1, 0.1, 0.2, 0.2)])).status_code
+        == 200
+    )
+    before = _stored(settings, image)
+
+    assert client.delete(f"/api/projects/{project_id}/classes/{empty}").status_code == 204
+
+    assert _stored(settings, image) == before
