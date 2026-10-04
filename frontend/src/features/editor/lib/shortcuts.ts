@@ -163,6 +163,17 @@ export const SHORTCUTS = [
     allowRepeat: false,
     editing: false,
   },
+  {
+    // Edits save by themselves (D-09); this only skips the wait. It is bound so that
+    // `preventDefault` also suppresses the browser's own "save page" dialog.
+    id: "save",
+    group: "general",
+    labelKey: "shortcuts.save",
+    hotkeys: ["mod+s"],
+    caps: [["Mod", "S"]],
+    allowRepeat: false,
+    editing: false,
+  },
 ] as const satisfies readonly ShortcutDef[];
 
 export type ShortcutId = (typeof SHORTCUTS)[number]["id"];

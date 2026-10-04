@@ -378,6 +378,8 @@ function Workspace({
       next: () => stepTo(nextId, "next"),
       nextUnannotated: goNextUnannotated,
       fit: () => canvasRef.current?.fit(),
+      // Saves now instead of after the debounce; a conflict or a failure shows in the indicator.
+      save: () => void entry.saver.flush(),
     },
     // While a move waits for the save, editing keys are off too: nothing new may slip in.
     { enabled: openModals === 0 && navigation.pending === null, readOnly: false },

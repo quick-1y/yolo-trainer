@@ -46,7 +46,8 @@
       "editing": "Editing",
       "classes": "Classes",
       "navigation": "Navigation",
-      "view": "View"
+      "view": "View",
+      "general": "General"
     },
     "select": "Select tool",
     "box": "Box tool",
@@ -61,6 +62,7 @@
     "background": "Toggle background",
     "nextUnannotated": "Next unannotated image",
     "fit": "Fit image to window",
+    "save": "Save now",
     "zoom": "Zoom toward the cursor",
     "pan": "Pan"
   },
