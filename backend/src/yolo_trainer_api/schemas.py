@@ -150,6 +150,7 @@ class ClassRead(BaseModel):
     color: str
     index: int = Field(validation_alias="position")
     created_at: datetime
+    object_count: int = 0
 
     @field_serializer("created_at")
     def _serialize_utc(self, value: datetime) -> str:

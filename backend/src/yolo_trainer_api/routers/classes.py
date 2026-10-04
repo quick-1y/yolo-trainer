@@ -13,7 +13,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from yolo_trainer_api.db import get_session
-from yolo_trainer_api.models import ProjectClass
+from yolo_trainer_api.models import Annotation, Image, ProjectClass
 from yolo_trainer_api.palette import next_color
 from yolo_trainer_api.routers.projects import get_project_or_404
 from yolo_trainer_api.schemas import ClassCreate, ClassRead, ClassUpdate
@@ -155,11 +155,24 @@ async def delete_class(
     project_class = await get_class_or_404(session, project_id, class_id)
     deleted_position = project_class.position
 
+    # Annotations reference classes.id with ON DELETE CASCADE, so the class's
+    # boxes disappear with the row below (P2 D-16). That silently changes every
+    # image that held one, so in the SAME transaction (and before the cascade, while
+    # the boxes can still be found) those images get a new annotation_version and
+    # lose their reviewed flag (P3 D-12, D-15). Without the bump an editor tab that
+    # still shows the deleted class would save its old box set with a current base
+    # version and re-insert boxes of a class that no longer exists (Pitfall 5);
+    # with it that save is a 409.
+    await session.execute(
+        update(Image)
+        .where(Image.id.in_(select(Annotation.image_id).where(Annotation.class_id == class_id)))
+        .values(annotation_version=Image.annotation_version + 1, is_reviewed=False)
+        .execution_options(synchronize_session=False)
+    )
     await session.delete(project_class)
     # Same transaction: close the gap so indices stay exactly 0..N-1 (D-13).
-    # `position` has no unique constraint, so statement order cannot fail.
-    # Annotations (Phase 3) reference classes.id with ON DELETE CASCADE, so the
-    # class's objects go with the row above (D-16); nothing references the index.
+    # `position` has no unique constraint, so statement order cannot fail;
+    # nothing references the index.
     await session.execute(
         update(ProjectClass)
         .where(

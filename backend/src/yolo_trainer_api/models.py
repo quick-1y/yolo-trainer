@@ -200,6 +200,14 @@ Project.class_count = column_property(
     .correlate_except(ProjectClass)
     .scalar_subquery()
 )
+# Number of boxes of a class across the whole project, shown in the delete-class
+# dialog (P2 D-16). Derived for the same reason as `Image.box_count`.
+ProjectClass.object_count = column_property(
+    select(func.count(Annotation.id))
+    .where(Annotation.class_id == ProjectClass.id)
+    .correlate_except(Annotation)
+    .scalar_subquery()
+)
 # Derived on purpose, never stored: a class delete cascades annotations at DB
 # level, so a stored count would go stale (D-13). Read it after a refresh for a
 # just-inserted row (MissingGreenlet otherwise).
