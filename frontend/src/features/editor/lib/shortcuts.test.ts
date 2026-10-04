@@ -33,6 +33,7 @@ function allHandlers(): Spies {
     reviewed: spy(),
     background: spy(),
     nextUnannotated: spy(),
+    fit: spy(),
   };
 }
 
@@ -114,6 +115,7 @@ describe("buildHotkeys", () => {
       "reviewed",
       "background",
       "nextUnannotated",
+      "fit",
     ]);
     expect(SHORTCUTS.filter((def) => def.editing).map((def) => def.id)).toEqual([
       "delete",
@@ -178,6 +180,40 @@ describe("navigation rows", () => {
 
     press({ code: "KeyA", key: "a", repeat: true });
     press({ code: "ArrowLeft", key: "ArrowLeft", repeat: true });
+
+    expect(calledIds(handlers)).toEqual([]);
+  });
+});
+
+describe("view rows", () => {
+  it("binds F and 0 to fit in the view group, available while read-only and never repeating", () => {
+    const row = SHORTCUTS.find((def) => def.id === "fit");
+
+    expect(row?.group).toBe("view");
+    expect(row?.labelKey).toBe("shortcuts.fit");
+    expect(row?.hotkeys).toEqual(["f", "digit0"]);
+    expect(row?.caps).toEqual([["F"], ["0"]]);
+    expect(row?.editing).toBe(false);
+    expect(row?.allowRepeat).toBe(false);
+  });
+
+  it("calls fit for the physical F and 0 keys, also on the Russian layout", () => {
+    const handlers = allHandlers();
+    mount(handlers);
+
+    press({ code: "KeyF", key: "а" });
+    press({ code: "Digit0", key: "0" });
+
+    expect(handlers.fit).toHaveBeenCalledTimes(2);
+    expect(calledIds(handlers)).toEqual(["fit"]);
+  });
+
+  it("ignores a held F and Ctrl+F", () => {
+    const handlers = allHandlers();
+    mount(handlers);
+
+    press({ code: "KeyF", key: "f", repeat: true });
+    press({ code: "KeyF", key: "f", ctrlKey: true });
 
     expect(calledIds(handlers)).toEqual([]);
   });

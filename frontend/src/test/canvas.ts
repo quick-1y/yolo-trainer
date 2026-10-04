@@ -69,7 +69,11 @@ interface PointerOptions {
 }
 
 /** Dispatch a pointer event (inside `act`, so React state updates flush). */
-export function firePointer(target: Element, type: string, options: PointerOptions): void {
+export function firePointer(
+  target: Element,
+  type: string,
+  options: PointerOptions,
+): PointerEvent | MouseEvent {
   const { clientX, clientY, button = 0, pointerId = 1 } = options;
   const init = { bubbles: true, cancelable: true, clientX, clientY, button, pointerId };
   const event =
@@ -79,6 +83,7 @@ export function firePointer(target: Element, type: string, options: PointerOptio
   act(() => {
     target.dispatchEvent(event);
   });
+  return event;
 }
 
 /** The most recently created Konva stage. */

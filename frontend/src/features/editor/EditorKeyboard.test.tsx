@@ -339,3 +339,38 @@ describe("keyboard shortcuts", () => {
     expect(within(tip).getByText("V")).toBeInTheDocument();
   });
 });
+
+/** Zoom and pan the stage away from fit. */
+function zoomAndPan(): void {
+  const content = getStage().content;
+  act(() => {
+    content.dispatchEvent(
+      new WheelEvent("wheel", { bubbles: true, cancelable: true, deltaY: -100, clientX: 100, clientY: 100 }),
+    );
+  });
+  firePointer(content, "pointerdown", { clientX: 100, clientY: 100, button: 1 });
+  firePointer(content, "pointermove", { clientX: 220, clientY: 180, button: 1 });
+  firePointer(content, "pointerup", { clientX: 220, clientY: 180, button: 1 });
+}
+
+describe("fit shortcuts", () => {
+  it.each([
+    ["F", { code: "KeyF", key: "f" }],
+    ["F on the Russian layout", { code: "KeyF", key: "а" }],
+    ["0", { code: "Digit0", key: "0" }],
+  ])("%s restores the fit scale and position after zooming and panning", async (_label, init) => {
+    setUpCanvas();
+    stubEditorApi();
+    await openEditor();
+    const stage = getStage();
+    const fit = { scale: stage.scaleX(), x: stage.x(), y: stage.y() };
+    zoomAndPan();
+    expect(stage.scaleX()).not.toBeCloseTo(fit.scale, 3);
+
+    press(init);
+
+    expect(stage.scaleX()).toBeCloseTo(fit.scale, 9);
+    expect(stage.x()).toBeCloseTo(fit.x, 6);
+    expect(stage.y()).toBeCloseTo(fit.y, 6);
+  });
+});

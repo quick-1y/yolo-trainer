@@ -681,3 +681,217 @@ describe("zoom", () => {
     expect(boxNode().strokeScaleEnabled()).toBe(false);
   });
 });
+
+function canvasElement(): HTMLElement {
+  return screen.getByRole("application");
+}
+
+/** A keyboard event on `target` (inside `act`), returned so the test can read `defaultPrevented`. */
+function key(
+  type: "keydown" | "keyup",
+  init: KeyboardEventInit,
+  target: Element = canvasElement(),
+): KeyboardEvent {
+  const event = new KeyboardEvent(type, { bubbles: true, cancelable: true, ...init });
+  act(() => {
+    target.dispatchEvent(event);
+  });
+  return event;
+}
+
+const SPACE = { code: "Space", key: " " };
+
+function stagePosition() {
+  const stage = getStage();
+  return { x: stage.x(), y: stage.y(), scale: stage.scaleX() };
+}
+
+function draftRect(): Konva.Node | undefined {
+  return getStage()
+    .find("Rect")
+    .find((node) => node.attrs.dash !== undefined);
+}
+
+describe("pan", () => {
+  it("pans with the middle button, prevents the autoscroll and draws nothing", async () => {
+    setUpCanvas();
+    const { puts } = stubEditorApi();
+    await openEditor();
+    const content = getStage().content;
+    const before = stagePosition();
+
+    const down = firePointer(content, "pointerdown", { clientX: 100, clientY: 100, button: 1 });
+    firePointer(content, "pointermove", { clientX: 160, clientY: 130, button: 1 });
+    expect(draftRect()?.visible()).toBe(false);
+    firePointer(content, "pointerup", { clientX: 160, clientY: 130, button: 1 });
+
+    expect(down.defaultPrevented).toBe(true);
+    const after = stagePosition();
+    expect(after.x).toBeCloseTo(before.x + 60, 6);
+    expect(after.y).toBeCloseTo(before.y + 30, 6);
+    expect(after.scale).toBe(before.scale);
+    expect(draftRect()?.visible()).toBe(false);
+    await sleep(700);
+    expect(puts).toHaveLength(0);
+    expect(editor().store.getState().doc.boxes).toEqual([]);
+  });
+
+  it("pans with Space held and the left button, and shows grab then grabbing", async () => {
+    setUpCanvas();
+    const { puts } = stubEditorApi();
+    await openEditor();
+    const content = getStage().content;
+    const before = stagePosition();
+    expect(canvasElement().style.cursor).toBe("crosshair");
+
+    key("keydown", SPACE);
+    expect(canvasElement().style.cursor).toBe("grab");
+
+    firePointer(content, "pointerdown", { clientX: 100, clientY: 100 });
+    expect(canvasElement().style.cursor).toBe("grabbing");
+    firePointer(content, "pointermove", { clientX: 150, clientY: 100 });
+    expect(draftRect()?.visible()).toBe(false);
+    firePointer(content, "pointerup", { clientX: 150, clientY: 100 });
+
+    expect(stagePosition().x).toBeCloseTo(before.x + 50, 6);
+    expect(stagePosition().y).toBeCloseTo(before.y, 6);
+    expect(canvasElement().style.cursor).toBe("grab");
+
+    key("keyup", SPACE);
+    expect(canvasElement().style.cursor).toBe("crosshair");
+    await sleep(700);
+    expect(puts).toHaveLength(0);
+  });
+
+  it("draws again after Space is released", async () => {
+    setUpCanvas();
+    const { puts } = stubEditorApi();
+    await openEditor();
+    const content = getStage().content;
+
+    key("keydown", SPACE);
+    firePointer(content, "pointerdown", { clientX: 100, clientY: 100 });
+    firePointer(content, "pointerup", { clientX: 130, clientY: 100 });
+    key("keyup", SPACE);
+    const moved = stagePosition();
+    firePointer(content, "pointerdown", { clientX: 200, clientY: 200 });
+    firePointer(content, "pointermove", { clientX: 400, clientY: 350 });
+    firePointer(content, "pointerup", { clientX: 400, clientY: 350 });
+
+    await waitFor(() => expect(puts).toHaveLength(1));
+    expect(stagePosition()).toEqual(moved);
+    expect(savedBoxes(puts[0])).toHaveLength(1);
+  });
+
+  it("prevents Space from scrolling or clicking a focused button", async () => {
+    setUpCanvas();
+    stubEditorApi();
+    await openEditor();
+    const select = within(screen.getByRole("toolbar")).getByRole("button", { name: "Select" });
+
+    const down = key("keydown", SPACE, select);
+    const up = key("keyup", SPACE, select);
+
+    expect(down.defaultPrevented).toBe(true);
+    expect(up.defaultPrevented).toBe(true);
+    key("keyup", SPACE);
+  });
+
+  it("leaves Space alone in a text field and does not enable panning there", async () => {
+    setUpCanvas();
+    const { puts } = stubEditorApi();
+    await openEditor();
+    const input = document.createElement("input");
+    document.body.appendChild(input);
+    const before = stagePosition();
+
+    const down = key("keydown", SPACE, input);
+
+    expect(down.defaultPrevented).toBe(false);
+    expect(canvasElement().style.cursor).toBe("crosshair");
+    const content = getStage().content;
+    firePointer(content, "pointerdown", { clientX: 200, clientY: 200 });
+    firePointer(content, "pointermove", { clientX: 400, clientY: 350 });
+    firePointer(content, "pointerup", { clientX: 400, clientY: 350 });
+    await waitFor(() => expect(puts).toHaveLength(1));
+    expect(stagePosition()).toEqual(before);
+    key("keyup", SPACE, input);
+    input.remove();
+  });
+
+  it("hides the crosshair while panning and shows it again on the next move", async () => {
+    setUpCanvas();
+    stubEditorApi();
+    await openEditor();
+    const content = getStage().content;
+    firePointer(content, "pointermove", { clientX: 200, clientY: 150 });
+    expect(crosshairLines().every((line) => line.visible())).toBe(true);
+
+    firePointer(content, "pointerdown", { clientX: 200, clientY: 150, button: 1 });
+    expect(crosshairLines().every((line) => !line.visible())).toBe(true);
+    firePointer(content, "pointermove", { clientX: 240, clientY: 170, button: 1 });
+    expect(crosshairLines().every((line) => !line.visible())).toBe(true);
+    firePointer(content, "pointerup", { clientX: 240, clientY: 170, button: 1 });
+    expect(crosshairLines().every((line) => !line.visible())).toBe(true);
+
+    firePointer(content, "pointermove", { clientX: 260, clientY: 180 });
+    expect(crosshairLines().every((line) => line.visible())).toBe(true);
+  });
+
+  it("keeps the selection when a pan ends on empty canvas", async () => {
+    setUpCanvas();
+    await openSelected({ boxes: [BOX] });
+    const content = getStage().content;
+
+    key("keydown", SPACE);
+    firePointer(content, "pointerdown", { clientX: 790, clientY: 580 });
+    firePointer(content, "pointermove", { clientX: 760, clientY: 560 });
+    firePointer(content, "pointerup", { clientX: 760, clientY: 560 });
+    key("keyup", SPACE);
+
+    expect(transformer().nodes()).toHaveLength(1);
+  });
+
+  it("commits the panned position so Fit brings the image back", async () => {
+    setUpCanvas();
+    stubEditorApi();
+    const { user } = await openEditor();
+    const content = getStage().content;
+    const fit = stagePosition();
+
+    firePointer(content, "pointerdown", { clientX: 100, clientY: 100, button: 1 });
+    firePointer(content, "pointermove", { clientX: 300, clientY: 260, button: 1 });
+    firePointer(content, "pointerup", { clientX: 300, clientY: 260, button: 1 });
+    expect(stagePosition().x).toBeCloseTo(fit.x + 200, 6);
+
+    await user.click(screen.getByRole("button", { name: "Fit image to window" }));
+
+    expect(stagePosition().x).toBeCloseTo(fit.x, 6);
+    expect(stagePosition().y).toBeCloseTo(fit.y, 6);
+  });
+
+  it("keeps boxes drawn after a pan in image coordinates", async () => {
+    setUpCanvas();
+    const { puts } = stubEditorApi();
+    await openEditor();
+    const content = getStage().content;
+    firePointer(content, "pointerdown", { clientX: 100, clientY: 100, button: 1 });
+    firePointer(content, "pointermove", { clientX: 140, clientY: 120, button: 1 });
+    firePointer(content, "pointerup", { clientX: 140, clientY: 120, button: 1 });
+    const from = { x: 200, y: 150 };
+    const to = { x: 500, y: 400 };
+    const start = imageAt(from);
+    const end = imageAt(to);
+
+    firePointer(content, "pointerdown", { clientX: from.x, clientY: from.y });
+    firePointer(content, "pointermove", { clientX: to.x, clientY: to.y });
+    firePointer(content, "pointerup", { clientX: to.x, clientY: to.y });
+
+    await waitFor(() => expect(puts).toHaveLength(1));
+    const [box] = savedBoxes(puts[0]);
+    expect(box.x).toBeCloseTo(start.x / 300, 5);
+    expect(box.y).toBeCloseTo(start.y / 200, 5);
+    expect(box.w).toBeCloseTo((end.x - start.x) / 300, 5);
+    expect(box.h).toBeCloseTo((end.y - start.y) / 200, 5);
+  });
+});
