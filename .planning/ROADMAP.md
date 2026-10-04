@@ -157,7 +157,7 @@ Plans:
   4. User switches tools, picks classes, saves, and navigates images with keyboard shortcuts listed in an on-screen shortcut reference
   5. Each image shows a status (unannotated / annotated / reviewed); the user can jump to the next unannotated image and mark an image as background (no objects)
 
-**Plans:** 3/13 plans executed
+**Plans:** 4/13 plans executed
 
 Plans:
 **Wave 1**
@@ -168,7 +168,7 @@ Plans:
 
 - [x] 03-02-PLAN.md — Save contract pinned by tests (validation, idempotent retry, concurrency, migration upgrade); class delete re-versions/demotes images; "N objects" in the delete dialog (wave 2)
 - [x] 03-03-PLAN.md — Select, move and resize boxes (tool bar, Transformer, crosshair, label chips) (wave 2)
-- [ ] 03-04-PLAN.md — Open the editor from the grid; sort/search in the URL; viewer modal removed (wave 2)
+- [x] 03-04-PLAN.md — Open the editor from the grid; sort/search in the URL; viewer modal removed (wave 2)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
@@ -417,7 +417,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 |-------|----------------|--------|-----------|
 | 1. Runnable Skeleton & Projects | 10/10 | Complete    | 2026-09-29 |
 | 2. Image Upload & Classes | 13/13 | Complete    | 2026-10-03 |
-| 3. Box Annotation Editor | 3/13 | In Progress|  |
+| 3. Box Annotation Editor | 4/13 | In Progress|  |
 | 4. Train & Download | 0/TBD | Not started | - |
 | 5. Live Training Monitoring & Control | 0/TBD | Not started | - |
 | 6. Polygons & Segmentation Projects | 0/TBD | Not started | - |

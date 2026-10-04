@@ -50,7 +50,7 @@ key-decisions:
 patterns-established:
   - "URL as the single source of truth for list view state shared with a second route (grid <-> editor)"
 
-requirements-completed: []
+requirements-completed: [ANNO-02]
 
 coverage:
   - id: D1

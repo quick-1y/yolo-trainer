@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 03
 current_phase_name: Box Annotation Editor
 status: executing
-stopped_at: Completed 03-03-PLAN.md
-last_updated: "2026-10-04T07:59:33.010Z"
+stopped_at: Completed 03-04-PLAN.md
+last_updated: "2026-10-04T08:08:07.870Z"
 last_activity: 2026-10-04
 last_activity_desc: Phase 03 execution started
-state_head: 4d2a53959e9fb139125f2d1014c7416e3f09129d
+state_head: 7213766ac067ce2496bdc0d49323d73a78948e9e
 progress:
   total_phases: 12
   completed_phases: 2
   total_plans: 36
-  completed_plans: 26
+  completed_plans: 27
   percent: 17
 ---
 
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-10-03)
 ## Current Position
 
 Phase: 03 (Box Annotation Editor) — EXECUTING
-Plan: 4 of 13
+Plan: 5 of 13
 Status: Ready to execute
 Last activity: 2026-10-04 — Phase 03 execution started
 
@@ -84,6 +84,7 @@ Progress: [██░░░░░░░░] 17%
 | Phase 03 P01 | 20 min | 2 tasks | 35 files |
 | Phase 03 P02 | 13 min | 3 tasks | 13 files |
 | Phase 03 P03 | 12 min | 2 tasks | 16 files |
+| Phase 03 P04 | 6 min | 2 tasks | 12 files |
 
 ## Accumulated Context
 
@@ -132,6 +133,7 @@ Recent decisions affecting current work:
 - [Phase 03]: Plan 03-01: annotation save is a whole-set replace guarded by a compare-and-swap annotation_version (409 on stale, idempotent retry); status and box_count are derived, never stored; box ids are client UUID v4 built from getRandomValues — Costly-to-reverse contract that Phases 6 and 8 build on; a class-delete cascade would desync a stored count; randomUUID is undefined on http LAN origins
 - [Phase 03]: Plan 03-02: class delete bumps annotation_version and clears is_reviewed of every image that held a box of the class, in the same transaction and before the cascade; images without that class keep version and reviewed flag — A stale editor tab must get 409 instead of re-inserting boxes of the deleted class (Pitfall 5); untouched images must not lose work
 - [Phase 03]: Plan 03-03: updateBox is a no-op (same state) for an unknown id or unchanged geometry; label chip text is 24 chars including the ellipsis; Konva 10 pointer events fire pointerclick/pointerenter so handlers are attached for both mouse and pointer families — A drag that ends where it started must not save or demote a reviewed image; plan text was off by one on truncation; click alone may never fire in a real browser
+- [Phase 03]: 03-04: Images page sort/search live in the URL (useSearchParams, replace writes); q capped at 255 chars on read, send and write; tile click/Enter opens the editor with { sort, q }; ImageViewerModal removed — D-03: editor and grid share one ordering; URL makes both reloadable; P2 D-10 viewer replaced by the editor
 
 ### Pending Todos
 
@@ -154,6 +156,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-10-04T07:59:32.919Z
-Stopped at: Completed 03-03-PLAN.md
+Last session: 2026-10-04T08:08:07.777Z
+Stopped at: Completed 03-04-PLAN.md
 Resume file: None
