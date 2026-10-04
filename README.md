@@ -51,6 +51,17 @@ Everything the app stores (the SQLite database today; images, models, and traini
 - Holds uploaded images in `data/projects/<project id>/images/`, with thumbnails in `data/projects/<project id>/thumbs/`. Originals are stored exactly as uploaded.
 - Has **no disk quota**: uploading many large images can fill the disk, so keep an eye on free space.
 
+## Annotating images
+
+Open an image by clicking its tile on the project's **Images** page; the grid's sort order and search carry over, so the editor's previous / next arrows step through the same list. A project's **Annotate next** button opens the next image that has no annotations yet.
+
+- **Draw boxes** with the Box tool (`B`): pick the class in the right-hand panel or with the keys `1`-`9`, then drag on the image. The Select tool (`V`) moves, resizes, reclassifies and deletes boxes; `Ctrl+Z` / `Ctrl+Shift+Z` undo and redo.
+- **Changes save automatically.** The top bar shows "Saved" once everything is on the server. `Ctrl+S` saves immediately, and an unsaved change is never dropped silently: if a save fails you are asked before leaving the image, and a save that conflicts with another tab or window stops editing until you reload the image.
+- **Shortcuts:** press `?` (or click the `?` button in the top bar) to open the full list. They work on any keyboard layout, including the Russian one.
+- **Image statuses:** *unannotated* (no boxes), *annotated* (at least one box, or marked as background), *reviewed* (you marked it as checked) and *background*. Only images you explicitly mark as **background** (`G`) count as "no objects" for training; an unannotated image is **not** background, and a later training export will not treat it as one.
+- An image can have at most 2000 boxes.
+- If the editor reports an **orientation mismatch** for an image, your browser shows it rotated differently from how it was stored (for example a WebP with EXIF rotation), so boxes would land in the wrong place and that image cannot be annotated in that browser.
+
 ## Configuration
 
 All variables are read from a `.env` file in the repo root (see `.env.example`). None are required — every one has a safe default.
