@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider, type InfiniteData } from "@tanstack/react-query";
-import { act, renderHook } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { createElement, type ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -9,7 +9,9 @@ import {
   DELETE_BATCH_SIZE,
   displayStatus,
   imageKeys,
+  patchImageInListCache,
   useDeleteImages,
+  useImagesInfinite,
   type ImageItem,
   type ImagePage,
 } from "./images";
@@ -226,5 +228,62 @@ describe("displayStatus", () => {
     expect(displayStatus({ ...state, box_count: 1, status: "reviewed", is_reviewed: true })).toBe(
       "reviewed",
     );
+  });
+});
+
+describe("patchImageInListCache", () => {
+  const data: InfiniteData<ImagePage, string | null> = {
+    pages: [
+      { items: [makeItem(1), makeItem(5)], next_cursor: "c1", total: 4 },
+      { items: [makeItem(7), makeItem(9)], next_cursor: null, total: 4 },
+    ],
+    pageParams: [null, "c1"],
+  };
+  const patch = { box_count: 3, is_background: false, is_reviewed: true, status: "reviewed" } as const;
+
+  it("patches only the matching item and keeps the rest by reference", () => {
+    const next = patchImageInListCache(data, 5, patch);
+
+    expect(next).not.toBe(data);
+    expect(next?.pages[0].items[1]).toMatchObject({ id: 5, ...patch });
+    expect(next?.pages[0].items[0]).toBe(data.pages[0].items[0]);
+    expect(next?.pages[1]).toBe(data.pages[1]);
+    expect(next?.pages[0].total).toBe(4);
+    expect(next?.pageParams).toEqual([null, "c1"]);
+  });
+
+  it("returns the same reference when the image is not loaded", () => {
+    expect(patchImageInListCache(data, 42, patch)).toBe(data);
+  });
+
+  it("leaves a missing cache entry missing", () => {
+    expect(patchImageInListCache(undefined, 5, patch)).toBeUndefined();
+  });
+});
+
+describe("useImagesInfinite", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("keeps a loaded list fresh for five minutes so Back from the editor does not refetch it", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => jsonResponse({ items: [makeItem(1)], next_cursor: null, total: 1 })),
+    );
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    const wrapper = ({ children }: { children: ReactNode }) =>
+      createElement(QueryClientProvider, { client: queryClient }, children);
+
+    const { result } = renderHook(() => useImagesInfinite(PROJECT_ID, "newest", ""), { wrapper });
+    await waitFor(() => {
+      expect(result.current.isSuccess).toBe(true);
+    });
+
+    const query = queryClient.getQueryCache().find({ queryKey: imageKeys.list(PROJECT_ID, "newest", "") });
+    expect(query?.observers[0]?.options.staleTime).toBe(300000);
+    expect(query?.isStale()).toBe(false);
   });
 });
