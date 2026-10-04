@@ -34,7 +34,11 @@
   "canvas": {
     "aria": "Annotation canvas",
     "noClassesHint": "Add a class to start drawing.",
-    "loadFailed": "Could not load this image."
+    "loadFailed": "Could not load this image.",
+    "zoomIn": "Zoom in",
+    "zoomOut": "Zoom out",
+    "fit": "Fit",
+    "fitAria": "Fit image to window"
   },
   "shortcuts": {
     "group": {

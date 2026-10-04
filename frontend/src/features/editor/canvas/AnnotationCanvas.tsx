@@ -15,21 +15,16 @@ import {
   toPx,
 } from "../lib/geometry";
 import type { EditorTool } from "../store/editorUiStore";
+import { ZOOM_STEP } from "../lib/viewport";
 import { BoxShape, withAlpha } from "./BoxShape";
 import { Crosshair, type CrosshairHandle } from "./Crosshair";
+import { ZoomOverlay } from "./ZoomOverlay";
+import { useStageViewport } from "./useStageViewport";
 
-/** Free space kept around the image when it is fitted to the window (24 px a side). */
-const FIT_MARGIN = 48;
-/** Small images are magnified up to 400 %, never beyond. */
-const MAX_FIT_SCALE = 4;
 const MATTE = "#141414";
 const FALLBACK_COLOR = "#FFFFFF";
-
-/** Scale that fits the image into the container; falls back to 1 on a zero or bad size. */
-function fitScale(width: number, height: number, imgW: number, imgH: number): number {
-  const scale = Math.min((width - FIT_MARGIN) / imgW, (height - FIT_MARGIN) / imgH, MAX_FIT_SCALE);
-  return Number.isFinite(scale) && scale > 0 ? scale : 1;
-}
+/** From this scale up the image is drawn without smoothing, so pixels stay crisp. */
+const CRISP_SCALE = 3;
 
 /** What the editor page may ask of the canvas (Esc cancels a draft in progress). */
 export interface AnnotationCanvasHandle {
@@ -39,6 +34,8 @@ export interface AnnotationCanvasHandle {
   isDrawing: () => boolean;
   /** Move keyboard focus to the canvas (after a control elsewhere took it). */
   focus: () => void;
+  /** Zoom and position back to fit (F, 0, the Fit button). */
+  fit: () => void;
 }
 
 interface AnnotationCanvasProps {
@@ -71,8 +68,8 @@ interface AnnotationCanvasProps {
 /**
  * The react-konva stage: the original on one layer, boxes + Transformer + the
  * draft on a second, crosshair guides on a third. Zoom and pan live on the
- * Stage (it is fitted to the window here), so `getRelativePointerPosition()` is
- * always in image pixels.
+ * Stage (every image opens fit to the window), so `getRelativePointerPosition()`
+ * is always in image pixels.
  */
 export function AnnotationCanvas({
   ref,
@@ -125,9 +122,10 @@ export function AnnotationCanvas({
   }, []);
 
   const hasStage = size.width > 0 && size.height > 0;
-  const scale = fitScale(size.width, size.height, imgW, imgH);
-  const offsetX = (size.width - imgW * scale) / 2;
-  const offsetY = (size.height - imgH * scale) / 2;
+  // A new decoded image (or a new size) always opens fit; the user's view lives in the hook.
+  const viewport = useStageViewport(size, { width: imgW, height: imgH }, image);
+  const { view, zoomBy } = viewport;
+  const scale = view.scale;
   const selectTool = tool === "select";
 
   // The Transformer follows the selected box, only in the Select tool.
@@ -203,6 +201,7 @@ export function AnnotationCanvas({
     cancelDraft,
     isDrawing: () => startRef.current !== null,
     focus: () => containerRef.current?.focus(),
+    fit: viewport.fit,
   }));
 
   const handlePointerDown = (event: Konva.KonvaEventObject<PointerEvent>) => {
@@ -261,6 +260,17 @@ export function AnnotationCanvas({
     }
   };
 
+  // The wheel zooms toward the cursor; Ctrl+wheel (trackpad pinch) follows the same rule.
+  const handleWheel = (event: Konva.KonvaEventObject<WheelEvent>) => {
+    event.evt.preventDefault();
+    const pointer = event.target.getStage()?.getPointerPosition();
+    const { deltaY } = event.evt;
+    if (!pointer || deltaY === 0) {
+      return;
+    }
+    zoomBy(deltaY < 0 ? ZOOM_STEP : 1 / ZOOM_STEP, pointer);
+  };
+
   // A click on empty canvas (the stage itself; the image layer does not listen) deselects.
   const handleStageClick = (event: Konva.KonvaEventObject<Event>) => {
     if (event.target === event.target.getStage()) {
@@ -315,10 +325,11 @@ export function AnnotationCanvas({
           ref={stageRef}
           width={size.width}
           height={size.height}
-          x={offsetX}
-          y={offsetY}
+          x={view.x}
+          y={view.y}
           scaleX={scale}
           scaleY={scale}
+          onWheel={handleWheel}
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
@@ -326,7 +337,7 @@ export function AnnotationCanvas({
           onTap={handleStageClick}
           onPointerClick={handleStageClick}
         >
-          <Layer listening={false}>
+          <Layer listening={false} imageSmoothingEnabled={scale < CRISP_SCALE}>
             {image !== null && <KonvaImage image={image} width={imgW} height={imgH} />}
           </Layer>
           <Layer>
@@ -375,6 +386,14 @@ export function AnnotationCanvas({
           </Layer>
           <Crosshair ref={crosshairRef} />
         </Stage>
+      )}
+      {hasStage && (
+        <ZoomOverlay
+          scale={scale}
+          onZoomIn={() => zoomBy(ZOOM_STEP)}
+          onZoomOut={() => zoomBy(1 / ZOOM_STEP)}
+          onFit={viewport.fit}
+        />
       )}
       {image === null && (
         <div
