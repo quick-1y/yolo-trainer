@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 03
 current_phase_name: Box Annotation Editor
 status: executing
-stopped_at: Completed 03-05-PLAN.md
-last_updated: "2026-10-04T08:21:06.588Z"
+stopped_at: Completed 03-06-PLAN.md
+last_updated: "2026-10-04T08:37:33.514Z"
 last_activity: 2026-10-04
 last_activity_desc: Phase 03 execution started
-state_head: eff8c639476525f70c30e0756330021ea002c967
+state_head: fb34c62a92ab9dbe96bd632308a17fb25cc8358d
 progress:
   total_phases: 12
   completed_phases: 2
   total_plans: 36
-  completed_plans: 28
+  completed_plans: 29
   percent: 17
 ---
 
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-10-03)
 ## Current Position
 
 Phase: 03 (Box Annotation Editor) — EXECUTING
-Plan: 6 of 13
+Plan: 7 of 13
 Status: Ready to execute
 Last activity: 2026-10-04 — Phase 03 execution started
 
@@ -86,6 +86,7 @@ Progress: [██░░░░░░░░] 17%
 | Phase 03 P03 | 12 min | 2 tasks | 16 files |
 | Phase 03 P04 | 6 min | 2 tasks | 12 files |
 | Phase 03 P05 | 8 min | 2 tasks | 12 files |
+| Phase 03 P06 | 12min | 2 tasks | 18 files |
 
 ## Accumulated Context
 
@@ -137,6 +138,9 @@ Recent decisions affecting current work:
 - [Phase 03]: 03-04: Images page sort/search live in the URL (useSearchParams, replace writes); q capped at 255 chars on read, send and write; tile click/Enter opens the editor with { sort, q }; ImageViewerModal removed — D-03: editor and grid share one ordering; URL makes both reloadable; P2 D-10 viewer replaced by the editor
 - [Phase 03]: 03-05: every shortcut row (including undo and redo) ignores key auto-repeat — Truth 'each distinct key press acts once'; allowRepeat is a per-row flag in lib/shortcuts.ts
 - [Phase 03]: 03-05: shortcuts are gated by an editor modal gate (EditorModalGateContext + useEditorModalOpen) — Later dialogs opt in with one hook call; EditorPage turns every binding off while the count is above zero
+- [Phase 03]: 03-06: classes load failure shown inside the class panel, not as a full-screen editor error — Drawing stays disabled but the rest of the editor stays usable
+- [Phase 03]: 03-06: an object row click switches to the Select tool and selects the box — A selection only exists in the Select tool; the Transformer would never attach otherwise
+- [Phase 03]: 03-06: activeClassId is stored as an id in the UI store, resolved against the class list with a first-class fallback, and kept across images — Draw-many workflow keeps its class; a deleted class or single-class project needs no extra state
 
 ### Pending Todos
 
@@ -159,6 +163,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-10-04T08:21:06.495Z
-Stopped at: Completed 03-05-PLAN.md
+Last session: 2026-10-04T08:37:33.407Z
+Stopped at: Completed 03-06-PLAN.md
 Resume file: None
