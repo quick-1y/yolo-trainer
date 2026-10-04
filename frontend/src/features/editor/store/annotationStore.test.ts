@@ -169,6 +169,57 @@ describe("deleteBox", () => {
   });
 });
 
+describe("setBoxClass", () => {
+  function storeWithBoxes(isReviewed = false) {
+    return createEditorStore(
+      { boxes: [BOX, { ...BOX, id: "b" }], isBackground: false, isReviewed },
+      0,
+    );
+  }
+
+  it("changes only that box's class in one history entry and demotes a reviewed image", () => {
+    const store = storeWithBoxes(true);
+
+    store.getState().setBoxClass("a", 2);
+
+    expect(store.getState().doc.boxes.map((box) => box.class_id)).toEqual([2, 1]);
+    expect(store.getState().doc.isReviewed).toBe(false);
+    expect(store.temporal.getState().pastStates).toHaveLength(1);
+  });
+
+  it("keeps the same doc and adds no entry for the same class or an unknown id", () => {
+    const store = storeWithBoxes(true);
+    const doc = store.getState().doc;
+
+    store.getState().setBoxClass("a", 1);
+    store.getState().setBoxClass("missing", 2);
+
+    expect(store.getState().doc).toBe(doc);
+    expect(store.getState().doc.isReviewed).toBe(true);
+    expect(store.temporal.getState().pastStates).toHaveLength(0);
+  });
+
+  it("undo restores the previous class and the reviewed flag", () => {
+    const store = storeWithBoxes(true);
+    store.getState().setBoxClass("a", 2);
+
+    store.temporal.getState().undo();
+
+    expect(store.getState().doc.boxes[0].class_id).toBe(1);
+    expect(store.getState().doc.isReviewed).toBe(true);
+  });
+
+  it("redo applies the class again", () => {
+    const store = storeWithBoxes();
+    store.getState().setBoxClass("a", 2);
+    store.temporal.getState().undo();
+
+    store.temporal.getState().redo();
+
+    expect(store.getState().doc.boxes[0].class_id).toBe(2);
+  });
+});
+
 describe("history", () => {
   const EMPTY = { boxes: [], isBackground: false, isReviewed: false };
 

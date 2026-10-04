@@ -42,6 +42,8 @@ interface EditorApiOptions {
   isReviewed?: boolean;
   /** Status of GET /images/5 (and its annotations); 404 simulates a deleted image. */
   imageStatus?: number;
+  /** GET /classes: answer (default), never answer, or fail with 500. POST /classes always works. */
+  classesMode?: "ok" | "pending" | "error";
 }
 
 function json(body: unknown, status = 200): Response {
@@ -53,7 +55,7 @@ function json(body: unknown, status = 200): Response {
 
 /**
  * Stub `fetch` for the editor route: project 1, image 5, its annotation set,
- * the classes and the PUT. Every PUT body is parsed into `puts`; anything else
+ * the classes, POST /classes and the PUT. Every PUT body is parsed into `puts`; anything else
  * throws, so an unexpected request fails the test loudly.
  */
 export function stubEditorApi(options: EditorApiOptions = {}) {
@@ -64,7 +66,11 @@ export function stubEditorApi(options: EditorApiOptions = {}) {
     isReviewed = false,
     imageStatus = 200,
   } = options;
+  let classesMode = options.classesMode ?? "ok";
+  // POST /classes appends here, so the next GET /classes answers with the new class.
+  const classList: unknown[] = [...classes];
   const puts: Array<Record<string, unknown>> = [];
+  const posts: Array<Record<string, unknown>> = [];
 
   const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
     const url = new URL(typeof input === "string" ? input : input.toString(), "http://localhost");
@@ -75,7 +81,26 @@ export function stubEditorApi(options: EditorApiOptions = {}) {
       return json(PROJECT);
     }
     if (method === "GET" && path === "/api/projects/1/classes") {
-      return json(classes);
+      if (classesMode === "pending") {
+        return new Promise<Response>(() => {});
+      }
+      return classesMode === "error"
+        ? json({ detail: "Classes are unavailable." }, 500)
+        : json(classList);
+    }
+    if (method === "POST" && path === "/api/projects/1/classes") {
+      const body = JSON.parse(String(init?.body)) as { name: string };
+      posts.push(body);
+      const created = {
+        id: 100 + classList.length,
+        name: body.name,
+        color: "#3CB44B",
+        index: classList.length,
+        created_at: "2026-01-15T10:00:00Z",
+        object_count: 0,
+      };
+      classList.push(created);
+      return json(created, 201);
     }
     if (method === "GET" && path === "/api/projects/1/images/5") {
       return imageStatus === 200 ? json(IMAGE) : json({ detail: "Image not found." }, imageStatus);
@@ -111,5 +136,13 @@ export function stubEditorApi(options: EditorApiOptions = {}) {
   });
 
   vi.stubGlobal("fetch", fetchMock);
-  return { puts, fetchMock };
+  return {
+    puts,
+    posts,
+    fetchMock,
+    /** Switch what the next GET /classes does (a retry after a failure). */
+    setClassesMode: (mode: "ok" | "pending" | "error") => {
+      classesMode = mode;
+    },
+  };
 }

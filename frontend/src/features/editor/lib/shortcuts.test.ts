@@ -102,11 +102,29 @@ describe("buildHotkeys", () => {
       "undo",
       "redo",
       "deselect",
+      "classDigit",
     ]);
     expect(SHORTCUTS.filter((def) => def.editing).map((def) => def.id)).toEqual([
       "delete",
       "undo",
       "redo",
+      "classDigit",
+    ]);
+  });
+
+  it("binds the digits 1-9 to physical keys in one classes row", () => {
+    const row = SHORTCUTS.find((def) => def.id === "classDigit");
+    expect(row?.group).toBe("classes");
+    expect(row?.hotkeys).toEqual([
+      "digit1",
+      "digit2",
+      "digit3",
+      "digit4",
+      "digit5",
+      "digit6",
+      "digit7",
+      "digit8",
+      "digit9",
     ]);
   });
 });
