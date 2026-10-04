@@ -7,12 +7,20 @@ import { useUpload } from "./UploadContext";
 
 const ACCEPT = "image/jpeg,image/png,image/webp,image/bmp";
 
+interface UploadButtonsProps {
+  /**
+   * "Upload images" is the filled primary action (default). The title row passes false once
+   * the project has images, so "Annotate next" is the single primary action there.
+   */
+  primary?: boolean;
+}
+
 /**
  * "Upload images" (file picker) and "Upload folder" (directory picker).
  * Both are disabled while an upload runs or until the server limits load.
  * Reused by the empty state of the Images page.
  */
-export function UploadButtons() {
+export function UploadButtons({ primary = true }: UploadButtonsProps) {
   const { t } = useTranslation("images");
   const { state, startUpload } = useUpload();
   const config = useAppConfig();
@@ -29,7 +37,7 @@ export function UploadButtons() {
     <Group gap={8}>
       <FileButton onChange={startUpload} accept={ACCEPT} multiple>
         {(props) => (
-          <Button {...props} disabled={disabled}>
+          <Button {...props} variant={primary ? undefined : "default"} disabled={disabled}>
             {t("upload.files")}
           </Button>
         )}

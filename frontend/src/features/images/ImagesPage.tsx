@@ -5,9 +5,10 @@ import { useNavigate, useOutletContext, useSearchParams } from "react-router-dom
 
 import { ApiError } from "../../api/client";
 import { useAppConfig } from "../../api/config";
-import { type ImageSort, useImagesInfinite } from "../../api/images";
+import { type ImageSort, useImagesInfinite, useStatusCounts } from "../../api/images";
 import type { Project } from "../../api/projects";
 import { editorPath, readGridParams } from "../editor/lib/urls";
+import { AnnotateNextButton } from "./AnnotateNextButton";
 import { DeleteImagesModal } from "./DeleteImagesModal";
 import { ImageGrid } from "./ImageGrid";
 import { ImagesToolbar } from "./ImagesToolbar";
@@ -198,6 +199,14 @@ export function ImagesPage() {
   const searching = query !== "";
   // Empty states only when the list is exhausted, not merely empty.
   const nothingLeft = items.length === 0 && !images.hasNextPage;
+  // "Annotate next" needs a project with images. The project-wide counts say so; until they
+  // load (or when they fail) the grid's own list stands in, since the server resolves the
+  // lookup either way.
+  const counts = useStatusCounts(project.id);
+  const hasImages =
+    counts.data !== undefined
+      ? counts.data.total > 0
+      : images.data !== undefined && !nothingLeft;
 
   return (
     <Box
@@ -218,7 +227,10 @@ export function ImagesPage() {
                 : t("images:page.count", { count: total })}
             </Text>
           </Group>
-          <UploadButtons />
+          <Group gap={8}>
+            {hasImages && <AnnotateNextButton projectId={project.id} sort={sort} query={query} />}
+            <UploadButtons primary={!hasImages} />
+          </Group>
         </Group>
         <StatusSummary projectId={project.id} />
       </Box>

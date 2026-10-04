@@ -76,6 +76,7 @@
     "body": "No filenames contain \"{{query}}\". Try a different search.",
     "clear": "Clear search"
   },
+  "annotateNext": "Annotate next",
   "status": {
     "unannotated": "Unannotated",
     "annotated": "Annotated",
