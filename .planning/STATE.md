@@ -2,17 +2,17 @@
 gsd_state_version: "1.0"
 current_phase: 03
 current_phase_name: Box Annotation Editor
-status: executing
-stopped_at: Completed 03-12-PLAN.md
-last_updated: "2026-10-04T13:03:14.954Z"
+status: verifying
+stopped_at: Completed 03-13-PLAN.md
+last_updated: "2026-10-04T13:34:17.991Z"
 last_activity: 2026-10-04
 last_activity_desc: Phase 03 execution started
-state_head: 237b8fec12c9fe0f59faeb03f940405632625416
+state_head: 6224f72f8a7f316c48bce9573556de8745e4a092
 progress:
   total_phases: 12
   completed_phases: 2
   total_plans: 36
-  completed_plans: 35
+  completed_plans: 36
   percent: 17
 ---
 
@@ -29,7 +29,7 @@ See: .planning/PROJECT.md (updated 2026-10-03)
 
 Phase: 03 (Box Annotation Editor) — EXECUTING
 Plan: 13 of 13
-Status: Ready to execute
+Status: Phase complete — ready for verification
 Last activity: 2026-10-04 — Phase 03 execution started
 
 Progress: [██░░░░░░░░] 17%
@@ -93,6 +93,7 @@ Progress: [██░░░░░░░░] 17%
 | Phase 03 P10 | 13 min | 2 tasks | 14 files |
 | Phase 03 P11 | 19 min | 2 tasks | 19 files |
 | Phase 03 P12 | 22 min | 3 tasks | 19 files |
+| Phase 03 P13 | 28 min | 2 tasks | 12 files |
 
 ## Accumulated Context
 
@@ -158,6 +159,8 @@ Recent decisions affecting current work:
 - [Phase 03]: 03-11: strict Images-page fetch stubs call handleImagesSideRequest (test/stubImagesApi.ts) before their Unexpected request throw — RESEARCH Pitfall 13: new page requests must not break unrelated tests
 - [Phase 03]: Plan 03-12: while a save retry waits, new edits only update the pending doc and ride the next attempt; every 4xx except 404 and 409 is treated like 422 (report, keep pending, no timed retry) — Keeps T3-12-02 true (one request per image per backoff window, even while the user keeps drawing during an outage); a rejected request would fail the same way on retry
 - [Phase 03]: Plan 03-12: Reload and the 422 resync call resetQueries on the annotation set (not invalidate) after discardEditor; a 404 on save also discards the entry; read-only is one boolean in Workspace fanned out to tools, canvas, keys, class panel, object list and top bar toggles — The cached set is the last saved copy, so invalidating would rebuild an editable stale view first; a gone image must not keep the beforeunload guard on; one flag keeps every reason (conflict, orientation mismatch, load failure) consistent
+- [Phase 03]: 03-13: POINTER_GESTURES is a separate display-only list so zoom/pan rows appear in the shortcut reference but never become hotkeys — Keeps buildHotkeys driven only by SHORTCUTS rows
+- [Phase 03]: 03-13: jsdom popover content is queried with hidden:true; floating-ui hide middleware marks zero-size references clipped, so Mantine sets display:none (root cause of the ClassRow flake, not a timeout) — A 300 ms delay after the click reproduced the failure deterministically; asyncUtilTimeout raised to 8000 as well
 
 ### Pending Todos
 
@@ -180,6 +183,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-10-04T13:03:05.516Z
-Stopped at: Completed 03-12-PLAN.md
+Last session: 2026-10-04T13:34:17.896Z
+Stopped at: Completed 03-13-PLAN.md
 Resume file: None
