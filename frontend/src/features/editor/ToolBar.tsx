@@ -112,10 +112,20 @@ interface ToolBarProps {
   hasClasses: boolean;
   /** The original has decoded. */
   imageLoaded: boolean;
+  /** The editor cannot change annotations (conflict, orientation mismatch, load failure). */
+  readOnly?: boolean;
+  /** Why it is read-only; replaces the Box tooltip while `readOnly`. */
+  readOnlyReason?: string;
 }
 
 /** The 48 px vertical tool bar: Select (V), Box (B), a divider, Undo and Redo. */
-export function ToolBar({ store, hasClasses, imageLoaded }: ToolBarProps) {
+export function ToolBar({
+  store,
+  hasClasses,
+  imageLoaded,
+  readOnly = false,
+  readOnlyReason,
+}: ToolBarProps) {
   const { t } = useTranslation("editor");
   const pastCount = useStore(store.temporal, (state) => state.pastStates.length);
   const futureCount = useStore(store.temporal, (state) => state.futureStates.length);
@@ -145,22 +155,29 @@ export function ToolBar({ store, hasClasses, imageLoaded }: ToolBarProps) {
           label={t("tools.box")}
           caps={primaryCaps("box")}
           icon={<BoxIcon />}
-          disabled={!hasClasses || !imageLoaded}
-          disabledHint={hasClasses ? undefined : t("tools.boxDisabled")}
+          disabled={!hasClasses || !imageLoaded || readOnly}
+          // A read-only editor says why; otherwise the only explained case is "no classes".
+          disabledHint={
+            readOnly && readOnlyReason !== undefined
+              ? readOnlyReason
+              : hasClasses
+                ? undefined
+                : t("tools.boxDisabled")
+          }
         />
         <Divider w={24} />
         <HistoryButton
           label={t("tools.undo")}
           caps={primaryCaps("undo")}
           icon={<UndoIcon />}
-          disabled={pastCount === 0}
+          disabled={pastCount === 0 || readOnly}
           onClick={() => store.temporal.getState().undo()}
         />
         <HistoryButton
           label={t("tools.redo")}
           caps={primaryCaps("redo")}
           icon={<RedoIcon />}
-          disabled={futureCount === 0}
+          disabled={futureCount === 0 || readOnly}
           onClick={() => store.temporal.getState().redo()}
         />
       </Stack>

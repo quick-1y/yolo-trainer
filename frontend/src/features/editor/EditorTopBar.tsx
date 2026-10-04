@@ -240,6 +240,10 @@ interface EditorTopBarProps {
   navigation: EditorNavigation;
   /** Save, then jump to the next unannotated image (the N key does the same). */
   onNextUnannotated: () => void;
+  /** The editor cannot change annotations: the Background and Reviewed toggles are off. */
+  readOnly?: boolean;
+  /** Why it is read-only; shown as the toggles' tooltip. */
+  readOnlyReason?: string;
 }
 
 /** The 48 px bar: Back, the filename, the save indicator and the previous / next arrows. */
@@ -250,6 +254,8 @@ export function EditorTopBar({
   store,
   navigation,
   onNextUnannotated,
+  readOnly = false,
+  readOnlyReason,
 }: EditorTopBarProps) {
   const { t } = useTranslation("editor");
   const [searchParams] = useSearchParams();
@@ -306,10 +312,10 @@ export function EditorTopBar({
       <ToggleControl
         label={t("topBar.background.label")}
         hint={t("topBar.background.hint")}
-        disabledHint={t("topBar.background.disabledHint")}
+        disabledHint={readOnly ? (readOnlyReason ?? "") : t("topBar.background.disabledHint")}
         caps={primaryCaps("background")}
         pressed={isBackground}
-        blocked={hasBoxes}
+        blocked={hasBoxes || readOnly}
         busy={pending !== null}
         wide={wide}
         icon={<BackgroundIcon />}
@@ -319,10 +325,10 @@ export function EditorTopBar({
       <ToggleControl
         label={isReviewed ? t("topBar.reviewed.on") : t("topBar.reviewed.off")}
         text={isReviewed ? `✓ ${t("topBar.reviewed.on")}` : t("topBar.reviewed.off")}
-        disabledHint={t("topBar.reviewed.disabledHint")}
+        disabledHint={readOnly ? (readOnlyReason ?? "") : t("topBar.reviewed.disabledHint")}
         caps={primaryCaps("reviewed")}
         pressed={isReviewed}
-        blocked={!hasBoxes && !isBackground}
+        blocked={(!hasBoxes && !isBackground) || readOnly}
         busy={pending !== null}
         wide={wide}
         icon={<span aria-hidden="true">✓</span>}

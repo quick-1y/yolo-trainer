@@ -100,6 +100,10 @@
       "clear": "Remove background mark"
     }
   },
+  "conflict": {
+    "message": "This image was changed elsewhere. Reload to continue.",
+    "reload": "Reload"
+  },
   "leave": {
     "title": "Changes could not be saved",
     "body": "Your latest edits are not saved yet. Retry saving, or leave and lose them.",

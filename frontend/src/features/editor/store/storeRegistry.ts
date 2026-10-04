@@ -1,10 +1,21 @@
 import type { AnnotationSaveInput, SaveResult } from "../../../api/annotations";
+import type { ApiError } from "../../../api/client";
 import { type EditorDoc, type EditorStore, createEditorStore } from "./annotationStore";
 import { type Saver, createSaver } from "./annotationSaver";
+
+/** What the open editor page wants to hear from the saver; it registers and clears them. */
+export interface EditorHandlers {
+  /** The server refused the save as invalid (422): show the message and resync. */
+  onRejected?: (error: ApiError) => void;
+  /** The server no longer has the image (404). */
+  onGone?: () => void;
+}
 
 export interface EditorEntry {
   store: EditorStore;
   saver: Saver;
+  /** Mutable: an entry outlives the page, so the page registers its callbacks here. */
+  handlers: EditorHandlers;
 }
 
 export interface EditorKey {
@@ -78,8 +89,21 @@ function evictIfNeeded(): void {
 }
 
 /**
+ * A retained entry is out of date when it holds nothing unsaved but the server has moved on
+ * (another tab saved, or a class delete bumped the version): its history describes a document
+ * that no longer exists, so undoing it would overwrite the newer state (Pitfall 14).
+ */
+function isStale(entry: EditorEntry, init: EditorInit): boolean {
+  const { saveState, serverVersion } = entry.store.getState().meta;
+  return saveState === "saved" && !entry.saver.isDirty() && serverVersion !== init.version;
+}
+
+/**
  * The retained store + saver of an image, created on first use.
- * `init` and `send` are only used when the entry is created.
+ * `init` and `send` are only used when the entry is created: a retained entry is kept as it is
+ * (with its undo history) unless it is clean and the server version differs from `init.version`,
+ * in which case it is dropped and rebuilt from `init`. An entry with unsaved, failed or
+ * conflicting edits is never replaced here.
  */
 export function getEditor(
   key: EditorKey,
@@ -89,17 +113,24 @@ export function getEditor(
   const id = keyOf(key);
   const existing = entries.get(id);
   if (existing !== undefined) {
+    if (!isStale(existing, init)) {
+      entries.delete(id);
+      entries.set(id, existing);
+      return existing;
+    }
+    existing.saver.dispose();
     entries.delete(id);
-    entries.set(id, existing);
-    return existing;
   }
 
+  const handlers: EditorHandlers = {};
   const store = createEditorStore(init.doc, init.version);
   const saver = createSaver({
     initialVersion: init.version,
     send,
     onStateChange: (saveState) => store.getState().setMeta({ saveState }),
     onSaved: (result: SaveResult) => store.getState().setMeta({ serverVersion: result.version }),
+    onRejected: (error) => handlers.onRejected?.(error),
+    onGone: () => handlers.onGone?.(),
   });
   // Every doc change - a gesture, and later an undo or redo - is saved like any
   // other change (D-10).
@@ -109,18 +140,31 @@ export function getEditor(
     }
   });
 
-  const entry: EditorEntry = { store, saver };
+  const entry: EditorEntry = { store, saver, handlers };
   entries.set(id, entry);
   installUnloadGuard();
   evictIfNeeded();
   return entry;
 }
 
+/**
+ * Drop one image's entry: its saver is disposed and its history and any unsaved work go with it.
+ * For a Reload after a conflict, a rejected save or a deleted image - never a silent discard.
+ */
+export function discardEditor(key: EditorKey): void {
+  const id = keyOf(key);
+  const entry = entries.get(id);
+  if (entry !== undefined) {
+    entry.saver.dispose();
+    entries.delete(id);
+  }
+}
+
 export function peekEditor(key: EditorKey): EditorEntry | undefined {
   return entries.get(keyOf(key));
 }
 
-/** Drop every entry (tests, and a later "discard local history" action). */
+/** Drop every entry (tests). */
 export function resetEditors(): void {
   for (const entry of entries.values()) {
     entry.saver.dispose();

@@ -89,6 +89,11 @@ interface AnnotationCanvasProps {
   noClasses: boolean;
   /** False while a modal is open: Space no longer pans (and is left to the dialog). */
   keyboardEnabled?: boolean;
+  /**
+   * The editor cannot change annotations (conflict, orientation mismatch, load failure): boxes
+   * and the Transformer are inert, so nothing can be moved or resized. Zoom and pan still work.
+   */
+  readOnly?: boolean;
   onCreate: (box: NormBox) => void;
   onSelect: (id: string | null) => void;
   onHover: (id: string | null) => void;
@@ -117,6 +122,7 @@ export function AnnotationCanvas({
   canDraw,
   noClasses,
   keyboardEnabled = true,
+  readOnly = false,
   onCreate,
   onSelect,
   onHover,
@@ -174,10 +180,11 @@ export function AnnotationCanvas({
     if (transformer === null || stage === null) {
       return;
     }
-    const node = selectTool && selectedId !== null ? stage.findOne(`#box-${selectedId}`) : null;
+    const node =
+      selectTool && !readOnly && selectedId !== null ? stage.findOne(`#box-${selectedId}`) : null;
     transformer.nodes(node ? [node] : []);
     transformer.getLayer()?.batchDraw();
-  }, [selectTool, selectedId, boxes, hasStage]);
+  }, [selectTool, readOnly, selectedId, boxes, hasStage]);
 
   // Space turns the left button into a pan. It is read on window so it works wherever focus is
   // (a focused tool button would otherwise be clicked by Space), except in a text field.
@@ -502,7 +509,7 @@ export function AnnotationCanvas({
                 label={labels[box.class_id] ?? ""}
                 fontFamily={fontFamily}
                 scale={scale}
-                interactive={selectTool && !panBlocked}
+                interactive={selectTool && !panBlocked && !readOnly}
                 selected={box.id === selectedId}
                 hovered={box.id === hoveredId}
                 onSelect={onSelect}
@@ -527,7 +534,7 @@ export function AnnotationCanvas({
               flipEnabled={false}
               keepRatio={false}
               ignoreStroke
-              listening={!panBlocked}
+              listening={!panBlocked && !readOnly}
               anchorSize={10}
               anchorFill="#FFFFFF"
               anchorStroke="#141414"

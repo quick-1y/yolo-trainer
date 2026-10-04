@@ -27,6 +27,8 @@ interface ObjectRowProps {
   options: SelectOption[];
   store: EditorStore;
   onReleaseFocus: () => void;
+  /** The editor cannot change annotations: class and delete are off, selecting still works. */
+  readOnly: boolean;
 }
 
 const ObjectRow = memo(function ObjectRow({
@@ -36,6 +38,7 @@ const ObjectRow = memo(function ObjectRow({
   options,
   store,
   onReleaseFocus,
+  readOnly,
 }: ObjectRowProps) {
   const { t } = useTranslation("editor");
   const selected = useEditorUi((state) => state.selectedId === box.id);
@@ -92,6 +95,7 @@ const ObjectRow = memo(function ObjectRow({
           value={String(box.class_id)}
           searchable={false}
           allowDeselect={false}
+          disabled={readOnly}
           comboboxProps={{ withinPortal: true }}
           title={options.find((option) => option.value === String(box.class_id))?.label}
           renderOption={({ option }) => (
@@ -118,6 +122,7 @@ const ObjectRow = memo(function ObjectRow({
         variant="subtle"
         color="red"
         aria-label={t("objects.deleteAria", { index: ordinal })}
+        disabled={readOnly}
         onClick={(event) => {
           event.stopPropagation();
           store.getState().deleteBox(box.id);
@@ -136,6 +141,8 @@ interface ObjectListProps {
   classes: ProjectClassItem[] | undefined;
   /** Called after a class was chosen in a row, to hand the keyboard back to the editor. */
   onReleaseFocus: () => void;
+  /** The editor cannot change annotations (conflict, orientation mismatch, load failure). */
+  readOnly?: boolean;
 }
 
 function SkeletonRows() {
@@ -153,10 +160,12 @@ function Rows({
   store,
   classItems,
   onReleaseFocus,
+  readOnly,
 }: {
   store: EditorStore;
   classItems: ProjectClassItem[];
   onReleaseFocus: () => void;
+  readOnly: boolean;
 }) {
   const { t } = useTranslation("editor");
   const boxes = useStore(
@@ -187,6 +196,7 @@ function Rows({
           <Button
             size="compact-sm"
             variant="subtle"
+            disabled={readOnly}
             onClick={() => store.getState().toggleBackground()}
           >
             {t("objects.background.clear")}
@@ -213,6 +223,7 @@ function Rows({
                 options={options}
                 store={store}
                 onReleaseFocus={onReleaseFocus}
+                readOnly={readOnly}
               />
             )}
           />
@@ -228,7 +239,12 @@ const NO_CLASSES: ProjectClassItem[] = [];
  * The lower part of the editor's right column: every object of the image, with a
  * visibility toggle, a class dropdown and delete. Rows are virtualized 40px rows.
  */
-export function ObjectList({ store, classes: classItems, onReleaseFocus }: ObjectListProps) {
+export function ObjectList({
+  store,
+  classes: classItems,
+  onReleaseFocus,
+  readOnly = false,
+}: ObjectListProps) {
   return (
     <Box style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column" }}>
       <Divider color="dark.4" />
@@ -246,6 +262,7 @@ export function ObjectList({ store, classes: classItems, onReleaseFocus }: Objec
             store={store}
             classItems={classItems ?? NO_CLASSES}
             onReleaseFocus={onReleaseFocus}
+            readOnly={readOnly}
           />
         )}
       </Stack>

@@ -1,16 +1,30 @@
 import { Alert, Box, Button, Loader, Stack, Text } from "@mantine/core";
+import { notifications } from "@mantine/notifications";
 import { useQueryClient } from "@tanstack/react-query";
-import { type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  type ReactNode,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useParams, useSearchParams } from "react-router-dom";
 import { useStore } from "zustand";
 
-import { createAnnotationSender, useAnnotations } from "../../api/annotations";
+import {
+  annotationKeys,
+  createAnnotationSender,
+  useAnnotations,
+} from "../../api/annotations";
 import { ApiError } from "../../api/client";
-import { type ProjectClassItem, useClasses } from "../../api/classes";
-import { fileUrl, useImage, useNeighbors } from "../../api/images";
+import { type ProjectClassItem, classKeys, useClasses } from "../../api/classes";
+import { fileUrl, imageKeys, useImage, useNeighbors } from "../../api/images";
 import { useProject } from "../../api/projects";
 import { ProjectNotFound } from "../project/ProjectNotFound";
+import { ConflictBanner } from "./ConflictBanner";
 import { EditorTopBar } from "./EditorTopBar";
 import { ClassPanel } from "./ClassPanel";
 import { LeaveDialog } from "./LeaveDialog";
@@ -23,7 +37,7 @@ import { editorPath, imagesPath, readGridParams } from "./lib/urls";
 import type { NormBox } from "./lib/geometry";
 import { docFromSet } from "./store/annotationStore";
 import { useEditorUi } from "./store/editorUiStore";
-import { type EditorEntry, getEditor } from "./store/storeRegistry";
+import { type EditorEntry, discardEditor, getEditor } from "./store/storeRegistry";
 import { EditorModalGateContext, useEditorHotkeys } from "./useEditorHotkeys";
 import { useEditorNavigation } from "./useEditorNavigation";
 import { useNextUnannotated } from "./useNextUnannotated";
@@ -111,8 +125,12 @@ function LoadedEditor({ projectId, imageId }: { projectId: number; imageId: numb
 
   const set = annotations.data;
   const hasSet = set !== undefined;
-  // One retained store + saver per image (D-10). The registry ignores `init` when
-  // an entry already exists, so a refetched set never replaces live edits.
+  const setVersion = set?.version;
+  // One retained store + saver per image (D-10). The registry keeps an entry that holds
+  // unsaved work whatever the fetched set says, so a refetch never replaces live edits; a clean
+  // entry whose version differs from the server's is rebuilt (another tab saved: Pitfall 14).
+  // Own saves patch the cached set to the version the store already holds, so they change
+  // nothing here.
   const entry = useMemo(
     () =>
       set === undefined
@@ -122,9 +140,48 @@ function LoadedEditor({ projectId, imageId }: { projectId: number; imageId: numb
             { doc: docFromSet(set), version: set.version },
             createAnnotationSender(queryClient, projectId, imageId),
           ),
-    // Keyed by presence of the set, not by every saved set.
-    [hasSet, projectId, imageId, queryClient],
+    [hasSet, setVersion, projectId, imageId, queryClient],
   );
+
+  // Rebuild this image from the server: its entry (history, pending edits) is dropped and its
+  // annotation set starts again from nothing, so the page cannot rebuild from a stale cached copy.
+  const resyncAnnotations = useCallback(() => {
+    discardEditor({ projectId, imageId });
+    void queryClient.resetQueries({
+      queryKey: annotationKeys.set(projectId, imageId),
+      exact: true,
+    });
+  }, [projectId, imageId, queryClient]);
+
+  // The saver reports what the server refused through the entry; the entry outlives this page,
+  // so the callbacks are registered while it is open and cleared when it closes.
+  useEffect(() => {
+    if (entry === null) {
+      return undefined;
+    }
+    // 422: show the server's message, then resync classes and annotations (T3-12-04).
+    entry.handlers.onRejected = (error) => {
+      notifications.show({ color: "red", message: error.message });
+      void queryClient.invalidateQueries({ queryKey: classKeys.list(projectId) });
+      resyncAnnotations();
+    };
+    // 404: the image is gone; nothing can be saved for it, so the entry stops guarding the tab
+    // and the refetched detail shows the not-found view.
+    entry.handlers.onGone = () => {
+      discardEditor({ projectId, imageId });
+      void queryClient.invalidateQueries({ queryKey: imageKeys.detail(projectId, imageId) });
+    };
+    return () => {
+      entry.handlers.onRejected = undefined;
+      entry.handlers.onGone = undefined;
+    };
+  }, [entry, projectId, imageId, queryClient, resyncAnnotations]);
+
+  // Reload after a 409 (D-12): drop the local history and take the server's version.
+  const reloadImage = useCallback(() => {
+    resyncAnnotations();
+    void queryClient.invalidateQueries({ queryKey: imageKeys.detail(projectId, imageId) });
+  }, [resyncAnnotations, queryClient, projectId, imageId]);
 
   if (isNotFound(project.error)) {
     return (
@@ -179,6 +236,7 @@ function LoadedEditor({ projectId, imageId }: { projectId: number; imageId: numb
       classesError={classes.data === undefined ? classes.error : null}
       onRetryClasses={() => void classes.refetch()}
       entry={entry}
+      onReload={reloadImage}
     />
   );
 }
@@ -195,6 +253,8 @@ interface WorkspaceProps {
   classesError: unknown;
   onRetryClasses: () => void;
   entry: EditorEntry;
+  /** Reload after a conflict: refetch the image's annotations and drop its local history. */
+  onReload: () => void;
 }
 
 const CHROME = {
@@ -213,9 +273,16 @@ function Workspace({
   classesError,
   onRetryClasses,
   entry,
+  onReload,
 }: WorkspaceProps) {
   const { t } = useTranslation(["editor", "common"]);
   const boxes = useStore(entry.store, (state) => state.doc.boxes);
+  const saveState = useStore(entry.store, (state) => state.meta.saveState);
+  // A conflict makes the editor read-only until Reload (D-12): nothing can change the document,
+  // and the saver has stopped, so a local edit could never reach the server anyway.
+  const conflict = saveState === "conflict";
+  const readOnly = conflict;
+  const readOnlyReason = conflict ? t("conflict.message") : undefined;
   const loaded = useLoadedImage(fileUrl(projectId, imageId));
   const canvasRef = useRef<AnnotationCanvasHandle>(null);
 
@@ -296,7 +363,8 @@ function Workspace({
     tool === "box" &&
     loaded.status === "loaded" &&
     activeClass !== undefined &&
-    navigation.pending === null;
+    navigation.pending === null &&
+    !readOnly;
 
   const handleCreate = (norm: NormBox) => {
     if (activeClass === undefined) {
@@ -319,7 +387,10 @@ function Workspace({
       return;
     }
     if (selectedId !== null) {
-      entry.store.getState().setBoxClass(selectedId, target.id);
+      // A read-only editor cannot reclassify; picking the drawing class is UI state only.
+      if (!readOnly) {
+        entry.store.getState().setBoxClass(selectedId, target.id);
+      }
     } else {
       setActiveClass(target.id);
     }
@@ -340,7 +411,7 @@ function Workspace({
     return counts;
   }, [boxes]);
 
-  const canPickBox = classList.length > 0 && loaded.status === "loaded";
+  const canPickBox = classList.length > 0 && loaded.status === "loaded" && !readOnly;
   const stepTo = (id: number | null, control: "prev" | "next") => {
     if (id !== null) {
       void navigation.goTo(editorPath(projectId, id, grid), control);
@@ -382,7 +453,8 @@ function Workspace({
       save: () => void entry.saver.flush(),
     },
     // While a move waits for the save, editing keys are off too: nothing new may slip in.
-    { enabled: openModals === 0 && navigation.pending === null, readOnly: false },
+    // Read-only drops every editing row; navigation, view and save keep working.
+    { enabled: openModals === 0 && navigation.pending === null, readOnly },
   );
 
   return (
@@ -404,13 +476,18 @@ function Workspace({
           store={entry.store}
           navigation={navigation}
           onNextUnannotated={goNextUnannotated}
+          readOnly={readOnly}
+          readOnlyReason={readOnlyReason}
         />
         <ToolBar
           store={entry.store}
           hasClasses={classList.length > 0}
           imageLoaded={loaded.status === "loaded"}
+          readOnly={readOnly}
+          readOnlyReason={readOnlyReason}
         />
         <Box style={{ minWidth: 0, minHeight: 0, position: "relative" }}>
+          {conflict && <ConflictBanner onReload={onReload} />}
           <AnnotationCanvas
             ref={canvasRef}
             image={loaded.image}
@@ -426,6 +503,7 @@ function Workspace({
             canDraw={canDraw}
             noClasses={classes !== undefined && classes.length === 0}
             keyboardEnabled={openModals === 0}
+            readOnly={readOnly}
             onCreate={handleCreate}
             onSelect={select}
             onHover={hover}
@@ -464,6 +542,7 @@ function Workspace({
             store={entry.store}
             classes={classes}
             onReleaseFocus={() => canvasRef.current?.focus()}
+            readOnly={readOnly}
           />
         </Box>
       </Box>
