@@ -28,6 +28,9 @@ export function docStatus(doc: EditorDoc): DocStatus {
   return doc.boxes.length > 0 ? "annotated" : "unannotated";
 }
 
+/** Most boxes one image can hold; mirrors the server's `schemas.MAX_BOXES` (a PUT with more is a 422). */
+export const MAX_BOXES = 2000;
+
 export type SaveState = "saved" | "saving" | "error" | "conflict";
 
 /** Never part of history: where the save is, not what the user edited. */
@@ -39,7 +42,7 @@ export interface EditorMeta {
 export interface EditorState {
   doc: EditorDoc;
   meta: EditorMeta;
-  /** One gesture = one `set` = one history entry. */
+  /** One gesture = one `set` = one history entry. Refused (no change) at `MAX_BOXES` boxes. */
   createBox: (box: Box) => void;
   /** Replace one box's geometry (a finished move or resize): one `set`, one history entry. */
   updateBox: (id: string, geometry: NormBox) => void;
@@ -74,15 +77,21 @@ export function createEditorStore(doc: EditorDoc, version: number) {
         doc,
         meta: { serverVersion: version, saveState: "saved" },
         createBox: (box) =>
-          set((state) => ({
-            doc: {
-              boxes: [...state.doc.boxes, box],
-              // Drawing on a background image clears the flag (D-14) and any
-              // annotation change demotes a reviewed image (D-15), in the same entry.
-              isBackground: false,
-              isReviewed: false,
-            },
-          })),
+          set((state) => {
+            if (state.doc.boxes.length >= MAX_BOXES) {
+              // The server would refuse the save: the same state, no entry, no save.
+              return state;
+            }
+            return {
+              doc: {
+                boxes: [...state.doc.boxes, box],
+                // Drawing on a background image clears the flag (D-14) and any
+                // annotation change demotes a reviewed image (D-15), in the same entry.
+                isBackground: false,
+                isReviewed: false,
+              },
+            };
+          }),
         updateBox: (id, geometry) =>
           set((state) => {
             const current = state.doc.boxes.find((box) => box.id === id);

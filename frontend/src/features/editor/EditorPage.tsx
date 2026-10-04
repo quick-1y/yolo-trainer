@@ -35,7 +35,8 @@ import { useLoadedImage } from "./canvas/useLoadedImage";
 import { newId } from "./lib/ids";
 import { editorPath, imagesPath, readGridParams } from "./lib/urls";
 import type { NormBox } from "./lib/geometry";
-import { docFromSet } from "./store/annotationStore";
+import type { Saver } from "./store/annotationSaver";
+import { type EditorDoc, MAX_BOXES, createEditorStore, docFromSet } from "./store/annotationStore";
 import { useEditorUi } from "./store/editorUiStore";
 import { type EditorEntry, discardEditor, getEditor } from "./store/storeRegistry";
 import { EditorModalGateContext, useEditorHotkeys } from "./useEditorHotkeys";
@@ -89,8 +90,29 @@ function isNotFound(error: unknown): boolean {
   return error instanceof ApiError && error.status === 404;
 }
 
-function errorMessage(error: unknown): string {
-  return error instanceof ApiError ? error.message : String(error);
+/** The API's own message, else the fallback (a network failure has nothing readable to show). */
+function errorMessage(error: unknown, fallback: string): string {
+  return error instanceof ApiError ? error.message : fallback;
+}
+
+const EMPTY_DOC: EditorDoc = { boxes: [], isBackground: false, isReviewed: false };
+
+/** A saver that never saves, for the frame shown while an image's annotations did not load. */
+const INERT_SAVER: Saver = {
+  schedule: () => {},
+  flush: async () => "saved",
+  isDirty: () => false,
+  version: () => 0,
+  dispose: () => {},
+};
+
+/**
+ * A store nobody can write to and nothing saves, so the editor frame (top bar, tools, class
+ * panel) can render without a document. It is never registered: it must not look like a clean
+ * copy of an image that has annotations on the server.
+ */
+function createInertEntry(): EditorEntry {
+  return { store: createEditorStore(EMPTY_DOC, 0), saver: INERT_SAVER, handlers: {} };
 }
 
 /**
@@ -177,6 +199,8 @@ function LoadedEditor({ projectId, imageId }: { projectId: number; imageId: numb
     };
   }, [entry, projectId, imageId, queryClient, resyncAnnotations]);
 
+  const inertEntry = useMemo(createInertEntry, []);
+
   // Reload after a 409 (D-12): drop the local history and take the server's version.
   const reloadImage = useCallback(() => {
     resyncAnnotations();
@@ -193,23 +217,14 @@ function LoadedEditor({ projectId, imageId }: { projectId: number; imageId: numb
   if (isNotFound(image.error) || isNotFound(annotations.error)) {
     return <EditorNotFound projectId={projectId} />;
   }
-  // A classes failure is shown inside the class panel, so the rest of the editor stays usable.
-  const failure = project.error ?? image.error ?? annotations.error;
-  if (failure) {
+  // The project failing is not about this image: it replaces the whole editor.
+  if (project.error) {
     return (
       <FullScreen>
         <Alert color="red" title={t("common:error.title")}>
           <Stack gap={8} align="flex-start">
-            <Text size="sm">{errorMessage(failure)}</Text>
-            <Button
-              size="compact-sm"
-              variant="light"
-              onClick={() => {
-                void project.refetch();
-                void image.refetch();
-                void annotations.refetch();
-              }}
-            >
+            <Text size="sm">{errorMessage(project.error, t("loadError.body"))}</Text>
+            <Button size="compact-sm" variant="light" onClick={() => void project.refetch()}>
               {t("common:retry")}
             </Button>
           </Stack>
@@ -217,7 +232,20 @@ function LoadedEditor({ projectId, imageId }: { projectId: number; imageId: numb
       </FullScreen>
     );
   }
-  if (project.isPending || image.data === undefined || entry === null) {
+  if (project.isPending) {
+    return (
+      <FullScreen>
+        <Loader size={32} />
+      </FullScreen>
+    );
+  }
+  // A failed image or annotation request (data missing, not just a failed refetch) keeps the
+  // editor frame - above all the top bar's navigation - and shows the failure over the canvas.
+  // A classes failure is shown inside the class panel instead.
+  const imageFailure = image.data === undefined ? image.error : null;
+  const setFailure = set === undefined ? annotations.error : null;
+  const failure = imageFailure ?? setFailure ?? null;
+  if (failure === null && (image.data === undefined || entry === null)) {
     return (
       <FullScreen>
         <Loader size={32} />
@@ -229,30 +257,56 @@ function LoadedEditor({ projectId, imageId }: { projectId: number; imageId: numb
     <Workspace
       projectId={projectId}
       imageId={imageId}
-      filename={image.data.filename}
-      imgW={image.data.width}
-      imgH={image.data.height}
+      filename={image.data?.filename ?? ""}
+      imageSize={
+        image.data === undefined ? null : { width: image.data.width, height: image.data.height }
+      }
       classes={classes.data}
       classesError={classes.data === undefined ? classes.error : null}
       onRetryClasses={() => void classes.refetch()}
-      entry={entry}
+      entry={entry ?? inertEntry}
+      documentLoaded={entry !== null}
+      loadFailure={
+        failure === null
+          ? null
+          : {
+              message: errorMessage(failure, t("loadError.body")),
+              retry: () => {
+                if (imageFailure !== null) {
+                  void image.refetch();
+                }
+                if (setFailure !== null) {
+                  void annotations.refetch();
+                }
+              },
+            }
+      }
       onReload={reloadImage}
     />
   );
+}
+
+/** A failed image or annotation request, shown over the canvas with a way to ask again. */
+interface LoadFailure {
+  message: string;
+  retry: () => void;
 }
 
 interface WorkspaceProps {
   projectId: number;
   imageId: number;
   filename: string;
-  imgW: number;
-  imgH: number;
+  /** The stored (EXIF-oriented) size; null while the image detail is missing. */
+  imageSize: { width: number; height: number } | null;
   /** Undefined while the classes load. */
   classes: ProjectClassItem[] | undefined;
   /** The classes request failed and there is no data to fall back on. */
   classesError: unknown;
   onRetryClasses: () => void;
   entry: EditorEntry;
+  /** False when `entry` is the inert stand-in because the annotations did not load. */
+  documentLoaded: boolean;
+  loadFailure: LoadFailure | null;
   /** Reload after a conflict: refetch the image's annotations and drop its local history. */
   onReload: () => void;
 }
@@ -267,23 +321,36 @@ function Workspace({
   projectId,
   imageId,
   filename,
-  imgW,
-  imgH,
+  imageSize,
   classes,
   classesError,
   onRetryClasses,
   entry,
+  documentLoaded,
+  loadFailure,
   onReload,
 }: WorkspaceProps) {
   const { t } = useTranslation(["editor", "common"]);
   const boxes = useStore(entry.store, (state) => state.doc.boxes);
   const saveState = useStore(entry.store, (state) => state.meta.saveState);
-  // A conflict makes the editor read-only until Reload (D-12): nothing can change the document,
-  // and the saver has stopped, so a local edit could never reach the server anyway.
+  const loaded = useLoadedImage(fileUrl(projectId, imageId), imageSize ?? undefined);
+  // Read-only: a conflict (until Reload, D-12), an image the browser decodes at another size than
+  // stored (boxes would land on the wrong pixels, Pitfall 4), or anything that did not load.
+  // Nothing can change the document, and every reason is shown to the user.
   const conflict = saveState === "conflict";
-  const readOnly = conflict;
-  const readOnlyReason = conflict ? t("conflict.message") : undefined;
-  const loaded = useLoadedImage(fileUrl(projectId, imageId));
+  const mismatch = loaded.status === "mismatch";
+  const imageFailed = loaded.status === "error";
+  const readOnly = conflict || mismatch || imageFailed || loadFailure !== null;
+  let readOnlyReason: string | undefined;
+  if (conflict) {
+    readOnlyReason = t("conflict.message");
+  } else if (loadFailure !== null) {
+    readOnlyReason = loadFailure.message;
+  } else if (imageFailed) {
+    readOnlyReason = t("loadError.body");
+  } else if (mismatch) {
+    readOnlyReason = t("canvas.mismatch.title");
+  }
   const canvasRef = useRef<AnnotationCanvasHandle>(null);
 
   // Every way out of this image waits for its save (D-11); a second move is ignored meanwhile.
@@ -368,6 +435,12 @@ function Workspace({
 
   const handleCreate = (norm: NormBox) => {
     if (activeClass === undefined) {
+      return;
+    }
+    if (entry.store.getState().doc.boxes.length >= MAX_BOXES) {
+      // The server refuses more than MAX_BOXES per image: say so instead of drawing a box that
+      // could never be saved.
+      notifications.show({ color: "gray", message: t("canvas.limit", { max: MAX_BOXES }) });
       return;
     }
     entry.store.getState().createBox({ id: newId(), class_id: activeClass.id, ...norm });
@@ -457,6 +530,30 @@ function Workspace({
     { enabled: openModals === 0 && navigation.pending === null, readOnly },
   );
 
+  // One notice over the canvas, most fundamental first: a request that failed, the image that
+  // would not load, the image the browser rotated differently. The conflict banner sits above.
+  const alertStyle = { position: "absolute", top: conflict ? 56 : 16, left: 16, right: 16 } as const;
+  let failureAlert: ReactNode = null;
+  if (loadFailure !== null || imageFailed) {
+    const retry = loadFailure !== null ? loadFailure.retry : loaded.retry;
+    failureAlert = (
+      <Alert color="red" title={t("common:error.title")} style={alertStyle}>
+        <Stack gap={8} align="flex-start">
+          <Text size="sm">{loadFailure !== null ? loadFailure.message : t("loadError.body")}</Text>
+          <Button size="compact-sm" variant="light" color="red" onClick={retry}>
+            {t("common:retry")}
+          </Button>
+        </Stack>
+      </Alert>
+    );
+  } else if (mismatch) {
+    failureAlert = (
+      <Alert color="red" title={t("canvas.mismatch.title")} style={alertStyle}>
+        {t("canvas.mismatch.body")}
+      </Alert>
+    );
+  }
+
   return (
     <EditorModalGateContext value={modalGate}>
       <Box
@@ -478,6 +575,7 @@ function Workspace({
           onNextUnannotated={goNextUnannotated}
           readOnly={readOnly}
           readOnlyReason={readOnlyReason}
+          documentLoaded={documentLoaded}
         />
         <ToolBar
           store={entry.store}
@@ -488,36 +586,32 @@ function Workspace({
         />
         <Box style={{ minWidth: 0, minHeight: 0, position: "relative" }}>
           {conflict && <ConflictBanner onReload={onReload} />}
-          <AnnotationCanvas
-            ref={canvasRef}
-            image={loaded.image}
-            imgW={imgW}
-            imgH={imgH}
-            boxes={visibleBoxes}
-            classColors={classColors}
-            labels={labels}
-            activeColor={activeClass?.color ?? "#FFFFFF"}
-            tool={tool}
-            selectedId={selectedId}
-            hoveredId={hoveredId}
-            canDraw={canDraw}
-            noClasses={classes !== undefined && classes.length === 0}
-            keyboardEnabled={openModals === 0}
-            readOnly={readOnly}
-            onCreate={handleCreate}
-            onSelect={select}
-            onHover={hover}
-            onChange={handleChange}
-          />
-          {loaded.status === "error" && (
-            <Alert
-              color="red"
-              title={t("common:error.title")}
-              style={{ position: "absolute", top: 16, left: 16, right: 16 }}
-            >
-              {t("canvas.loadFailed")}
-            </Alert>
+          {/* Without the stored size there is nothing to place boxes on: no canvas at all. */}
+          {imageSize !== null && (
+            <AnnotationCanvas
+              ref={canvasRef}
+              image={loaded.image}
+              imgW={imageSize.width}
+              imgH={imageSize.height}
+              boxes={visibleBoxes}
+              classColors={classColors}
+              labels={labels}
+              activeColor={activeClass?.color ?? "#FFFFFF"}
+              tool={tool}
+              selectedId={selectedId}
+              hoveredId={hoveredId}
+              canDraw={canDraw}
+              noClasses={classes !== undefined && classes.length === 0}
+              keyboardEnabled={openModals === 0}
+              readOnly={readOnly}
+              failed={imageFailed}
+              onCreate={handleCreate}
+              onSelect={select}
+              onHover={hover}
+              onChange={handleChange}
+            />
           )}
+          {failureAlert}
         </Box>
         <Box
           style={{
@@ -539,7 +633,7 @@ function Workspace({
             onChoose={chooseClass}
           />
           <ObjectList
-            store={entry.store}
+            store={documentLoaded ? entry.store : null}
             classes={classes}
             onReleaseFocus={() => canvasRef.current?.focus()}
             readOnly={readOnly}

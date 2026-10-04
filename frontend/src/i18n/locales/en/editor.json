@@ -34,11 +34,15 @@
   "canvas": {
     "aria": "Annotation canvas",
     "noClassesHint": "Add a class to start drawing.",
-    "loadFailed": "Could not load this image.",
     "zoomIn": "Zoom in",
     "zoomOut": "Zoom out",
     "fit": "Fit",
-    "fitAria": "Fit image to window"
+    "fitAria": "Fit image to window",
+    "mismatch": {
+      "title": "Image orientation mismatch",
+      "body": "Your browser shows this image rotated differently from how it was stored, so boxes would land in the wrong place. Editing is disabled for this image."
+    },
+    "limit": "An image can have at most {{max}} objects."
   },
   "shortcuts": {
     "group": {
@@ -109,5 +113,8 @@
     "body": "Your latest edits are not saved yet. Retry saving, or leave and lose them.",
     "retry": "Retry",
     "leave": "Leave anyway"
+  },
+  "loadError": {
+    "body": "Could not load this image."
   }
 }

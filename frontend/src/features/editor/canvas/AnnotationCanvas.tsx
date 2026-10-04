@@ -94,6 +94,8 @@ interface AnnotationCanvasProps {
    * and the Transformer are inert, so nothing can be moved or resized. Zoom and pan still work.
    */
   readOnly?: boolean;
+  /** The original failed to load: the spinner that stands for "still loading" is not shown. */
+  failed?: boolean;
   onCreate: (box: NormBox) => void;
   onSelect: (id: string | null) => void;
   onHover: (id: string | null) => void;
@@ -123,6 +125,7 @@ export function AnnotationCanvas({
   noClasses,
   keyboardEnabled = true,
   readOnly = false,
+  failed = false,
   onCreate,
   onSelect,
   onHover,
@@ -554,7 +557,7 @@ export function AnnotationCanvas({
           onFit={viewport.fit}
         />
       )}
-      {image === null && (
+      {image === null && !failed && (
         <div
           style={{
             position: "absolute",

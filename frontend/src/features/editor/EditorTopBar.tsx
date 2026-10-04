@@ -244,6 +244,8 @@ interface EditorTopBarProps {
   readOnly?: boolean;
   /** Why it is read-only; shown as the toggles' tooltip. */
   readOnlyReason?: string;
+  /** False while the image's annotations could not be loaded: no status badge, no save state. */
+  documentLoaded?: boolean;
 }
 
 /** The 48 px bar: Back, the filename, the save indicator and the previous / next arrows. */
@@ -256,6 +258,7 @@ export function EditorTopBar({
   onNextUnannotated,
   readOnly = false,
   readOnlyReason,
+  documentLoaded = true,
 }: EditorTopBarProps) {
   const { t } = useTranslation("editor");
   const [searchParams] = useSearchParams();
@@ -306,8 +309,9 @@ export function EditorTopBar({
       >
         {filename}
       </Text>
-      <StatusBadge status={status} />
-      <SaveIndicator state={saveState} />
+      {/* Without a loaded document there is no status or save state to report. */}
+      {documentLoaded ? <StatusBadge status={status} /> : null}
+      {documentLoaded ? <SaveIndicator state={saveState} /> : <div style={{ width: INDICATOR_WIDTH }} />}
       <div style={{ flex: 1 }} />
       <ToggleControl
         label={t("topBar.background.label")}
