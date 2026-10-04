@@ -1,5 +1,7 @@
 # YOLO Trainer Platform
 
+[![CI](https://github.com/quick-1y/yolo-trainer/actions/workflows/ci.yml/badge.svg)](https://github.com/quick-1y/yolo-trainer/actions/workflows/ci.yml)
+
 [Русская версия](README.ru.md)
 
 ## What it is
