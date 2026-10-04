@@ -49,8 +49,11 @@ export const NO_NEIGHBORS: NeighborsFixture = {
   next_id: null,
 };
 
-/** How the stub answers PUT: save, keep the request open until `releasePuts()`, or fail with 500. */
-export type PutMode = "ok" | "hold" | "error";
+/**
+ * How the stub answers PUT: save, keep the request open until `releasePuts()`,
+ * fail with 500, or refuse with 409 (the image changed elsewhere).
+ */
+export type PutMode = "ok" | "hold" | "error" | "conflict";
 
 interface EditorApiOptions {
   classes?: unknown[];
@@ -135,6 +138,10 @@ export function stubEditorApi(options: EditorApiOptions = {}) {
       classList.push(created);
       return json(created, 201);
     }
+    if (method === "GET" && path === "/api/projects/1/images") {
+      // The grid a test lands on after leaving the editor: empty is enough.
+      return json({ items: [], next_cursor: null, total: 0 });
+    }
     if (method === "GET" && path === "/api/projects/1/images/5/neighbors") {
       neighborRequests.push(url.searchParams);
       return json(neighbors);
@@ -170,6 +177,8 @@ export function stubEditorApi(options: EditorApiOptions = {}) {
         await heldGate;
       } else if (putMode === "error") {
         return json({ detail: "The save failed." }, 500);
+      } else if (putMode === "conflict") {
+        return json({ detail: "This image was changed elsewhere." }, 409);
       }
       return json({
         version: body.base_version + 1,
