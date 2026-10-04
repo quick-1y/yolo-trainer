@@ -474,3 +474,210 @@ describe("resizing a box", () => {
     expect(box.y).toBeGreaterThanOrEqual(0);
   });
 });
+
+/** A wheel notch over the canvas (jsdom has no layout, so the stage pointer equals the client point). */
+function wheel(deltaY: number, clientX: number, clientY: number, init: WheelEventInit = {}): WheelEvent {
+  const event = new WheelEvent("wheel", {
+    bubbles: true,
+    cancelable: true,
+    deltaY,
+    clientX,
+    clientY,
+    ...init,
+  });
+  act(() => {
+    getStage().content.dispatchEvent(event);
+  });
+  return event;
+}
+
+/** The image point under a screen point, from the live stage transform. */
+function imageAt(pointer: { x: number; y: number }) {
+  const stage = getStage();
+  return {
+    x: (pointer.x - stage.x()) / stage.scaleX(),
+    y: (pointer.y - stage.y()) / stage.scaleX(),
+  };
+}
+
+function percentText(): string {
+  return `${Math.round(getStage().scaleX() * 100)}%`;
+}
+
+describe("zoom", () => {
+  it("opens fit to the window with a 24 px margin", async () => {
+    setUpCanvas();
+    stubEditorApi();
+    await openEditor();
+
+    const stage = getStage();
+    const fit = Math.min(752 / 300, 552 / 200, 4);
+    expect(stage.scaleX()).toBeCloseTo(fit, 9);
+    expect(stage.x()).toBeCloseTo((800 - 300 * fit) / 2, 6);
+    expect(stage.y()).toBeCloseTo((600 - 200 * fit) / 2, 6);
+  });
+
+  it("zooms toward the cursor by 1.1 per notch and keeps the point under the cursor", async () => {
+    setUpCanvas();
+    stubEditorApi();
+    await openEditor();
+    const fit = getStage().scaleX();
+    const pointer = { x: 400, y: 300 };
+    const before = imageAt(pointer);
+
+    const event = wheel(-100, pointer.x, pointer.y);
+
+    expect(event.defaultPrevented).toBe(true);
+    expect(getStage().scaleX()).toBeCloseTo(fit * 1.1, 9);
+    const after = imageAt(pointer);
+    expect(after.x).toBeCloseTo(before.x, 6);
+    expect(after.y).toBeCloseTo(before.y, 6);
+  });
+
+  it("keeps an off-center point fixed and zooms out by 1/1.1 on a downward notch", async () => {
+    setUpCanvas();
+    stubEditorApi();
+    await openEditor();
+    const fit = getStage().scaleX();
+    const pointer = { x: 150, y: 420 };
+    const before = imageAt(pointer);
+
+    wheel(100, pointer.x, pointer.y);
+
+    expect(getStage().scaleX()).toBeCloseTo(fit / 1.1, 9);
+    const after = imageAt(pointer);
+    expect(after.x).toBeCloseTo(before.x, 6);
+    expect(after.y).toBeCloseTo(before.y, 6);
+  });
+
+  it("treats Ctrl+wheel (trackpad pinch) like a plain notch", async () => {
+    setUpCanvas();
+    stubEditorApi();
+    await openEditor();
+    const fit = getStage().scaleX();
+
+    wheel(-4, 400, 300, { ctrlKey: true });
+
+    expect(getStage().scaleX()).toBeCloseTo(fit * 1.1, 9);
+  });
+
+  it("stops at fit x 0.5 and at 1600%", async () => {
+    setUpCanvas();
+    stubEditorApi();
+    await openEditor();
+    const fit = getStage().scaleX();
+
+    for (let i = 0; i < 15; i++) {
+      wheel(100, 400, 300);
+    }
+    expect(getStage().scaleX()).toBeCloseTo(fit * 0.5, 9);
+
+    for (let i = 0; i < 60; i++) {
+      wheel(-100, 400, 300);
+    }
+    expect(getStage().scaleX()).toBe(16);
+  });
+
+  it("shows the zoom level relative to natural size and follows the wheel", async () => {
+    setUpCanvas();
+    stubEditorApi();
+    await openEditor();
+
+    expect(screen.getByText(percentText())).toBeInTheDocument();
+    const initial = percentText();
+
+    wheel(-100, 400, 300);
+
+    expect(percentText()).not.toBe(initial);
+    expect(screen.getByText(percentText())).toBeInTheDocument();
+  });
+
+  it("returns to fit with the Fit button", async () => {
+    setUpCanvas();
+    stubEditorApi();
+    const { user } = await openEditor();
+    const stage = getStage();
+    const fit = { scale: stage.scaleX(), x: stage.x(), y: stage.y() };
+    wheel(-100, 100, 100);
+    wheel(-100, 100, 100);
+    expect(stage.scaleX()).not.toBeCloseTo(fit.scale, 3);
+
+    await user.click(screen.getByRole("button", { name: "Fit image to window" }));
+
+    expect(stage.scaleX()).toBeCloseTo(fit.scale, 9);
+    expect(stage.x()).toBeCloseTo(fit.x, 6);
+    expect(stage.y()).toBeCloseTo(fit.y, 6);
+  });
+
+  it("zooms around the canvas center with + and -", async () => {
+    setUpCanvas();
+    stubEditorApi();
+    const { user } = await openEditor();
+    const fit = getStage().scaleX();
+    const center = { x: 400, y: 300 };
+    const before = imageAt(center);
+
+    await user.click(screen.getByRole("button", { name: "Zoom in" }));
+
+    expect(getStage().scaleX()).toBeCloseTo(fit * 1.1, 9);
+    expect(imageAt(center).x).toBeCloseTo(before.x, 6);
+    expect(imageAt(center).y).toBeCloseTo(before.y, 6);
+
+    await user.click(screen.getByRole("button", { name: "Zoom out" }));
+
+    expect(getStage().scaleX()).toBeCloseTo(fit, 9);
+    expect(imageAt(center).x).toBeCloseTo(before.x, 6);
+  });
+
+  it("stores a box drawn while zoomed in image coordinates", async () => {
+    setUpCanvas();
+    const { puts } = stubEditorApi();
+    await openEditor();
+    wheel(-100, 400, 300);
+    wheel(-100, 400, 300);
+    const content = getStage().content;
+    const from = { x: 200, y: 150 };
+    const to = { x: 500, y: 400 };
+    const start = imageAt(from);
+    const end = imageAt(to);
+
+    firePointer(content, "pointerdown", { clientX: from.x, clientY: from.y });
+    firePointer(content, "pointermove", { clientX: to.x, clientY: to.y });
+    firePointer(content, "pointerup", { clientX: to.x, clientY: to.y });
+
+    await waitFor(() => expect(puts).toHaveLength(1));
+    const [box] = savedBoxes(puts[0]);
+    expect(box.x).toBeCloseTo(start.x / 300, 5);
+    expect(box.y).toBeCloseTo(start.y / 200, 5);
+    expect(box.w).toBeCloseTo((end.x - start.x) / 300, 5);
+    expect(box.h).toBeCloseTo((end.y - start.y) / 200, 5);
+  });
+
+  it("draws the image without smoothing from 300% up", async () => {
+    setUpCanvas();
+    stubEditorApi();
+    await openEditor();
+    const layer = getStage().findOne("Image")?.getLayer();
+    expect(layer?.imageSmoothingEnabled()).toBe(true);
+
+    wheel(-100, 400, 300);
+    wheel(-100, 400, 300);
+
+    expect(getStage().scaleX()).toBeGreaterThanOrEqual(3);
+    expect(layer?.imageSmoothingEnabled()).toBe(false);
+  });
+
+  it("keeps stroke, anchor and chip screen sizes while zoomed", async () => {
+    setUpCanvas();
+    stubEditorApi({ boxes: [BOX] });
+    await openEditor();
+    wheel(-100, 400, 300);
+    wheel(-100, 400, 300);
+
+    const scale = getStage().scaleX();
+    const label = getStage().findOne(`#label-${BOX_ID}`) as Konva.Label;
+    expect(label.getTag().height() * scale).toBeCloseTo(16, 3);
+    expect(label.getText().fontSize() * scale).toBeCloseTo(12, 3);
+    expect(boxNode().strokeScaleEnabled()).toBe(false);
+  });
+});
