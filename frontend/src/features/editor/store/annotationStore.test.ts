@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import type { Box, SaveResult } from "../../../api/annotations";
-import { createEditorStore, docFromSet, payloadFromDoc } from "./annotationStore";
+import { createEditorStore, docFromSet, docStatus, payloadFromDoc } from "./annotationStore";
 import { getEditor, peekEditor, resetEditors } from "./storeRegistry";
 
 const BOX: Box = { id: "a", class_id: 1, x: 0.1, y: 0.1, w: 0.2, h: 0.2 };
@@ -217,6 +217,97 @@ describe("setBoxClass", () => {
     store.temporal.getState().redo();
 
     expect(store.getState().doc.boxes[0].class_id).toBe(2);
+  });
+});
+
+describe("toggleBackground", () => {
+  it("adds no history entry while the image has boxes (D-14)", () => {
+    const store = createEditorStore({ boxes: [BOX], isBackground: false, isReviewed: false }, 0);
+    const doc = store.getState().doc;
+
+    store.getState().toggleBackground();
+
+    expect(store.getState().doc).toBe(doc);
+    expect(store.temporal.getState().pastStates).toHaveLength(0);
+  });
+
+  it("flips the flag on an empty image in one entry and clears reviewed", () => {
+    const store = createEditorStore({ boxes: [], isBackground: false, isReviewed: false }, 0);
+
+    store.getState().toggleBackground();
+
+    expect(store.getState().doc).toMatchObject({ isBackground: true, isReviewed: false });
+    expect(store.temporal.getState().pastStates).toHaveLength(1);
+  });
+
+  it("demotes a reviewed background image when the mark is removed (D-15)", () => {
+    const store = createEditorStore({ boxes: [], isBackground: true, isReviewed: true }, 0);
+
+    store.getState().toggleBackground();
+
+    expect(store.getState().doc).toMatchObject({ isBackground: false, isReviewed: false });
+    expect(store.temporal.getState().pastStates).toHaveLength(1);
+  });
+
+  it("undo restores the previous flags", () => {
+    const store = createEditorStore({ boxes: [], isBackground: true, isReviewed: true }, 0);
+    store.getState().toggleBackground();
+
+    store.temporal.getState().undo();
+
+    expect(store.getState().doc).toMatchObject({ isBackground: true, isReviewed: true });
+  });
+});
+
+describe("toggleReviewed", () => {
+  it("adds no history entry on an unannotated image (D-13)", () => {
+    const store = createEditorStore({ boxes: [], isBackground: false, isReviewed: false }, 0);
+    const doc = store.getState().doc;
+
+    store.getState().toggleReviewed();
+
+    expect(store.getState().doc).toBe(doc);
+    expect(store.temporal.getState().pastStates).toHaveLength(0);
+  });
+
+  it("flips the flag on an image with a box, and back, one entry each", () => {
+    const store = createEditorStore({ boxes: [BOX], isBackground: false, isReviewed: false }, 0);
+
+    store.getState().toggleReviewed();
+    expect(store.getState().doc.isReviewed).toBe(true);
+    store.getState().toggleReviewed();
+
+    expect(store.getState().doc.isReviewed).toBe(false);
+    expect(store.temporal.getState().pastStates).toHaveLength(2);
+  });
+
+  it("flips the flag on a background image and keeps the background flag", () => {
+    const store = createEditorStore({ boxes: [], isBackground: true, isReviewed: false }, 0);
+
+    store.getState().toggleReviewed();
+
+    expect(store.getState().doc).toMatchObject({ isBackground: true, isReviewed: true });
+    expect(store.temporal.getState().pastStates).toHaveLength(1);
+  });
+});
+
+describe("docStatus", () => {
+  const doc = (boxes: Box[], isBackground: boolean, isReviewed: boolean) => ({
+    boxes,
+    isBackground,
+    isReviewed,
+  });
+
+  it("is reviewed > background > annotated > unannotated", () => {
+    expect(docStatus(doc([], false, false))).toBe("unannotated");
+    expect(docStatus(doc([BOX], false, false))).toBe("annotated");
+    expect(docStatus(doc([], true, false))).toBe("background");
+    expect(docStatus(doc([BOX], false, true))).toBe("reviewed");
+    expect(docStatus(doc([], true, true))).toBe("reviewed");
+  });
+
+  it("never reports an unannotated image as background", () => {
+    expect(docStatus(doc([], false, false))).not.toBe("background");
   });
 });
 

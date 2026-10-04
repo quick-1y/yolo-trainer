@@ -61,6 +61,8 @@ interface EditorApiOptions {
   version?: number;
   /** The stored image is reviewed. */
   isReviewed?: boolean;
+  /** The stored image is marked as background (no boxes). */
+  isBackground?: boolean;
   /** Status of GET /images/5 (and its annotations); 404 simulates a deleted image. */
   imageStatus?: number;
   /** GET /classes: answer (default), never answer, or fail with 500. POST /classes always works. */
@@ -88,6 +90,7 @@ export function stubEditorApi(options: EditorApiOptions = {}) {
     boxes = [],
     version = 0,
     isReviewed = false,
+    isBackground = false,
     imageStatus = 200,
   } = options;
   let classesMode = options.classesMode ?? "ok";
@@ -158,9 +161,13 @@ export function stubEditorApi(options: EditorApiOptions = {}) {
       return imageStatus === 200
         ? json({
             version,
-            is_background: false,
+            is_background: isBackground,
             is_reviewed: isReviewed,
-            status: isReviewed ? "reviewed" : boxes.length > 0 ? "annotated" : "unannotated",
+            status: isReviewed
+              ? "reviewed"
+              : boxes.length > 0 || isBackground
+                ? "annotated"
+                : "unannotated",
             boxes,
           })
         : json({ detail: "Image not found." }, imageStatus);
@@ -183,7 +190,11 @@ export function stubEditorApi(options: EditorApiOptions = {}) {
       return json({
         version: body.base_version + 1,
         box_count: body.boxes.length,
-        status: body.boxes.length > 0 ? "annotated" : "unannotated",
+        status: body.is_reviewed
+          ? "reviewed"
+          : body.boxes.length > 0 || body.is_background
+            ? "annotated"
+            : "unannotated",
         is_background: body.is_background,
         is_reviewed: body.is_reviewed,
       });
