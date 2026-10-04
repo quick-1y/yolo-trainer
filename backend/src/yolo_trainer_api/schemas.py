@@ -282,6 +282,19 @@ class ImagePage(BaseModel):
     total: int
 
 
+class Neighbors(BaseModel):
+    """Where an image sits in the grid order of one sort and search (D-03).
+
+    `position` is null when the image itself does not match the search; `prev_id`
+    and `next_id` are then the nearest filtered images around its sort key.
+    """
+
+    position: int | None
+    total: int
+    prev_id: int | None
+    next_id: int | None
+
+
 class ImageDeleteRequest(BaseModel):
     """Ids to hard-delete; 1..1000 per request (T2-11-02)."""
 

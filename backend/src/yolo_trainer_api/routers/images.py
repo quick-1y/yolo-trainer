@@ -7,11 +7,11 @@ import base64
 import json
 import logging
 from dataclasses import dataclass
-from typing import Annotated, Literal
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse
-from sqlalchemy import Select, delete, func, select, tuple_
+from sqlalchemy import ColumnElement, Select, delete, func, select, tuple_
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -98,6 +98,33 @@ def _scoped[T: tuple](stmt: Select[T], project_id: int, q_key: str) -> Select[T]
     return stmt
 
 
+def grid_after(sort: str, key: str | None, image_id: int) -> ColumnElement[bool]:
+    """Where-clause for rows strictly AFTER the pivot `(key, image_id)` in grid order.
+
+    newest: `id < i` (the grid runs newest first). name: row value
+    `(filename_key, id) > (k, i)`; the id tiebreak keeps equal filenames stable.
+    """
+    if sort == SORT_NAME:
+        return tuple_(Image.filename_key, Image.id) > tuple_(key, image_id)
+    return Image.id < image_id
+
+
+def grid_before(sort: str, key: str | None, image_id: int) -> ColumnElement[bool]:
+    """Where-clause for rows strictly BEFORE the pivot; the mirror of `grid_after`."""
+    if sort == SORT_NAME:
+        return tuple_(Image.filename_key, Image.id) < tuple_(key, image_id)
+    return Image.id > image_id
+
+
+def grid_order(sort: str, reverse: bool = False) -> tuple[ColumnElement[Any], ...]:
+    """ORDER BY terms of the grid; `reverse=True` walks it backwards (nearest-before lookups)."""
+    if sort == SORT_NAME:
+        if reverse:
+            return (Image.filename_key.desc(), Image.id.desc())
+        return (Image.filename_key, Image.id)
+    return (Image.id.asc(),) if reverse else (Image.id.desc(),)
+
+
 def build_page_query(
     project_id: int, sort: str, q_key: str, cursor: Cursor | None, limit: int
 ) -> Select[tuple[Image]]:
@@ -108,15 +135,9 @@ def build_page_query(
     (ix_images_project_filename_key); the id tiebreak keeps equal filenames stable.
     """
     stmt = _scoped(select(Image), project_id, q_key)
-    if sort == SORT_NAME:
-        if cursor is not None:
-            stmt = stmt.where(
-                tuple_(Image.filename_key, Image.id) > tuple_(cursor.key, cursor.image_id)
-            )
-        return stmt.order_by(Image.filename_key, Image.id).limit(limit + 1)
     if cursor is not None:
-        stmt = stmt.where(Image.id < cursor.image_id)
-    return stmt.order_by(Image.id.desc()).limit(limit + 1)
+        stmt = stmt.where(grid_after(sort, cursor.key, cursor.image_id))
+    return stmt.order_by(*grid_order(sort)).limit(limit + 1)
 
 
 # --------------------------------------------------------------------------
