@@ -1,18 +1,18 @@
 ---
 gsd_state_version: "1.0"
-current_phase: 3
+current_phase: 03
 current_phase_name: Box Annotation Editor
 status: executing
-stopped_at: Phase 3 UI-SPEC approved
-last_updated: "2026-10-03T22:56:48.684Z"
-last_activity: 2026-10-03
-last_activity_desc: Phase 02 complete, transitioned to Phase 3
-state_head: 01565a217edf9477ace8b9b06bd43a9a3eff4712
+stopped_at: Completed 03-01-PLAN.md
+last_updated: "2026-10-04T07:28:17.080Z"
+last_activity: 2026-10-04
+last_activity_desc: Phase 03 execution started
+state_head: 3388e5c2e6f72e0f64f4aad1c5973225bcf6a62c
 progress:
   total_phases: 12
   completed_phases: 2
   total_plans: 36
-  completed_plans: 23
+  completed_plans: 24
   percent: 17
 ---
 
@@ -23,14 +23,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-10-03)
 
 **Core value:** The full loop works end-to-end in the browser: upload images → annotate → train with configurable settings → download a working `.pt`
-**Current focus:** Phase 3 — Box Annotation Editor
+**Current focus:** Phase 03 — Box Annotation Editor
 
 ## Current Position
 
-Phase: 3 (Box Annotation Editor) — READY TO EXECUTE
-Plan: Not started
+Phase: 03 (Box Annotation Editor) — EXECUTING
+Plan: 2 of 13
 Status: Ready to execute
-Last activity: 2026-10-03 — Phase 02 complete, transitioned to Phase 3
+Last activity: 2026-10-04 — Phase 03 execution started
 
 Progress: [██░░░░░░░░] 17%
 
@@ -81,6 +81,7 @@ Progress: [██░░░░░░░░] 17%
 | Phase 02 P11 | 16 min | 3 tasks | 17 files |
 | Phase 02 P12 | 16 min | 2 tasks | 6 files |
 | Phase 02 P13 | 9 min | 2 tasks | 4 files |
+| Phase 03 P01 | 20 min | 2 tasks | 35 files |
 
 ## Accumulated Context
 
@@ -126,6 +127,7 @@ Recent decisions affecting current work:
 - [Phase 02]: 02-12: seed_images.py makes images unique via drawn counter and is deterministic per (index, seed); re-run reports all duplicates; CLI exits 1 on rejected, 2 on connection/HTTP errors — Re-seeding proves the duplicate path; duplicates are a normal outcome
 - [Phase 02]: 02-13: client chunks image delete into sequential 1000-id requests (backend max_length=1000 unchanged); partial failure prunes the succeeded prefix — WR-01: selections over 1000 returned 422; sequential keeps a well-defined deleted prefix for SQLite single writer
 - [Phase 02]: 02-13: ImagesPage loads the next page when the loaded list is empty and a next page exists; never auto-retries after a failed load — CR-01: pruneDeletedImages keeps next_cursor and VirtuosoGrid endReached never fires with zero items
+- [Phase 03]: Plan 03-01: annotation save is a whole-set replace guarded by a compare-and-swap annotation_version (409 on stale, idempotent retry); status and box_count are derived, never stored; box ids are client UUID v4 built from getRandomValues — Costly-to-reverse contract that Phases 6 and 8 build on; a class-delete cascade would desync a stored count; randomUUID is undefined on http LAN origins
 
 ### Pending Todos
 
@@ -148,6 +150,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-10-03T21:01:47.248Z
-Stopped at: Phase 3 UI-SPEC approved
-Resume file: .planning/phases/03-box-annotation-editor/03-UI-SPEC.md
+Last session: 2026-10-04T07:28:10.244Z
+Stopped at: Completed 03-01-PLAN.md
+Resume file: None
