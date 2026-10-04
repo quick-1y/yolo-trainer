@@ -18,6 +18,7 @@ const ITEM: ProjectClassItem = {
   color: "#E6194B",
   index: 0,
   created_at: "2026-01-15T10:00:00Z",
+  object_count: 0,
 };
 
 function json(body: unknown, status = 200) {

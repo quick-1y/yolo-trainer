@@ -17,6 +17,7 @@ interface StubClass {
   color: string;
   index: number;
   created_at: string;
+  object_count: number;
 }
 
 const PROJECT = {
@@ -42,6 +43,8 @@ function makeClasses(): StubClass[] {
     color: "#E6194B",
     index,
     created_at: "2026-01-15T10:00:00Z",
+    // Only "car" owns boxes; the other classes have none.
+    object_count: index === 0 ? 3 : 0,
   }));
 }
 
@@ -89,9 +92,10 @@ function stubApi(onDelete?: DeleteResponder) {
   return { deletes, classes };
 }
 
-async function renderPage() {
+async function renderPage(language = "en") {
   const rendered = renderWithProviders(<AppRoutes />, {
     route: "/projects/7/classes",
+    language,
   });
   await screen.findByText("boat");
   return rendered;
@@ -228,6 +232,52 @@ describe("DeleteClassModal", () => {
     expect(
       within(last).queryByText(new RegExp(shift.replace(/[.]/g, "\\."))),
     ).not.toBeInTheDocument();
+  });
+
+  it("adds a bold paragraph with the number of objects that go with a class that has boxes", async () => {
+    stubApi();
+    const { user } = await renderPage();
+
+    const dialog = await openDeleteDialog(user, "car");
+
+    const objects = within(dialog).getByText(
+      "Objects that will be deleted with it: 3.",
+    );
+    expect(objects).toHaveStyle({ fontWeight: "600" });
+    // The existing sentences are still there, in their own paragraph.
+    expect(
+      within(dialog).getByText(i18n.t("classes:delete.body", { name: "car" }), {
+        exact: false,
+      }),
+    ).toBeInTheDocument();
+    expect(objects).not.toBe(
+      within(dialog).getByText(i18n.t("classes:delete.body", { name: "car" }), {
+        exact: false,
+      }),
+    );
+  });
+
+  it("shows no objects paragraph for a class without boxes", async () => {
+    stubApi();
+    const { user } = await renderPage();
+
+    const dialog = await openDeleteDialog(user, "plane");
+
+    expect(
+      within(dialog).queryByText(/Objects that will be deleted/),
+    ).not.toBeInTheDocument();
+    expect(within(dialog).getByRole("button", confirmName())).toBeInTheDocument();
+  });
+
+  it("shows the objects paragraph in Russian", async () => {
+    stubApi();
+    const { user } = await renderPage("ru");
+
+    const dialog = await openDeleteDialog(user, "car");
+
+    expect(
+      within(dialog).getByText("Вместе с ним будут удалены объекты: 3."),
+    ).toBeInTheDocument();
   });
 
   it("treats a 404 from DELETE as already deleted: closes, notifies and refreshes the list", async () => {
