@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 03
 current_phase_name: Box Annotation Editor
 status: executing
-stopped_at: Completed 03-11-PLAN.md
-last_updated: "2026-10-04T12:37:00.534Z"
+stopped_at: Completed 03-12-PLAN.md
+last_updated: "2026-10-04T13:03:14.954Z"
 last_activity: 2026-10-04
 last_activity_desc: Phase 03 execution started
-state_head: c7804f77636f9d79c251b7a5e4eccdd17f793f60
+state_head: 237b8fec12c9fe0f59faeb03f940405632625416
 progress:
   total_phases: 12
   completed_phases: 2
   total_plans: 36
-  completed_plans: 34
+  completed_plans: 35
   percent: 17
 ---
 
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-10-03)
 ## Current Position
 
 Phase: 03 (Box Annotation Editor) — EXECUTING
-Plan: 12 of 13
+Plan: 13 of 13
 Status: Ready to execute
 Last activity: 2026-10-04 — Phase 03 execution started
 
@@ -92,6 +92,7 @@ Progress: [██░░░░░░░░] 17%
 | Phase 03 P09 | 8 min | 2 tasks | 17 files |
 | Phase 03 P10 | 13 min | 2 tasks | 14 files |
 | Phase 03 P11 | 19 min | 2 tasks | 19 files |
+| Phase 03 P12 | 22 min | 3 tasks | 19 files |
 
 ## Accumulated Context
 
@@ -155,6 +156,8 @@ Recent decisions affecting current work:
 - [Phase 03]: Plan 03-10: zoom and pan math lives in a pure lib/viewport.ts (24 px fit margin, 1.1 per notch, fit x 0.5 to 1600%); pan is hand-rolled (middle button or Space+left) and commits to React once on release; boxes and the Transformer go inert while a pan can start; Space is read on window and left alone in text fields. — Zoom math is the part most likely to drift, so it is pure and unit-tested; Konva Stage draggable would fight left-drag drawing.
 - [Phase 03]: 03-11: Annotate next is shown from project-wide status counts (grid list as fallback while they load or fail) and takes the grid's normalized sort and query as props — The server resolves the lookup either way; sending the capped, allow-listed values the list request sends keeps T3-11-01 intact
 - [Phase 03]: 03-11: strict Images-page fetch stubs call handleImagesSideRequest (test/stubImagesApi.ts) before their Unexpected request throw — RESEARCH Pitfall 13: new page requests must not break unrelated tests
+- [Phase 03]: Plan 03-12: while a save retry waits, new edits only update the pending doc and ride the next attempt; every 4xx except 404 and 409 is treated like 422 (report, keep pending, no timed retry) — Keeps T3-12-02 true (one request per image per backoff window, even while the user keeps drawing during an outage); a rejected request would fail the same way on retry
+- [Phase 03]: Plan 03-12: Reload and the 422 resync call resetQueries on the annotation set (not invalidate) after discardEditor; a 404 on save also discards the entry; read-only is one boolean in Workspace fanned out to tools, canvas, keys, class panel, object list and top bar toggles — The cached set is the last saved copy, so invalidating would rebuild an editable stale view first; a gone image must not keep the beforeunload guard on; one flag keeps every reason (conflict, orientation mismatch, load failure) consistent
 
 ### Pending Todos
 
@@ -177,6 +180,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-10-04T12:37:00.438Z
-Stopped at: Completed 03-11-PLAN.md
+Last session: 2026-10-04T13:03:05.516Z
+Stopped at: Completed 03-12-PLAN.md
 Resume file: None

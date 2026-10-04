@@ -157,7 +157,7 @@ Plans:
   4. User switches tools, picks classes, saves, and navigates images with keyboard shortcuts listed in an on-screen shortcut reference
   5. Each image shows a status (unannotated / annotated / reviewed); the user can jump to the next unannotated image and mark an image as background (no objects)
 
-**Plans:** 11/13 plans executed
+**Plans:** 12/13 plans executed
 
 Plans:
 **Wave 1**
@@ -194,7 +194,7 @@ Plans:
 **Wave 8** *(blocked on Wave 7 completion)*
 
 - [x] 03-11-PLAN.md — Grid summary "Annotated N of M" and "Annotate next" (wave 8)
-- [ ] 03-12-PLAN.md — Save robustness: backoff retries, Ctrl+S, conflict banner and Reload, 422 resync, load errors, orientation-mismatch guard, 2000-box limit (wave 8)
+- [x] 03-12-PLAN.md — Save robustness: backoff retries, Ctrl+S, conflict banner and Reload, 422 resync, load errors, orientation-mismatch guard, 2000-box limit (wave 8)
 
 **Wave 9** *(blocked on Wave 8 completion)*
 
@@ -417,7 +417,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 |-------|----------------|--------|-----------|
 | 1. Runnable Skeleton & Projects | 10/10 | Complete    | 2026-09-29 |
 | 2. Image Upload & Classes | 13/13 | Complete    | 2026-10-03 |
-| 3. Box Annotation Editor | 11/13 | In Progress|  |
+| 3. Box Annotation Editor | 12/13 | In Progress|  |
 | 4. Train & Download | 0/TBD | Not started | - |
 | 5. Live Training Monitoring & Control | 0/TBD | Not started | - |
 | 6. Polygons & Segmentation Projects | 0/TBD | Not started | - |
