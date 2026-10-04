@@ -50,7 +50,7 @@ Detailed technical background for every category: `docs/roadmap.md`, `docs/phase
 - [ ] **ANNO-07**: Annotations are saved automatically and survive a page reload; user can undo/redo edits
 - [ ] **ANNO-08**: User can use keyboard shortcuts for tools, class selection, save, and next/previous image
 - [ ] **ANNO-09**: Each image has a status (unannotated / annotated / reviewed); user can jump to the next unannotated image
-- [ ] **ANNO-10**: User can mark an image as background (no objects), exported as an empty label file
+- [x] **ANNO-10**: User can mark an image as background (no objects), exported as an empty label file
 - [ ] **ANNO-11**: Annotation tools respect the project task type (a `detect` project stores boxes; a `segment` project stores polygons, with boxes convertible)
 
 ### AI-Assisted Annotation
@@ -160,7 +160,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | ANNO-07 | Phase 3 | Pending |
 | ANNO-08 | Phase 3 | Pending |
 | ANNO-09 | Phase 3 | Pending |
-| ANNO-10 | Phase 3 | Pending |
+| ANNO-10 | Phase 3 | Complete |
 | ANNO-11 | Phase 6 | Pending |
 | AI-01 | Phase 8 | Pending |
 | AI-02 | Phase 8 | Pending |

@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 03
 current_phase_name: Box Annotation Editor
 status: executing
-stopped_at: Completed 03-07-PLAN.md
-last_updated: "2026-10-04T08:57:36.020Z"
+stopped_at: Completed 03-08-PLAN.md
+last_updated: "2026-10-04T11:52:06.193Z"
 last_activity: 2026-10-04
 last_activity_desc: Phase 03 execution started
-state_head: 38e7a78ceb0dd9ef4f79f1b25a9c7328ac47cb0b
+state_head: df42332ac6089a6516daa6629b64a2b6a3f3f9c3
 progress:
   total_phases: 12
   completed_phases: 2
   total_plans: 36
-  completed_plans: 30
+  completed_plans: 31
   percent: 17
 ---
 
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-10-03)
 ## Current Position
 
 Phase: 03 (Box Annotation Editor) — EXECUTING
-Plan: 8 of 13
+Plan: 9 of 13
 Status: Ready to execute
 Last activity: 2026-10-04 — Phase 03 execution started
 
@@ -88,6 +88,7 @@ Progress: [██░░░░░░░░] 17%
 | Phase 03 P05 | 8 min | 2 tasks | 12 files |
 | Phase 03 P06 | 12min | 2 tasks | 18 files |
 | Phase 03 P07 | 20 min | 3 tasks | 17 files |
+| Phase 03 P08 | 25 min | 3 tasks | 23 files |
 
 ## Accumulated Context
 
@@ -144,6 +145,8 @@ Recent decisions affecting current work:
 - [Phase 03]: 03-06: activeClassId is stored as an id in the UI store, resolved against the class list with a first-class fallback, and kept across images — Draw-many workflow keeps its class; a deleted class or single-class project needs no extra state
 - [Phase 03]: 03-07: neighbors computed server-side from the image's own (filename_key, id) pivot with the list's keyset helpers; goTo awaits saver.flush and runs one navigation at a time; editor shortcuts are off while a move waits for the save — D-03 order must survive a hard reload and equal filenames must tie-break by id; a burst of key presses must move exactly one image; nothing may be edited between the flush and the route change
 - [Phase 03]: 03-07: leave dialog on failed or conflicting flush (Retry, Leave anyway, Esc stays); beforeunload guard lives in storeRegistry (anyUnsaved) so it outlives the editor route — D-11: unsaved work is never lost silently, even after leaving the route while a save is pending
+- [Phase 03]: 03-08: next-unannotated lookup is a shared hook (useNextUnannotated) used by the top bar button and the N key; goTo accepts a path or an async lookup that runs after the save
+- [Phase 03]: 03-08: unannotated and background stay distinct in derived status, status-counts, badge and next-unannotated (never an empty-label negative example)
 
 ### Pending Todos
 
@@ -166,6 +169,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-10-04T08:57:35.924Z
-Stopped at: Completed 03-07-PLAN.md
+Last session: 2026-10-04T11:52:06.097Z
+Stopped at: Completed 03-08-PLAN.md
 Resume file: None

@@ -157,7 +157,7 @@ Plans:
   4. User switches tools, picks classes, saves, and navigates images with keyboard shortcuts listed in an on-screen shortcut reference
   5. Each image shows a status (unannotated / annotated / reviewed); the user can jump to the next unannotated image and mark an image as background (no objects)
 
-**Plans:** 7/13 plans executed
+**Plans:** 8/13 plans executed
 
 Plans:
 **Wave 1**
@@ -184,7 +184,7 @@ Plans:
 
 **Wave 6** *(blocked on Wave 5 completion)*
 
-- [ ] 03-08-PLAN.md — Status badge, reviewed/background toggles, next-unannotated and status-counts endpoints (wave 6)
+- [x] 03-08-PLAN.md — Status badge, reviewed/background toggles, next-unannotated and status-counts endpoints (wave 6)
 
 **Wave 7** *(blocked on Wave 6 completion)*
 
@@ -417,7 +417,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 |-------|----------------|--------|-----------|
 | 1. Runnable Skeleton & Projects | 10/10 | Complete    | 2026-09-29 |
 | 2. Image Upload & Classes | 13/13 | Complete    | 2026-10-03 |
-| 3. Box Annotation Editor | 7/13 | In Progress|  |
+| 3. Box Annotation Editor | 8/13 | In Progress|  |
 | 4. Train & Download | 0/TBD | Not started | - |
 | 5. Live Training Monitoring & Control | 0/TBD | Not started | - |
 | 6. Polygons & Segmentation Projects | 0/TBD | Not started | - |
