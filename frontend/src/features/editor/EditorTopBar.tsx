@@ -240,6 +240,8 @@ interface EditorTopBarProps {
   navigation: EditorNavigation;
   /** Save, then jump to the next unannotated image (the N key does the same). */
   onNextUnannotated: () => void;
+  /** Open the keyboard shortcut reference (the "?" key does the same). */
+  onOpenShortcuts: () => void;
   /** The editor cannot change annotations: the Background and Reviewed toggles are off. */
   readOnly?: boolean;
   /** Why it is read-only; shown as the toggles' tooltip. */
@@ -248,7 +250,7 @@ interface EditorTopBarProps {
   documentLoaded?: boolean;
 }
 
-/** The 48 px bar: Back, the filename, the save indicator and the previous / next arrows. */
+/** The 48 px bar: Back, the filename, the save indicator, the previous / next arrows and the shortcuts button. */
 export function EditorTopBar({
   projectId,
   imageId,
@@ -256,6 +258,7 @@ export function EditorTopBar({
   store,
   navigation,
   onNextUnannotated,
+  onOpenShortcuts,
   readOnly = false,
   readOnlyReason,
   documentLoaded = true,
@@ -377,6 +380,15 @@ export function EditorTopBar({
         onClick={() => nextId !== null && void goTo(editorPath(projectId, nextId, grid), "next")}
       >
         ›
+      </ActionIcon>
+      {/* "?" is Shift+7 on the Russian layout, so the key alone cannot reach every user. */}
+      <ActionIcon
+        variant="subtle"
+        size={32}
+        aria-label={t("topBar.shortcutsAria")}
+        onClick={onOpenShortcuts}
+      >
+        ?
       </ActionIcon>
     </div>
   );

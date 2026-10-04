@@ -15,7 +15,8 @@
       "hint": "Mark this image as having no objects",
       "disabledHint": "Delete all boxes first to mark this image as background."
     },
-    "nextUnannotated": "Next unannotated"
+    "nextUnannotated": "Next unannotated",
+    "shortcutsAria": "Keyboard shortcuts"
   },
   "save": {
     "saved": "Saved",
@@ -68,7 +69,15 @@
     "fit": "Fit image to window",
     "save": "Save now",
     "zoom": "Zoom toward the cursor",
-    "pan": "Pan"
+    "pan": "Pan",
+    "title": "Keyboard shortcuts",
+    "close": "Close",
+    "help": "Show this reference",
+    "keys": {
+      "wheel": "Mouse wheel",
+      "spaceDrag": "Space + drag",
+      "middleDrag": "Middle mouse drag"
+    }
   },
   "nav": {
     "noOther": "No other unannotated images."

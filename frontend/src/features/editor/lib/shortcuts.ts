@@ -23,10 +23,9 @@ export interface ShortcutDef {
 }
 
 /**
- * The single shortcut table: key handling reads it today and the on-screen
- * reference renders from it later, so the two cannot drift. Later plans append
- * rows (digits, navigation, status, view, save, help). Browser- and OS-owned
- * combinations (Ctrl+W, Ctrl+T, F5, Alt+Left) are never added.
+ * The single shortcut table: key handling and the on-screen reference (`ShortcutsModal`) both
+ * read it, so the two cannot drift. Browser- and OS-owned combinations (Ctrl+W, Ctrl+T, F5,
+ * Alt+Left) are never added.
  */
 export const SHORTCUTS = [
   {
@@ -174,7 +173,46 @@ export const SHORTCUTS = [
     allowRepeat: false,
     editing: false,
   },
+  {
+    // "?" is Shift+7 on the Russian layout, so the physical Shift+Slash binding alone cannot reach
+    // every user: the top bar's visible "?" button opens the reference too (Pitfall 8).
+    id: "help",
+    group: "general",
+    labelKey: "shortcuts.help",
+    hotkeys: ["shift+slash"],
+    caps: [["?"]],
+    allowRepeat: false,
+    editing: false,
+  },
 ] as const satisfies readonly ShortcutDef[];
+
+export interface PointerGestureDef {
+  id: string;
+  group: ShortcutGroup;
+  /** i18n key in the `editor` namespace. */
+  labelKey: string;
+  /** i18n keys (in the `editor` namespace) of the gestures, shown as text instead of key caps. */
+  captionKeys: readonly string[];
+}
+
+/**
+ * Mouse gestures the on-screen reference lists next to the keyboard rows. They are display-only:
+ * the canvas handles them itself, so they never reach `buildHotkeys`.
+ */
+export const POINTER_GESTURES = [
+  {
+    id: "zoom",
+    group: "view",
+    labelKey: "shortcuts.zoom",
+    captionKeys: ["shortcuts.keys.wheel"],
+  },
+  {
+    id: "pan",
+    group: "view",
+    labelKey: "shortcuts.pan",
+    captionKeys: ["shortcuts.keys.spaceDrag", "shortcuts.keys.middleDrag"],
+  },
+] as const satisfies readonly PointerGestureDef[];
 
 export type ShortcutId = (typeof SHORTCUTS)[number]["id"];
 

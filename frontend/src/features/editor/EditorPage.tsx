@@ -29,6 +29,7 @@ import { EditorTopBar } from "./EditorTopBar";
 import { ClassPanel } from "./ClassPanel";
 import { LeaveDialog } from "./LeaveDialog";
 import { ObjectList } from "./ObjectList";
+import { ShortcutsModal } from "./ShortcutsModal";
 import { ToolBar } from "./ToolBar";
 import { AnnotationCanvas, type AnnotationCanvasHandle } from "./canvas/AnnotationCanvas";
 import { useLoadedImage } from "./canvas/useLoadedImage";
@@ -388,6 +389,9 @@ function Workspace({
     [],
   );
 
+  // The shortcut reference holds the gate itself (`useEditorModalOpen`) while it is open.
+  const [shortcutsOpen, setShortcutsOpen] = useState(false);
+
   const tool = useEditorUi((state) => state.tool);
   const rawSelectedId = useEditorUi((state) => state.selectedId);
   const hoveredId = useEditorUi((state) => state.hoveredId);
@@ -524,6 +528,7 @@ function Workspace({
       fit: () => canvasRef.current?.fit(),
       // Saves now instead of after the debounce; a conflict or a failure shows in the indicator.
       save: () => void entry.saver.flush(),
+      help: () => setShortcutsOpen(true),
     },
     // While a move waits for the save, editing keys are off too: nothing new may slip in.
     // Read-only drops every editing row; navigation, view and save keep working.
@@ -573,6 +578,7 @@ function Workspace({
           store={entry.store}
           navigation={navigation}
           onNextUnannotated={goNextUnannotated}
+          onOpenShortcuts={() => setShortcutsOpen(true)}
           readOnly={readOnly}
           readOnlyReason={readOnlyReason}
           documentLoaded={documentLoaded}
@@ -647,6 +653,7 @@ function Workspace({
         onLeave={navigation.leave.leaveAnyway}
         onClose={navigation.leave.close}
       />
+      <ShortcutsModal opened={shortcutsOpen} onClose={() => setShortcutsOpen(false)} />
     </EditorModalGateContext>
   );
 }

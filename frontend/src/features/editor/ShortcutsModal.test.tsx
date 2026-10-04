@@ -11,7 +11,6 @@ import {
 } from "../../test/canvas";
 import { type NeighborsFixture, stubEditorApi } from "../../test/editorApi";
 import { renderWithProviders } from "../../test/render";
-import i18n from "../../i18n";
 import { peekEditor, resetEditors } from "./store/storeRegistry";
 import { resetEditorUi, useEditorUi } from "./store/editorUiStore";
 
@@ -30,7 +29,10 @@ function currentLocation(): string {
   return screen.getByTestId("location").textContent ?? "";
 }
 
-async function openEditor(options: Parameters<typeof stubEditorApi>[0] = {}) {
+async function openEditor(
+  options: Parameters<typeof stubEditorApi>[0] = {},
+  language = "en",
+) {
   stubImageDecoding(300, 200);
   stubElementSize(800, 600);
   installPointerCaptureStubs();
@@ -40,7 +42,7 @@ async function openEditor(options: Parameters<typeof stubEditorApi>[0] = {}) {
       <AppRoutes />
       <LocationProbe />
     </>,
-    { route: ROUTE },
+    { route: ROUTE, language },
   );
   await screen.findByRole("application");
   await waitFor(() => expect(getStage().findOne("Image")).toBeTruthy());
@@ -170,8 +172,7 @@ describe("shortcut reference content", () => {
   });
 
   it("is in Russian with Latin key caps on the Russian layout", async () => {
-    await i18n.changeLanguage("ru");
-    const { user } = await openEditor();
+    const { user } = await openEditor({}, "ru");
 
     await user.click(screen.getByRole("button", { name: "Горячие клавиши" }));
     const dialog = await screen.findByRole("dialog", { name: "Горячие клавиши" });
