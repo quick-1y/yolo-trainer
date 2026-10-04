@@ -51,9 +51,14 @@ export const NO_NEIGHBORS: NeighborsFixture = {
 
 /**
  * How the stub answers PUT: save, keep the request open until `releasePuts()`,
- * fail with 500, or refuse with 409 (the image changed elsewhere).
+ * fail with 500 ("error") or 503 ("unavailable"), refuse with 409 (the image changed
+ * elsewhere), reject with 422 ("rejected": the server's message is `rejectedDetail`) or
+ * answer 404 ("gone": the image was deleted).
  */
-export type PutMode = "ok" | "hold" | "error" | "conflict";
+export type PutMode = "ok" | "hold" | "error" | "unavailable" | "conflict" | "rejected" | "gone";
+
+/** The 422 message the stub sends for the "rejected" PUT mode. */
+export const REJECTED_DETAIL = "Unknown class.";
 
 /**
  * How GET /images/next-unannotated answers: the id (or null for "none"), optionally held open
@@ -76,6 +81,12 @@ interface EditorApiOptions {
   /** GET /images/5/neighbors (default: a single image with no neighbors). */
   neighbors?: NeighborsFixture;
   putMode?: PutMode;
+  /** The first PUTs are answered with these modes in order; later ones use `putMode`. */
+  putQueue?: PutMode[];
+  /** GET /images/5/annotations answers 500 with this message (until `setAnnotationsError(null)`). */
+  annotationsError?: string;
+  /** GET /images/5 answers 500 with this message (until `setImageError(null)`). */
+  imageError?: string;
   /** GET /images/next-unannotated (default: no other unannotated image). */
   nextUnannotated?: NextUnannotatedMode;
 }
@@ -103,6 +114,12 @@ export function stubEditorApi(options: EditorApiOptions = {}) {
   } = options;
   let classesMode = options.classesMode ?? "ok";
   let putMode: PutMode = options.putMode ?? "ok";
+  const putQueue: PutMode[] = [...(options.putQueue ?? [])];
+  let annotationsError: string | null = options.annotationsError ?? null;
+  let imageError: string | null = options.imageError ?? null;
+  // What GET annotations answers once a test replaced the stored set: a refetch after a 409
+  // or 422 sees the other tab's (or the server's) version.
+  let serverSet: { version: number; boxes: unknown[] } | null = null;
   // Resolves the PUTs held open by putMode "hold".
   let releaseHeld: () => void = () => {};
   let heldGate: Promise<void> = Promise.resolve();
@@ -124,6 +141,8 @@ export function stubEditorApi(options: EditorApiOptions = {}) {
   // POST /classes appends here, so the next GET /classes answers with the new class.
   const classList: unknown[] = [...classes];
   const puts: Array<Record<string, unknown>> = [];
+  const annotationGets: number[] = [];
+  const classGets: number[] = [];
   const posts: Array<Record<string, unknown>> = [];
 
   const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
@@ -135,6 +154,7 @@ export function stubEditorApi(options: EditorApiOptions = {}) {
       return json(PROJECT);
     }
     if (method === "GET" && path === "/api/projects/1/classes") {
+      classGets.push(1);
       if (classesMode === "pending") {
         return new Promise<Response>(() => {});
       }
@@ -180,20 +200,28 @@ export function stubEditorApi(options: EditorApiOptions = {}) {
       return json({ detail: "Image not found." }, 404);
     }
     if (method === "GET" && path === "/api/projects/1/images/5") {
+      if (imageError !== null) {
+        return json({ detail: imageError }, 500);
+      }
       return imageStatus === 200 ? json(IMAGE) : json({ detail: "Image not found." }, imageStatus);
     }
     if (method === "GET" && path === "/api/projects/1/images/5/annotations") {
+      annotationGets.push(1);
+      if (annotationsError !== null) {
+        return json({ detail: annotationsError }, 500);
+      }
+      const shownBoxes = serverSet?.boxes ?? boxes;
       return imageStatus === 200
         ? json({
-            version,
+            version: serverSet?.version ?? version,
             is_background: isBackground,
             is_reviewed: isReviewed,
             status: isReviewed
               ? "reviewed"
-              : boxes.length > 0 || isBackground
+              : shownBoxes.length > 0 || isBackground
                 ? "annotated"
                 : "unannotated",
-            boxes,
+            boxes: shownBoxes,
           })
         : json({ detail: "Image not found." }, imageStatus);
     }
@@ -205,12 +233,19 @@ export function stubEditorApi(options: EditorApiOptions = {}) {
         is_reviewed: boolean;
       };
       puts.push(body);
-      if (putMode === "hold") {
+      const mode = putQueue.shift() ?? putMode;
+      if (mode === "hold") {
         await heldGate;
-      } else if (putMode === "error") {
+      } else if (mode === "error") {
         return json({ detail: "The save failed." }, 500);
-      } else if (putMode === "conflict") {
+      } else if (mode === "unavailable") {
+        return json({ detail: "Service unavailable." }, 503);
+      } else if (mode === "conflict") {
         return json({ detail: "This image was changed elsewhere." }, 409);
+      } else if (mode === "rejected") {
+        return json({ detail: REJECTED_DETAIL }, 422);
+      } else if (mode === "gone") {
+        return json({ detail: "Image not found." }, 404);
       }
       return json({
         version: body.base_version + 1,
@@ -231,6 +266,9 @@ export function stubEditorApi(options: EditorApiOptions = {}) {
   return {
     puts,
     posts,
+    /** One entry per GET /images/5/annotations and per GET /classes so far. */
+    annotationGets,
+    classGets,
     neighborRequests,
     nextUnannotatedRequests,
     fetchMock,
@@ -243,6 +281,22 @@ export function stubEditorApi(options: EditorApiOptions = {}) {
     /** Change how later PUTs are answered; leaving "hold" never releases an already held PUT. */
     setPutMode: (mode: PutMode) => {
       putMode = mode;
+    },
+    /** Queue more answers for the next PUTs (consumed before `putMode`). */
+    queuePuts: (...modes: PutMode[]) => {
+      putQueue.push(...modes);
+    },
+    /** What later GET /images/5/annotations answer (a refetch after a conflict); `null` resets. */
+    setServerSet: (next: { version: number; boxes: unknown[] } | null) => {
+      serverSet = next;
+    },
+    /** Make GET /images/5/annotations fail with 500 and this message (`null`: answer again). */
+    setAnnotationsError: (message: string | null) => {
+      annotationsError = message;
+    },
+    /** Make GET /images/5 fail with 500 and this message (`null`: answer again). */
+    setImageError: (message: string | null) => {
+      imageError = message;
     },
     /** Answer every PUT held open so far with a normal save. */
     releasePuts: () => {

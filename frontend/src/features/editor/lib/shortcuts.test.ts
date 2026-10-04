@@ -34,6 +34,7 @@ function allHandlers(): Spies {
     background: spy(),
     nextUnannotated: spy(),
     fit: spy(),
+    save: spy(),
   };
 }
 
@@ -116,6 +117,7 @@ describe("buildHotkeys", () => {
       "background",
       "nextUnannotated",
       "fit",
+      "save",
     ]);
     expect(SHORTCUTS.filter((def) => def.editing).map((def) => def.id)).toEqual([
       "delete",
@@ -214,6 +216,40 @@ describe("view rows", () => {
 
     press({ code: "KeyF", key: "f", repeat: true });
     press({ code: "KeyF", key: "f", ctrlKey: true });
+
+    expect(calledIds(handlers)).toEqual([]);
+  });
+});
+
+describe("save row", () => {
+  it("binds Mod+S in the general group; it works while read-only and never repeats", () => {
+    const row = SHORTCUTS.find((def) => def.id === "save");
+
+    expect(row?.group).toBe("general");
+    expect(row?.labelKey).toBe("shortcuts.save");
+    expect(row?.hotkeys).toEqual(["mod+s"]);
+    expect(row?.caps).toEqual([["Mod", "S"]]);
+    expect(row?.editing).toBe(false);
+    expect(row?.allowRepeat).toBe(false);
+  });
+
+  it("calls save for Ctrl+S on any layout and prevents the browser's save dialog", () => {
+    const handlers = allHandlers();
+    mount(handlers);
+
+    const event = press({ code: "KeyS", key: "ы", ctrlKey: true });
+
+    expect(handlers.save).toHaveBeenCalledTimes(1);
+    expect(calledIds(handlers)).toEqual(["save"]);
+    expect(event.defaultPrevented).toBe(true);
+  });
+
+  it("ignores a held Ctrl+S and a bare S", () => {
+    const handlers = allHandlers();
+    mount(handlers);
+
+    press({ code: "KeyS", key: "s", ctrlKey: true, repeat: true });
+    press({ code: "KeyS", key: "s" });
 
     expect(calledIds(handlers)).toEqual([]);
   });
