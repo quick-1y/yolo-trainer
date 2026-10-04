@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 03
 current_phase_name: Box Annotation Editor
 status: executing
-stopped_at: Completed 03-08-PLAN.md
-last_updated: "2026-10-04T11:52:06.193Z"
+stopped_at: Completed 03-09-PLAN.md
+last_updated: "2026-10-04T12:05:08.517Z"
 last_activity: 2026-10-04
 last_activity_desc: Phase 03 execution started
-state_head: df42332ac6089a6516daa6629b64a2b6a3f3f9c3
+state_head: 82793236d70fc6cd319a044e1c9e665a36e9f168
 progress:
   total_phases: 12
   completed_phases: 2
   total_plans: 36
-  completed_plans: 31
+  completed_plans: 32
   percent: 17
 ---
 
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-10-03)
 ## Current Position
 
 Phase: 03 (Box Annotation Editor) — EXECUTING
-Plan: 9 of 13
+Plan: 10 of 13
 Status: Ready to execute
 Last activity: 2026-10-04 — Phase 03 execution started
 
@@ -89,6 +89,7 @@ Progress: [██░░░░░░░░] 17%
 | Phase 03 P06 | 12min | 2 tasks | 18 files |
 | Phase 03 P07 | 20 min | 3 tasks | 17 files |
 | Phase 03 P08 | 25 min | 3 tasks | 23 files |
+| Phase 03 P09 | 8 min | 2 tasks | 17 files |
 
 ## Accumulated Context
 
@@ -147,6 +148,8 @@ Recent decisions affecting current work:
 - [Phase 03]: 03-07: leave dialog on failed or conflicting flush (Retry, Leave anyway, Esc stays); beforeunload guard lives in storeRegistry (anyUnsaved) so it outlives the editor route — D-11: unsaved work is never lost silently, even after leaving the route while a save is pending
 - [Phase 03]: 03-08: next-unannotated lookup is a shared hook (useNextUnannotated) used by the top bar button and the N key; goTo accepts a path or an async lookup that runs after the save
 - [Phase 03]: 03-08: unannotated and background stay distinct in derived status, status-counts, badge and next-unannotated (never an empty-label negative example)
+- [Phase 03]: 03-09: syncAfterSave patches cached image lists but does not invalidate them; list staleTime is 5 min — An invalidated query is stale whatever its staleTime and refetches every loaded page on remount (measured 2 fetches); a save never changes list membership or order
+- [Phase 03]: 03-09: displayStatus reads flags and box_count, not server status (server folds background into annotated); tile aria name is '{filename}, {status}' — Tile chip and editor badge share one precedence: reviewed > background > annotated > unannotated
 
 ### Pending Todos
 
@@ -169,6 +172,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-10-04T11:52:06.097Z
-Stopped at: Completed 03-08-PLAN.md
+Last session: 2026-10-04T12:05:08.417Z
+Stopped at: Completed 03-09-PLAN.md
 Resume file: None
