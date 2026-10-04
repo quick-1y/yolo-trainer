@@ -3,16 +3,16 @@ gsd_state_version: "1.0"
 current_phase: 03
 current_phase_name: Box Annotation Editor
 status: executing
-stopped_at: Completed 03-01-PLAN.md
-last_updated: "2026-10-04T07:28:17.080Z"
+stopped_at: Completed 03-02-PLAN.md
+last_updated: "2026-10-04T07:44:25.249Z"
 last_activity: 2026-10-04
 last_activity_desc: Phase 03 execution started
-state_head: 3388e5c2e6f72e0f64f4aad1c5973225bcf6a62c
+state_head: "0b9da7b08f568baec8a113457bd904f6b16c7e58"
 progress:
   total_phases: 12
   completed_phases: 2
   total_plans: 36
-  completed_plans: 24
+  completed_plans: 25
   percent: 17
 ---
 
@@ -28,7 +28,7 @@ See: .planning/PROJECT.md (updated 2026-10-03)
 ## Current Position
 
 Phase: 03 (Box Annotation Editor) — EXECUTING
-Plan: 2 of 13
+Plan: 3 of 13
 Status: Ready to execute
 Last activity: 2026-10-04 — Phase 03 execution started
 
@@ -82,6 +82,7 @@ Progress: [██░░░░░░░░] 17%
 | Phase 02 P12 | 16 min | 2 tasks | 6 files |
 | Phase 02 P13 | 9 min | 2 tasks | 4 files |
 | Phase 03 P01 | 20 min | 2 tasks | 35 files |
+| Phase 03 P02 | 13 min | 3 tasks | 13 files |
 
 ## Accumulated Context
 
@@ -128,6 +129,7 @@ Recent decisions affecting current work:
 - [Phase 02]: 02-13: client chunks image delete into sequential 1000-id requests (backend max_length=1000 unchanged); partial failure prunes the succeeded prefix — WR-01: selections over 1000 returned 422; sequential keeps a well-defined deleted prefix for SQLite single writer
 - [Phase 02]: 02-13: ImagesPage loads the next page when the loaded list is empty and a next page exists; never auto-retries after a failed load — CR-01: pruneDeletedImages keeps next_cursor and VirtuosoGrid endReached never fires with zero items
 - [Phase 03]: Plan 03-01: annotation save is a whole-set replace guarded by a compare-and-swap annotation_version (409 on stale, idempotent retry); status and box_count are derived, never stored; box ids are client UUID v4 built from getRandomValues — Costly-to-reverse contract that Phases 6 and 8 build on; a class-delete cascade would desync a stored count; randomUUID is undefined on http LAN origins
+- [Phase 03]: Plan 03-02: class delete bumps annotation_version and clears is_reviewed of every image that held a box of the class, in the same transaction and before the cascade; images without that class keep version and reviewed flag — A stale editor tab must get 409 instead of re-inserting boxes of the deleted class (Pitfall 5); untouched images must not lose work
 
 ### Pending Todos
 
@@ -150,6 +152,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-10-04T07:28:10.244Z
-Stopped at: Completed 03-01-PLAN.md
+Last session: 2026-10-04T07:44:25.158Z
+Stopped at: Completed 03-02-PLAN.md
 Resume file: None
