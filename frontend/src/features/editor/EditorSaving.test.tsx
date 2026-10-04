@@ -1,4 +1,5 @@
 import { act, screen, waitFor, within } from "@testing-library/react";
+import { VirtuosoMockContext } from "react-virtuoso";
 import { useLocation } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -54,11 +55,12 @@ async function openEditor(options: Parameters<typeof stubEditorApi>[0] = {}) {
   stubElementSize(800, 600);
   installPointerCaptureStubs();
   const api = stubEditorApi(options);
+  // jsdom has no layout: the mock context makes the virtualized object list render its rows.
   const rendered = renderWithProviders(
-    <>
+    <VirtuosoMockContext.Provider value={{ viewportHeight: 400, itemHeight: 40 }}>
       <AppRoutes />
       <LocationProbe />
-    </>,
+    </VirtuosoMockContext.Provider>,
     { route: ROUTE },
   );
   await screen.findByRole("application");
@@ -213,13 +215,15 @@ describe("a conflict (409, D-12)", () => {
     press({ code: "KeyR", key: "r" });
     press({ code: "KeyG", key: "g" });
     press({ code: "Digit2", key: "2" });
-    await user.click(screen.getByText("truck"));
+    await user.click(screen.getByRole("button", { name: /truck/ }));
     await user.click(screen.getByRole("button", { name: "Delete object 1" }));
     await sleep(600);
 
     expect(screen.getByText("Objects: 1")).toBeInTheDocument();
-    expect(screen.getByRole("textbox", { name: "Class of object 1" })).toHaveValue("car");
-    expect(screen.getByRole("textbox", { name: "Class of object 1" })).toBeDisabled();
+    const row = within(screen.getByTestId("object-row"));
+    expect(row.getByLabelText("Class of object 1")).toHaveValue("car");
+    expect(row.getByLabelText("Class of object 1")).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Delete object 1" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Mark as reviewed" })).toHaveAttribute(
       "aria-pressed",
       "false",
