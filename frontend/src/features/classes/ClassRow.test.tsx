@@ -176,6 +176,14 @@ describe("ClassRow recolor", () => {
       name: i18n.t("classes:row.changeColor", { name: "car" }),
     });
 
+  // jsdom has no layout, so floating-ui's `hide` middleware flags the popover target as
+  // clipped as soon as the position is computed and Mantine then sets `display: none` on the
+  // dropdown. Whether a plain role query still sees the swatches depends on how long the test
+  // takes between the click and the query (a slow full-suite run loses that race), so the
+  // swatches are queried regardless of that layout-derived visibility.
+  const swatchOption = (color: string) =>
+    screen.findByRole("button", { name: color, hidden: true });
+
   it("labels the swatch button and sends one PATCH {color} for a palette preset, updating the swatch immediately", async () => {
     let release: (response: Response) => void = () => undefined;
     const patches = stubPatch(
@@ -187,7 +195,7 @@ describe("ClassRow recolor", () => {
     const { user } = renderRow();
 
     await user.click(swatchButton());
-    await user.click(await screen.findByRole("button", { name: "#4363D8" }));
+    await user.click(await swatchOption("#4363D8"));
 
     await waitFor(() => expect(patches).toHaveLength(1));
     expect(patches[0].url).toBe("/api/projects/7/classes/11");
@@ -205,7 +213,7 @@ describe("ClassRow recolor", () => {
     const { user } = renderRow();
 
     await user.click(swatchButton());
-    await user.click(await screen.findByRole("button", { name: "#4363D8" }));
+    await user.click(await swatchOption("#4363D8"));
 
     await waitFor(() =>
       expect(notifications.show).toHaveBeenCalledWith(
@@ -224,7 +232,7 @@ describe("ClassRow recolor", () => {
     renderRow();
 
     fireEvent.click(swatchButton());
-    fireEvent.click(await screen.findByRole("button", { name: "#E6194B" }));
+    fireEvent.click(await swatchOption("#E6194B"));
 
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(patches).toHaveLength(0);
