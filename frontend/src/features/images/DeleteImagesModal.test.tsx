@@ -10,6 +10,7 @@ import { notifications } from "@mantine/notifications";
 
 import type { ImageItem } from "../../api/images";
 import { AppRoutes } from "../../app/routes";
+import { makeImageItem } from "../../test/fixtures";
 import { renderWithProviders } from "../../test/render";
 
 const MOCK_VIEWPORT = { viewportWidth: 1200, viewportHeight: 800, itemWidth: 184, itemHeight: 208 };
@@ -39,14 +40,9 @@ function jsonResponse(body: unknown, status = 200): Response {
 }
 
 function makeItems(count: number): ImageItem[] {
-  return Array.from({ length: count }, (_, i) => ({
-    id: i + 1,
-    filename: `img-${i + 1}.jpg`,
-    width: 640,
-    height: 480,
-    size_bytes: 1000,
-    created_at: "2026-01-01T00:00:00Z",
-  }));
+  return Array.from({ length: count }, (_, i) =>
+    makeImageItem({ id: i + 1, filename: `img-${i + 1}.jpg` }),
+  );
 }
 
 type DeleteHandler = (body: { ids: number[] }) => Response | Promise<Response>;

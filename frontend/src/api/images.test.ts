@@ -3,9 +3,11 @@ import { act, renderHook } from "@testing-library/react";
 import { createElement, type ReactNode } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { makeImageItem } from "../test/fixtures";
 import { ApiError } from "./client";
 import {
   DELETE_BATCH_SIZE,
+  displayStatus,
   imageKeys,
   useDeleteImages,
   type ImageItem,
@@ -20,14 +22,7 @@ function range(from: number, to: number): number[] {
 }
 
 function makeItem(id: number): ImageItem {
-  return {
-    id,
-    filename: `img-${id}.jpg`,
-    width: 640,
-    height: 480,
-    size_bytes: 1000,
-    created_at: "2026-01-01T00:00:00Z",
-  };
+  return makeImageItem({ id });
 }
 
 function jsonResponse(body: unknown, status = 200): Response {
@@ -206,5 +201,30 @@ describe("useDeleteImages", () => {
     });
 
     expect(cachedIds(queryClient, key)).toEqual(range(1, 120));
+  });
+});
+
+describe("displayStatus", () => {
+  const state = { box_count: 0, is_background: false, is_reviewed: false, status: "unannotated" } as const;
+
+  it("is unannotated when there is no box and no flag", () => {
+    expect(displayStatus(state)).toBe("unannotated");
+  });
+
+  it("is annotated for an image with boxes that is not reviewed", () => {
+    expect(displayStatus({ ...state, box_count: 2, status: "annotated" })).toBe("annotated");
+  });
+
+  it("is background when only the background flag is set", () => {
+    expect(displayStatus({ ...state, status: "annotated", is_background: true })).toBe("background");
+  });
+
+  it("lets reviewed beat background and annotated", () => {
+    expect(displayStatus({ ...state, status: "reviewed", is_background: true, is_reviewed: true })).toBe(
+      "reviewed",
+    );
+    expect(displayStatus({ ...state, box_count: 1, status: "reviewed", is_reviewed: true })).toBe(
+      "reviewed",
+    );
   });
 });

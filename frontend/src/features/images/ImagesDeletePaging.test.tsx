@@ -8,6 +8,7 @@ vi.mock("@mantine/notifications", () => ({
 
 import type { ImageItem } from "../../api/images";
 import { AppRoutes } from "../../app/routes";
+import { makeImageItem } from "../../test/fixtures";
 import { renderWithProviders } from "../../test/render";
 
 const MOCK_VIEWPORT = { viewportWidth: 1200, viewportHeight: 800, itemWidth: 184, itemHeight: 208 };
@@ -37,14 +38,7 @@ function jsonResponse(body: unknown, status = 200): Response {
 }
 
 function makeItem(id: number, prefix: string): ImageItem {
-  return {
-    id,
-    filename: `${prefix}-${id}.jpg`,
-    width: 640,
-    height: 480,
-    size_bytes: 1000,
-    created_at: "2026-01-01T00:00:00Z",
-  };
+  return makeImageItem({ id, filename: `${prefix}-${id}.jpg` });
 }
 
 interface ListRequest {

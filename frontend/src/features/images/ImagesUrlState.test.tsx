@@ -4,6 +4,7 @@ import { VirtuosoGridMockContext } from "react-virtuoso";
 import { describe, expect, it, vi } from "vitest";
 
 import { AppRoutes } from "../../app/routes";
+import { makeImageItem } from "../../test/fixtures";
 import { renderWithProviders } from "../../test/render";
 
 const MOCK_VIEWPORT = { viewportWidth: 1200, viewportHeight: 800, itemWidth: 184, itemHeight: 208 };
@@ -34,14 +35,9 @@ function jsonResponse(body: unknown, status = 200): Response {
 }
 
 function makeItems(count: number, prefix = "img") {
-  return Array.from({ length: count }, (_, i) => ({
-    id: i + 1,
-    filename: `${prefix}-${i + 1}.jpg`,
-    width: 640,
-    height: 480,
-    size_bytes: 1000,
-    created_at: "2026-01-01T00:00:00Z",
-  }));
+  return Array.from({ length: count }, (_, i) =>
+    makeImageItem({ id: i + 1, filename: `${prefix}-${i + 1}.jpg` }),
+  );
 }
 
 interface ListQuery {
@@ -180,7 +176,7 @@ describe("Images page keeps sort and search in the URL", () => {
     const { user } = renderAt("/projects/7/images?sort=name&q=cat");
     await screen.findByText("cat-1.jpg");
 
-    await user.click(screen.getByRole("button", { name: "cat-2.jpg" }));
+    await user.click(screen.getByRole("button", { name: /^cat-2\.jpg,/ }));
 
     await waitFor(() =>
       expect(screen.getByTestId("pathname")).toHaveTextContent("/projects/7/annotate/2"),
@@ -193,7 +189,7 @@ describe("Images page keeps sort and search in the URL", () => {
     const { user } = renderAt("/projects/7/images");
     await screen.findByText("img-1.jpg");
 
-    await user.click(screen.getByRole("button", { name: "img-4.jpg" }));
+    await user.click(screen.getByRole("button", { name: /^img-4\.jpg,/ }));
 
     await waitFor(() =>
       expect(screen.getByTestId("pathname")).toHaveTextContent("/projects/7/annotate/4"),
