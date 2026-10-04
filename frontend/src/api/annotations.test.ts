@@ -1,10 +1,12 @@
-import { QueryClient, type InfiniteData } from "@tanstack/react-query";
-import { describe, expect, it, vi } from "vitest";
+import { QueryClient, QueryClientProvider, type InfiniteData } from "@tanstack/react-query";
+import { renderHook, waitFor } from "@testing-library/react";
+import { createElement, type ReactNode } from "react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { makeImageItem } from "../test/fixtures";
 import { type AnnotationSaveInput, type AnnotationSet, type SaveResult, annotationKeys, syncAfterSave } from "./annotations";
 import { classKeys } from "./classes";
-import { type ImageDetail, type ImagePage, imageKeys } from "./images";
+import { type ImageDetail, type ImagePage, imageKeys, useImagesInfinite } from "./images";
 
 const PROJECT_ID = 1;
 const IMAGE_ID = 5;
@@ -110,7 +112,7 @@ describe("syncAfterSave", () => {
     ).toMatchObject({ version: 2, status: "annotated", boxes: INPUT.boxes });
   });
 
-  it("refreshes the status summary and marks lists and classes stale without refetching them", () => {
+  it("refreshes the status summary and marks the class list stale without refetching it", () => {
     const queryClient = setup();
     const invalidate = vi.spyOn(queryClient, "invalidateQueries");
 
@@ -118,18 +120,47 @@ describe("syncAfterSave", () => {
 
     expect(invalidate).toHaveBeenCalledWith({ queryKey: imageKeys.summary(PROJECT_ID) });
     expect(invalidate).toHaveBeenCalledWith({
-      queryKey: imageKeys.project(PROJECT_ID),
-      refetchType: "none",
-    });
-    expect(invalidate).toHaveBeenCalledWith({
       queryKey: classKeys.list(PROJECT_ID),
       refetchType: "none",
     });
     expect(queryClient.getQueryState(imageKeys.summary(PROJECT_ID))?.isInvalidated).toBe(true);
     expect(queryClient.getQueryState(classKeys.list(PROJECT_ID))?.isInvalidated).toBe(true);
-    expect(
-      queryClient.getQueryState(imageKeys.list(PROJECT_ID, "newest", ""))?.isInvalidated,
-    ).toBe(true);
-    expect(queryClient.getQueryState(imageKeys.list(2, "newest", ""))?.isInvalidated).toBe(false);
+  });
+
+  describe("when the grid comes back", () => {
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    it("shows the patched item and does not request the loaded pages again", async () => {
+      const fetchMock = vi.fn(async () =>
+        new Response(
+          JSON.stringify({ items: [makeImageItem({ id: IMAGE_ID })], next_cursor: null, total: 1 }),
+          { status: 200, headers: { "Content-Type": "application/json" } },
+        ),
+      );
+      vi.stubGlobal("fetch", fetchMock);
+      const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+      const wrapper = ({ children }: { children: ReactNode }) =>
+        createElement(QueryClientProvider, { client: queryClient }, children);
+
+      const grid = renderHook(() => useImagesInfinite(PROJECT_ID, "newest", ""), { wrapper });
+      await waitFor(() => {
+        expect(grid.result.current.isSuccess).toBe(true);
+      });
+      grid.unmount();
+
+      syncAfterSave(queryClient, PROJECT_ID, IMAGE_ID, INPUT, RESULT);
+      const back = renderHook(() => useImagesInfinite(PROJECT_ID, "newest", ""), { wrapper });
+
+      expect(back.result.current.data?.pages[0].items[0]).toMatchObject({
+        box_count: 2,
+        status: "annotated",
+      });
+      await new Promise((resolve) => {
+        setTimeout(resolve, 50);
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
   });
 });

@@ -135,7 +135,7 @@ describe("Images search and sort toolbar", () => {
     await waitFor(() => expect(lastRequest(requests)).toEqual({ sort: "name", q: "car" }));
   });
 
-  it("clears the search on Esc and requests the unfiltered list again", async () => {
+  it("clears the search on Esc and shows the unfiltered list again", async () => {
     const requests = stubFetch(carsList);
 
     const { user } = renderImagesPage();
@@ -148,7 +148,9 @@ describe("Images search and sort toolbar", () => {
 
     expect(input).toHaveValue("");
     expect(await screen.findByText("img-4.jpg")).toBeInTheDocument();
-    expect(lastRequest(requests)).toEqual({ sort: "newest", q: null });
+    // The unfiltered list was loaded a moment ago and stays fresh (staleTime), so it comes
+    // back from the cache instead of being requested again.
+    expect(requests.filter((request) => request.sort === "newest" && request.q === null)).toHaveLength(1);
     expect(screen.getByText("Images: 4")).toBeInTheDocument();
   });
 
@@ -166,7 +168,9 @@ describe("Images search and sort toolbar", () => {
 
     expect(input).toHaveValue("");
     expect(await screen.findByText("img-4.jpg")).toBeInTheDocument();
-    expect(lastRequest(requests)).toEqual({ sort: "newest", q: null });
+    // The unfiltered list was loaded a moment ago and stays fresh (staleTime), so it comes
+    // back from the cache instead of being requested again.
+    expect(requests.filter((request) => request.sort === "newest" && request.q === null)).toHaveLength(1);
     expect(screen.queryByRole("button", { name: "Clear" })).not.toBeInTheDocument();
   });
 
@@ -188,7 +192,9 @@ describe("Images search and sort toolbar", () => {
 
     expect(await screen.findByText("img-1.jpg")).toBeInTheDocument();
     expect(input).toHaveValue("");
-    expect(lastRequest(requests)).toEqual({ sort: "newest", q: null });
+    // The unfiltered list was loaded a moment ago and stays fresh (staleTime), so it comes
+    // back from the cache instead of being requested again.
+    expect(requests.filter((request) => request.sort === "newest" && request.q === null)).toHaveLength(1);
   });
 
   it("remounts the grid scroller when the sort changes so the new order starts at the top", async () => {

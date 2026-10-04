@@ -99,6 +99,9 @@ export interface StatusCounts {
 
 export const PAGE_SIZE = 100;
 
+/** How long a loaded image list counts as fresh. */
+export const LIST_STALE_TIME_MS = 5 * 60 * 1000;
+
 export const imageKeys = {
   project: (projectId: number) => ["images", projectId] as const,
   list: (projectId: number, sort: string, q: string) => ["images", projectId, sort, q] as const,
@@ -215,6 +218,9 @@ export function useImagesInfinite(projectId: number, sort: ImageSort = "newest",
     queryFn: ({ pageParam }) =>
       listImages(projectId, { sort, q, cursor: pageParam, limit: PAGE_SIZE }),
     getNextPageParam: (last) => last.next_cursor,
+    // A refetch of an infinite query re-requests every loaded page one after another, so
+    // Back from the editor must not trigger one. Saves patch the cached items in place.
+    staleTime: LIST_STALE_TIME_MS,
   });
 }
 
@@ -274,6 +280,45 @@ export function pruneDeletedImages(
       items: page.items.filter((item) => !ids.has(item.id)),
       total: Math.max(0, page.total - removed),
     })),
+  };
+}
+
+/**
+ * Copy a saved image's annotation state into its cached list item, so the grid shows
+ * the new status and box count without refetching. Returns `data` itself when the image
+ * is not in the loaded pages, and keeps every untouched page and item by reference.
+ */
+export function patchImageInListCache(
+  data: InfiniteData<ImagePage, string | null> | undefined,
+  imageId: number,
+  patch: ImageAnnotationState,
+): InfiniteData<ImagePage, string | null> | undefined {
+  if (data === undefined) {
+    return data;
+  }
+  if (!data.pages.some((page) => page.items.some((item) => item.id === imageId))) {
+    return data;
+  }
+  return {
+    ...data,
+    pages: data.pages.map((page) =>
+      page.items.some((item) => item.id === imageId)
+        ? {
+            ...page,
+            items: page.items.map((item) =>
+              item.id === imageId
+                ? {
+                    ...item,
+                    box_count: patch.box_count,
+                    is_background: patch.is_background,
+                    is_reviewed: patch.is_reviewed,
+                    status: patch.status,
+                  }
+                : item,
+            ),
+          }
+        : page,
+    ),
   };
 }
 

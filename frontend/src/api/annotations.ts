@@ -1,7 +1,14 @@
-import { type QueryClient, useQuery } from "@tanstack/react-query";
+import { type InfiniteData, type QueryClient, useQuery } from "@tanstack/react-query";
 
 import { apiRequest } from "./client";
-import { type ImageDetail, type ImageStatus, imageKeys } from "./images";
+import { classKeys } from "./classes";
+import {
+  type ImageDetail,
+  type ImagePage,
+  type ImageStatus,
+  imageKeys,
+  patchImageInListCache,
+} from "./images";
 
 /** One box: normalized top-left x/y and size w/h in [0, 1] of the oriented image. */
 export interface Box {
@@ -67,8 +74,10 @@ export function saveAnnotations(
 }
 
 /**
- * After a successful save: write the saved set into the annotations cache and
- * patch the cached image detail, so a later visit never shows stale state.
+ * After a successful save: write the saved set into the annotations cache, patch the
+ * cached image detail and the image in every cached list of the project, and refresh what
+ * is derived from it (status summary, class object counts), so a later visit never shows
+ * stale state and the grid never has to refetch its loaded pages.
  */
 export function syncAfterSave(
   queryClient: QueryClient,
@@ -84,17 +93,30 @@ export function syncAfterSave(
     status: result.status,
     boxes: input.boxes,
   });
+  const state = {
+    box_count: result.box_count,
+    status: result.status,
+    is_background: result.is_background,
+    is_reviewed: result.is_reviewed,
+  };
   queryClient.setQueryData<ImageDetail>(imageKeys.detail(projectId, imageId), (current) =>
-    current === undefined
-      ? current
-      : {
-          ...current,
-          box_count: result.box_count,
-          status: result.status,
-          is_background: result.is_background,
-          is_reviewed: result.is_reviewed,
-        },
+    current === undefined ? current : { ...current, ...state },
   );
+  // The detail key has a different root ("image"), so only list values reach this helper.
+  queryClient.setQueriesData<InfiniteData<ImagePage, string | null>>(
+    { queryKey: imageKeys.project(projectId) },
+    (data) => patchImageInListCache(data, imageId, state),
+  );
+  // The lists are deliberately NOT invalidated: an invalidated query counts as stale whatever
+  // its staleTime, so Back from the editor would refetch every loaded page. A save never
+  // changes which images a list holds or their order (only filename search and sort do), so
+  // the patch above is the whole update; the list's own staleTime bounds how old it can get.
+  void queryClient.invalidateQueries({ queryKey: imageKeys.summary(projectId) });
+  // Object counts changed; the Classes page and the delete dialog refetch when next opened.
+  void queryClient.invalidateQueries({
+    queryKey: classKeys.list(projectId),
+    refetchType: "none",
+  });
 }
 
 /** The saver's `send` function for one image. */
