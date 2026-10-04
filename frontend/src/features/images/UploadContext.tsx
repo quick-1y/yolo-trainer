@@ -183,6 +183,8 @@ export function UploadProvider({
           // Reset (never invalidate) the infinite query, once for the whole
           // upload: invalidation would refetch every page loaded so far.
           await queryClient.resetQueries({ queryKey: imageKeys.project(projectId) });
+          // The grid's "Annotated N of M" summary: new images are unannotated.
+          void queryClient.invalidateQueries({ queryKey: imageKeys.summary(projectId) });
           // The project's image count on the Overview and project cards.
           void queryClient.invalidateQueries({ queryKey: projectKeys.all });
           void queryClient.invalidateQueries({ queryKey: projectKeys.detail(projectId) });

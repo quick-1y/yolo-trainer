@@ -188,7 +188,8 @@ describe("selection keyboard rules", () => {
     });
 
     await waitFor(() => expect(screen.queryByText("Selected: 1")).not.toBeInTheDocument());
-    expect(selectedIndexes()).toEqual([]);
+    // The new search remounts the grid, which shows its skeleton until the list answers.
+    await waitFor(() => expect(selectedIndexes()).toEqual([]));
   });
 
   it("Tab moves from the tile to its checkbox, Space toggles it, Enter on the tile opens the editor", async () => {

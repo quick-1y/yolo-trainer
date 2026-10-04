@@ -12,6 +12,7 @@ import { DeleteImagesModal } from "./DeleteImagesModal";
 import { ImageGrid } from "./ImageGrid";
 import { ImagesToolbar } from "./ImagesToolbar";
 import { SelectionBar } from "./SelectionBar";
+import { StatusSummary } from "./StatusSummary";
 import { UploadButtons } from "./UploadButtons";
 import { useUpload } from "./UploadContext";
 import { UploadDropzone } from "./UploadDropzone";
@@ -207,17 +208,20 @@ export function ImagesPage() {
       }}
     >
       <UploadDropzone />
-      <Group justify="space-between" mb="md">
-        <Group align="baseline" gap="sm">
-          <Title order={2}>{t("images:page.title")}</Title>
-          <Text size="sm" c="dark.1">
-            {searching
-              ? t("images:page.countFiltered", { count: total })
-              : t("images:page.count", { count: total })}
-          </Text>
+      <Box mb="md">
+        <Group justify="space-between">
+          <Group align="baseline" gap="sm">
+            <Title order={2}>{t("images:page.title")}</Title>
+            <Text size="sm" c="dark.1">
+              {searching
+                ? t("images:page.countFiltered", { count: total })
+                : t("images:page.count", { count: total })}
+            </Text>
+          </Group>
+          <UploadButtons />
         </Group>
-        <UploadButtons />
-      </Group>
+        <StatusSummary projectId={project.id} />
+      </Box>
       {state.status !== "idle" && (
         <UploadPanel state={state} onCancel={cancel} onDismiss={dismiss} />
       )}

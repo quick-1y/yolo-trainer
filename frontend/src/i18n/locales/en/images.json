@@ -33,7 +33,10 @@
     "copy": "Copy list",
     "copied": "Copied",
     "retryHint": "Files that failed to send can be uploaded again. Images that were already added are skipped.",
-    "dismiss": "Dismiss"
+    "dismiss": "Dismiss",
+    "progress": "Annotated: {{done}} of {{total}}",
+    "reviewed": "Reviewed: {{count}}",
+    "allDone": "All images are annotated."
   },
   "reject": {
     "unsupported": "Not a supported image (JPG, PNG, WEBP, BMP).",

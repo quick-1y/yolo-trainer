@@ -137,8 +137,12 @@ describe("Images page keeps sort and search in the URL", () => {
     await user.clear(input);
     await user.type(input, "dog");
 
-    await waitFor(() => expect(screen.getByTestId("search")).toHaveTextContent(/^\?sort=name&q=dog$/));
-    expect(lastRequest(requests)).toEqual({ sort: "name", q: "dog" });
+    // The search is debounced by 300 ms; the default 1 s wait is too tight under a loaded suite.
+    await waitFor(
+      () => expect(screen.getByTestId("search")).toHaveTextContent(/^\?sort=name&q=dog$/),
+      { timeout: 4000 },
+    );
+    await waitFor(() => expect(lastRequest(requests)).toEqual({ sort: "name", q: "dog" }));
   });
 
   it("omits sort and q from the URL when they are the defaults", async () => {

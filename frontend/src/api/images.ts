@@ -344,6 +344,7 @@ export function useDeleteImages(projectId: number) {
       queryKey: imageKeys.project(projectId),
       refetchType: "none",
     });
+    void queryClient.invalidateQueries({ queryKey: imageKeys.summary(projectId) });
     void queryClient.invalidateQueries({ queryKey: projectKeys.all });
     void queryClient.invalidateQueries({ queryKey: projectKeys.detail(projectId) });
   };
