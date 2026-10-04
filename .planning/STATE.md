@@ -30,7 +30,7 @@ See: .planning/PROJECT.md (updated 2026-10-04)
 Phase: 4 — Train & Download
 Plan: Not started
 Status: Ready to plan
-Last activity: 2026-10-04 - Completed quick task 261004-rnk: Добавить GitHub Actions CI (backend uv+pytest+ruff, frontend npm test+build) и бейдж в README
+Last activity: 2026-10-04 - Completed quick task 261004-squ: Очистка и упорядочивание репозитория
 
 Progress: [███░░░░░░░] 25%
 
@@ -181,6 +181,7 @@ None yet.
 | # | Description | Date | Commit | Status | Directory |
 |---|-------------|------|--------|--------|-----------|
 | 261004-rnk | Добавить GitHub Actions CI (backend uv+pytest+ruff, frontend npm test+build) и бейдж в README | 2026-10-04 | 430efec | Verified | [261004-rnk-dobavit-github-actions-ci-backend-uv-pyt](./quick/261004-rnk-dobavit-github-actions-ci-backend-uv-pyt/) |
+| 261004-squ | Очистка и упорядочивание репозитория (ignore .gsd/, полный layout в README, удаление кэшей инструментов) | 2026-10-04 | 9459faa | Verified | [261004-squ-repository-cleanup-and-organization-per-](./quick/261004-squ-repository-cleanup-and-organization-per-/) |
 
 ## Deferred Items
 
