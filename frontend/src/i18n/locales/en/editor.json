@@ -1,0 +1,22 @@
+{
+  "topBar": {
+    "back": "Images",
+    "backAria": "Back to images"
+  },
+  "save": {
+    "saved": "Saved",
+    "saving": "Saving…",
+    "error": "Not saved",
+    "errorHint": "Not saved — retrying…"
+  },
+  "canvas": {
+    "aria": "Annotation canvas",
+    "noClassesHint": "Add a class to start drawing.",
+    "loadFailed": "Could not load this image."
+  },
+  "notFound": {
+    "title": "Image not found",
+    "body": "This image does not exist in this project or was deleted.",
+    "back": "Back to images"
+  }
+}

@@ -272,8 +272,14 @@ def test_list_is_newest_first_with_total(client: TestClient) -> None:
         "height",
         "size_bytes",
         "created_at",
+        "box_count",
+        "is_background",
+        "is_reviewed",
+        "status",
     }
     assert body["items"][0]["created_at"].endswith("Z")
+    assert body["items"][0]["box_count"] == 0
+    assert body["items"][0]["status"] == "unannotated"
 
 
 def test_list_pages_with_keyset_cursor(client: TestClient) -> None:

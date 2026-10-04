@@ -11,6 +11,7 @@ from pydantic import (
     BaseModel,
     ConfigDict,
     Field,
+    computed_field,
     field_serializer,
     model_validator,
 )
@@ -157,6 +158,22 @@ class ClassRead(BaseModel):
         return value.isoformat().replace("+00:00", "Z")
 
 
+ImageStatus = Literal["unannotated", "annotated", "reviewed"]
+
+# About 170 JSON bytes per box keeps a full set under nginx's unchanged 1 MiB
+# /api/ body limit.
+MAX_BOXES = 2000
+
+
+def derive_status(box_count: int, is_background: bool, is_reviewed: bool) -> ImageStatus:
+    """Status is derived, never stored (D-13): reviewed > annotated > unannotated."""
+    if is_reviewed:
+        return "reviewed"
+    if box_count > 0 or is_background:
+        return "annotated"
+    return "unannotated"
+
+
 class ImageRead(BaseModel):
     model_config = ConfigDict(from_attributes=True, populate_by_name=True)
 
@@ -166,12 +183,96 @@ class ImageRead(BaseModel):
     height: int
     size_bytes: int
     created_at: datetime
+    box_count: int = 0
+    is_background: bool = False
+    is_reviewed: bool = False
+
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def status(self) -> ImageStatus:
+        return derive_status(self.box_count, self.is_background, self.is_reviewed)
 
     @field_serializer("created_at")
     def _serialize_utc(self, value: datetime) -> str:
         if value.tzinfo is None:
             value = value.replace(tzinfo=UTC)
         return value.isoformat().replace("+00:00", "Z")
+
+
+# --------------------------------------------------------------------------
+# Annotations (boxes)
+# --------------------------------------------------------------------------
+
+Unit = Annotated[float, Field(ge=0.0, le=1.0, allow_inf_nan=False)]
+PositiveUnit = Annotated[float, Field(gt=0.0, le=1.0, allow_inf_nan=False)]
+UUID_V4_PATTERN = r"^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$"
+
+
+class BoxIn(BaseModel):
+    """One box of a save request: normalized top-left x/y and size w/h."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    id: Annotated[str, Field(pattern=UUID_V4_PATTERN)]
+    class_id: Annotated[int, Field(ge=1)]
+    x: Unit
+    y: Unit
+    w: PositiveUnit
+    h: PositiveUnit
+
+    @model_validator(mode="after")
+    def _inside_image(self) -> BoxIn:
+        if self.x + self.w > 1 + 1e-6 or self.y + self.h > 1 + 1e-6:
+            raise ValueError("The box must lie inside the image.")
+        return self
+
+
+class BoxRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    class_id: int
+    x: float
+    y: float
+    w: float
+    h: float
+
+
+class AnnotationSave(BaseModel):
+    """Whole-set replace of one image's boxes, guarded by `base_version` (D-12)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    base_version: Annotated[int, Field(ge=0)]
+    is_background: bool
+    is_reviewed: bool
+    boxes: Annotated[list[BoxIn], Field(max_length=MAX_BOXES)]
+
+    @model_validator(mode="after")
+    def _structure(self) -> AnnotationSave:
+        if len({box.id for box in self.boxes}) != len(self.boxes):
+            raise ValueError("Each box needs a unique id.")
+        if self.is_background and self.boxes:
+            raise ValueError("A background image cannot have boxes.")
+        if self.is_reviewed and not self.boxes and not self.is_background:
+            raise ValueError("Only an annotated image can be marked as reviewed.")
+        return self
+
+
+class AnnotationSetRead(BaseModel):
+    version: int
+    is_background: bool
+    is_reviewed: bool
+    status: ImageStatus
+    boxes: list[BoxRead]
+
+
+class SaveResult(BaseModel):
+    version: int
+    box_count: int
+    status: ImageStatus
+    is_background: bool
+    is_reviewed: bool
 
 
 class ImagePage(BaseModel):

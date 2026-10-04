@@ -7,13 +7,16 @@ from datetime import UTC, datetime
 
 from sqlalchemy import (
     BigInteger,
+    Boolean,
     CheckConstraint,
     DateTime,
+    Float,
     ForeignKey,
     Index,
     Integer,
     String,
     Text,
+    false,
     func,
     select,
 )
@@ -84,6 +87,17 @@ class Image(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utcnow
     )
+    # Annotation state (Phase 3). `annotation_version` is the compare-and-swap
+    # counter of the image's whole box set (D-12).
+    is_background: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=false()
+    )
+    is_reviewed: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=false()
+    )
+    annotation_version: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
 
     __table_args__ = (
         CheckConstraint("ext IN ('jpg', 'png', 'webp', 'bmp')", name="ck_images_ext"),
@@ -132,6 +146,46 @@ class ProjectClass(Base):
         self.normalized_name = normalize_project_name(raw)
 
 
+class Annotation(Base):
+    """One annotated object of an image (a box in Phase 3).
+
+    The id is a client-generated UUID v4, so ids inside undo snapshots never
+    need remapping. Geometry is normalized top-left x/y/w/h relative to the
+    EXIF-oriented image (P2 D-17). There is deliberately no ORM relationship:
+    the FK cascades remove rows when an image or a class is deleted.
+    """
+
+    __tablename__ = "annotations"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    image_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("images.id", ondelete="CASCADE"), nullable=False
+    )
+    class_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("classes.id", ondelete="CASCADE"), nullable=False
+    )
+    kind: Mapped[str] = mapped_column(
+        String(16), nullable=False, default="box", server_default="box"
+    )
+    x: Mapped[float] = mapped_column(Float, nullable=False)
+    y: Mapped[float] = mapped_column(Float, nullable=False)
+    w: Mapped[float] = mapped_column(Float, nullable=False)
+    h: Mapped[float] = mapped_column(Float, nullable=False)
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow, onupdate=utcnow
+    )
+
+    __table_args__ = (
+        CheckConstraint("kind IN ('box', 'polygon')", name="ck_annotations_kind"),
+        Index("ix_annotations_image_id", "image_id"),
+        Index("ix_annotations_class_id", "class_id"),
+    )
+
+
 # Read-only counts loaded together with every Project row (select and refresh).
 # Attached after both child classes exist; not part of the table definition.
 Project.image_count = column_property(
@@ -144,5 +198,14 @@ Project.class_count = column_property(
     select(func.count(ProjectClass.id))
     .where(ProjectClass.project_id == Project.id)
     .correlate_except(ProjectClass)
+    .scalar_subquery()
+)
+# Derived on purpose, never stored: a class delete cascades annotations at DB
+# level, so a stored count would go stale (D-13). Read it after a refresh for a
+# just-inserted row (MissingGreenlet otherwise).
+Image.box_count = column_property(
+    select(func.count(Annotation.id))
+    .where(Annotation.image_id == Image.id)
+    .correlate_except(Annotation)
     .scalar_subquery()
 )

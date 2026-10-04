@@ -193,6 +193,65 @@ case "$PROJECT_DETAIL" in
     ;;
 esac
 
+echo "==> Drawing a box through the annotations API (Phase 3 tracer, ANNO-07)..."
+CLASS_ID=$(printf '%s' "$CLASS_BODY" | sed -n 's/.*"id":\([0-9][0-9]*\).*/\1/p')
+if [ -z "$CLASS_ID" ]; then
+  echo "FAIL: could not parse the class id from: $CLASS_BODY" >&2
+  exit 1
+fi
+ANNOTATIONS_URL="${IMAGES_URL}/${IMAGE_ID}/annotations"
+BOX_ID=3f2b8c1e-5d4a-4e7b-9c6d-1a2b3c4d5e6f
+BOX_PAYLOAD="{\"base_version\":0,\"is_background\":false,\"is_reviewed\":false,\"boxes\":[{\"id\":\"${BOX_ID}\",\"class_id\":${CLASS_ID},\"x\":0.1,\"y\":0.1,\"w\":0.5,\"h\":0.5}]}"
+
+NOXHR_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X PUT "$ANNOTATIONS_URL" \
+  -H "Content-Type: application/json" -d "$BOX_PAYLOAD")
+if [ "$NOXHR_STATUS" != "403" ]; then
+  echo "FAIL: PUT annotations without X-Requested-With returned HTTP ${NOXHR_STATUS} (expected 403)" >&2
+  exit 1
+fi
+
+SAVE_BODY=$(curl -sS -X PUT "$ANNOTATIONS_URL" \
+  -H "Content-Type: application/json" -H "X-Requested-With: yolo-trainer" -d "$BOX_PAYLOAD")
+case "$SAVE_BODY" in
+  *'"version":1'*'"box_count":1'*'"status":"annotated"'*) ;;
+  *)
+    echo "FAIL: saving a box did not return version 1 / box_count 1 / annotated (got: $SAVE_BODY)" >&2
+    exit 1
+    ;;
+esac
+
+ANNOTATIONS_BODY=$(curl -fsS "$ANNOTATIONS_URL")
+case "$ANNOTATIONS_BODY" in
+  *"\"id\":\"${BOX_ID}\""*) ;;
+  *)
+    echo "FAIL: GET annotations does not list the saved box (got: $ANNOTATIONS_BODY)" >&2
+    exit 1
+    ;;
+esac
+
+IMAGES_WITH_BOX=$(curl -fsS "$IMAGES_URL")
+case "$IMAGES_WITH_BOX" in
+  *'"box_count":1'*) ;;
+  *)
+    echo "FAIL: image list does not report box_count 1 (got: $IMAGES_WITH_BOX)" >&2
+    exit 1
+    ;;
+esac
+
+EDITOR_STATUS=$(curl -sS -o /dev/null -w "%{http_code}" "${BASE_URL}/projects/${PROJECT_ID}/annotate/${IMAGE_ID}")
+if [ "$EDITOR_STATUS" != "200" ]; then
+  echo "FAIL: the editor deep link returned HTTP ${EDITOR_STATUS} through nginx (expected 200)" >&2
+  exit 1
+fi
+
+STALE_STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X PUT "$ANNOTATIONS_URL" \
+  -H "Content-Type: application/json" -H "X-Requested-With: yolo-trainer" \
+  -d '{"base_version":0,"is_background":false,"is_reviewed":false,"boxes":[]}')
+if [ "$STALE_STATUS" != "409" ]; then
+  echo "FAIL: a stale base_version returned HTTP ${STALE_STATUS} (expected 409)" >&2
+  exit 1
+fi
+
 echo "==> Checking image files exist on the host at the id-keyed paths (D-18)..."
 for IMAGE_FILE in \
   "${DATA_DIR}/projects/${PROJECT_ID}/images/${IMAGE_ID}.png" \
@@ -244,6 +303,23 @@ case "$CLASSES_AFTER_RESTART" in
   *'"index":0'*) ;;
   *)
     echo "FAIL: class 'car' lost index 0 after down/up (got: $CLASSES_AFTER_RESTART)" >&2
+    exit 1
+    ;;
+esac
+
+echo "==> Checking the saved box survived down/up (ANNO-07, SC3)..."
+ANNOTATIONS_AFTER_RESTART=$(curl -fsS "$ANNOTATIONS_URL")
+case "$ANNOTATIONS_AFTER_RESTART" in
+  *"\"id\":\"${BOX_ID}\""*) ;;
+  *)
+    echo "FAIL: the saved box did not survive down/up (got: $ANNOTATIONS_AFTER_RESTART)" >&2
+    exit 1
+    ;;
+esac
+case "$ANNOTATIONS_AFTER_RESTART" in
+  *'"version":1'*) ;;
+  *)
+    echo "FAIL: the annotation version is not 1 after down/up (got: $ANNOTATIONS_AFTER_RESTART)" >&2
     exit 1
     ;;
 esac

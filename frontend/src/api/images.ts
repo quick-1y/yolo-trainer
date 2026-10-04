@@ -2,6 +2,7 @@ import {
   type InfiniteData,
   useInfiniteQuery,
   useMutation,
+  useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
 
@@ -42,12 +43,40 @@ export interface DeleteImagesResult {
 
 export type ImageSort = "newest" | "name";
 
+/** Derived server-side: reviewed > annotated (a box or background) > unannotated. */
+export type ImageStatus = "unannotated" | "annotated" | "reviewed";
+
+export interface ImageAnnotationState {
+  box_count: number;
+  is_background: boolean;
+  is_reviewed: boolean;
+  status: ImageStatus;
+}
+
+/** GET /projects/{p}/images/{i}: the list item plus its annotation state. */
+export type ImageDetail = ImageItem & ImageAnnotationState;
+
 export const PAGE_SIZE = 100;
 
 export const imageKeys = {
   project: (projectId: number) => ["images", projectId] as const,
   list: (projectId: number, sort: string, q: string) => ["images", projectId, sort, q] as const,
+  // A different root from ["images", ...] on purpose: the list-cache helpers
+  // (setQueriesData / invalidate on imageKeys.project) never touch a detail entry.
+  detail: (projectId: number, imageId: number) => ["image", projectId, imageId] as const,
 };
+
+export function getImage(projectId: number, imageId: number): Promise<ImageDetail> {
+  return apiRequest<ImageDetail>(`/projects/${projectId}/images/${imageId}`);
+}
+
+export function useImage(projectId: number | null, imageId: number | null) {
+  return useQuery({
+    queryKey: imageKeys.detail(projectId ?? 0, imageId ?? 0),
+    queryFn: () => getImage(projectId as number, imageId as number),
+    enabled: projectId !== null && imageId !== null,
+  });
+}
 
 export function listImages(
   projectId: number,
@@ -108,7 +137,7 @@ export function thumbnailUrl(projectId: number, imageId: number): string {
   return `/api/projects/${projectId}/images/${imageId}/thumbnail`;
 }
 
-/** The stored original; only the open viewer image ever requests it. */
+/** The stored original; only the open viewer and the annotation editor request it. */
 export function fileUrl(projectId: number, imageId: number): string {
   return `/api/projects/${projectId}/images/${imageId}/file`;
 }

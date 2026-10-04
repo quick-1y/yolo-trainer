@@ -1,0 +1,256 @@
+import { Alert, Box, Button, Loader, Stack, Text } from "@mantine/core";
+import { useQueryClient } from "@tanstack/react-query";
+import { type ReactNode, useMemo } from "react";
+import { useTranslation } from "react-i18next";
+import { Link, useParams } from "react-router-dom";
+import { useStore } from "zustand";
+
+import { createAnnotationSender, useAnnotations } from "../../api/annotations";
+import { ApiError } from "../../api/client";
+import { type ProjectClassItem, useClasses } from "../../api/classes";
+import { fileUrl, useImage } from "../../api/images";
+import { useProject } from "../../api/projects";
+import { ProjectNotFound } from "../project/ProjectNotFound";
+import { EditorTopBar } from "./EditorTopBar";
+import { AnnotationCanvas } from "./canvas/AnnotationCanvas";
+import { useLoadedImage } from "./canvas/useLoadedImage";
+import { newId } from "./lib/ids";
+import { imagesPath } from "./lib/urls";
+import type { NormBox } from "./lib/geometry";
+import { docFromSet } from "./store/annotationStore";
+import { type EditorEntry, getEditor } from "./store/storeRegistry";
+
+const MATTE = "#141414";
+
+function parseId(raw: string | undefined): number | null {
+  const parsed = Number.parseInt(raw ?? "", 10);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function FullScreen({ children }: { children: ReactNode }) {
+  return (
+    <Box
+      style={{
+        height: "100dvh",
+        background: MATTE,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: 16,
+      }}
+    >
+      {children}
+    </Box>
+  );
+}
+
+function EditorNotFound({ projectId }: { projectId: number }) {
+  const { t } = useTranslation("editor");
+  return (
+    <FullScreen>
+      <Stack gap={8} align="center">
+        <Text size="md" fw={600}>
+          {t("notFound.title")}
+        </Text>
+        <Text size="sm" c="dark.1">
+          {t("notFound.body")}
+        </Text>
+        <Button component={Link} to={imagesPath(projectId)} variant="light">
+          {t("notFound.back")}
+        </Button>
+      </Stack>
+    </FullScreen>
+  );
+}
+
+function isNotFound(error: unknown): boolean {
+  return error instanceof ApiError && error.status === 404;
+}
+
+function errorMessage(error: unknown): string {
+  return error instanceof ApiError ? error.message : String(error);
+}
+
+/**
+ * The full-screen editor route target. It lives OUTSIDE the app shell (no app
+ * header, no project sidebar) and is lazy-loaded so konva stays out of the main bundle.
+ */
+export function EditorPage() {
+  const params = useParams<{ projectId: string; imageId: string }>();
+  const projectId = parseId(params.projectId);
+  const imageId = parseId(params.imageId);
+
+  if (projectId === null) {
+    return (
+      <FullScreen>
+        <ProjectNotFound />
+      </FullScreen>
+    );
+  }
+  if (imageId === null) {
+    return <EditorNotFound projectId={projectId} />;
+  }
+  return <LoadedEditor projectId={projectId} imageId={imageId} />;
+}
+
+function LoadedEditor({ projectId, imageId }: { projectId: number; imageId: number }) {
+  const { t } = useTranslation(["editor", "common"]);
+  const queryClient = useQueryClient();
+  const project = useProject(projectId);
+  const image = useImage(projectId, imageId);
+  const annotations = useAnnotations(projectId, imageId);
+  const classes = useClasses(projectId);
+
+  const set = annotations.data;
+  const hasSet = set !== undefined;
+  // One retained store + saver per image (D-10). The registry ignores `init` when
+  // an entry already exists, so a refetched set never replaces live edits.
+  const entry = useMemo(
+    () =>
+      set === undefined
+        ? null
+        : getEditor(
+            { projectId, imageId },
+            { doc: docFromSet(set), version: set.version },
+            createAnnotationSender(queryClient, projectId, imageId),
+          ),
+    // Keyed by presence of the set, not by every saved set.
+    [hasSet, projectId, imageId, queryClient],
+  );
+
+  if (isNotFound(project.error)) {
+    return (
+      <FullScreen>
+        <ProjectNotFound />
+      </FullScreen>
+    );
+  }
+  if (isNotFound(image.error) || isNotFound(annotations.error)) {
+    return <EditorNotFound projectId={projectId} />;
+  }
+  const failure = project.error ?? image.error ?? annotations.error ?? classes.error;
+  if (failure) {
+    return (
+      <FullScreen>
+        <Alert color="red" title={t("common:error.title")}>
+          <Stack gap={8} align="flex-start">
+            <Text size="sm">{errorMessage(failure)}</Text>
+            <Button
+              size="compact-sm"
+              variant="light"
+              onClick={() => {
+                void project.refetch();
+                void image.refetch();
+                void annotations.refetch();
+                void classes.refetch();
+              }}
+            >
+              {t("common:retry")}
+            </Button>
+          </Stack>
+        </Alert>
+      </FullScreen>
+    );
+  }
+  if (project.isPending || image.data === undefined || entry === null) {
+    return (
+      <FullScreen>
+        <Loader size={32} />
+      </FullScreen>
+    );
+  }
+
+  return (
+    <Workspace
+      projectId={projectId}
+      imageId={imageId}
+      filename={image.data.filename}
+      imgW={image.data.width}
+      imgH={image.data.height}
+      classes={classes.data}
+      entry={entry}
+    />
+  );
+}
+
+interface WorkspaceProps {
+  projectId: number;
+  imageId: number;
+  filename: string;
+  imgW: number;
+  imgH: number;
+  /** Undefined while the classes load. */
+  classes: ProjectClassItem[] | undefined;
+  entry: EditorEntry;
+}
+
+const CHROME = {
+  background: "var(--mantine-color-dark-7)",
+  minWidth: 0,
+  minHeight: 0,
+} as const;
+
+function Workspace({ projectId, imageId, filename, imgW, imgH, classes, entry }: WorkspaceProps) {
+  const { t } = useTranslation(["editor", "common"]);
+  const boxes = useStore(entry.store, (state) => state.doc.boxes);
+  const loaded = useLoadedImage(fileUrl(projectId, imageId));
+
+  const classList = classes ?? [];
+  // The class panel and digit keys arrive later; until then the first class by index is active (D-05).
+  const activeClass = classList[0];
+  const classColors = useMemo(
+    () => Object.fromEntries(classList.map((item) => [item.id, item.color])),
+    // `classes` is the stable query data.
+    [classes],
+  );
+  // Neither the editor nor the API looks at the project's task type (D-18).
+  const canDraw = loaded.status === "loaded" && activeClass !== undefined;
+
+  const handleCreate = (norm: NormBox) => {
+    if (activeClass === undefined) {
+      return;
+    }
+    entry.store.getState().createBox({ id: newId(), class_id: activeClass.id, ...norm });
+  };
+
+  return (
+    <Box
+      style={{
+        display: "grid",
+        gridTemplateColumns: "48px 1fr 320px",
+        gridTemplateRows: "48px 1fr",
+        height: "100dvh",
+        overflow: "hidden",
+        background: MATTE,
+      }}
+    >
+      <EditorTopBar projectId={projectId} filename={filename} store={entry.store} />
+      {/* Tool bar: filled by a later plan. */}
+      <Box style={{ ...CHROME, borderRight: "1px solid var(--mantine-color-dark-4)" }} />
+      <Box style={{ minWidth: 0, minHeight: 0, position: "relative" }}>
+        <AnnotationCanvas
+          image={loaded.image}
+          imgW={imgW}
+          imgH={imgH}
+          boxes={boxes}
+          classColors={classColors}
+          activeColor={activeClass?.color ?? "#FFFFFF"}
+          canDraw={canDraw}
+          noClasses={classes !== undefined && classes.length === 0}
+          onCreate={handleCreate}
+        />
+        {loaded.status === "error" && (
+          <Alert
+            color="red"
+            title={t("common:error.title")}
+            style={{ position: "absolute", top: 16, left: 16, right: 16 }}
+          >
+            {t("canvas.loadFailed")}
+          </Alert>
+        )}
+      </Box>
+      {/* Class panel and object list: filled by a later plan. */}
+      <Box style={{ ...CHROME, borderLeft: "1px solid var(--mantine-color-dark-4)" }} />
+    </Box>
+  );
+}

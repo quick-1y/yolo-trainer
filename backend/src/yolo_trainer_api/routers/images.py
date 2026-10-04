@@ -223,6 +223,9 @@ async def ingest_one(
             )
             await asyncio.to_thread(storage.discard, thumb_tmp)
             raise
+        # Loads the derived box_count; reading a column_property on a
+        # just-inserted row would otherwise raise MissingGreenlet.
+        await session.refresh(image)
         return UploadResult(filename=name, status="added", image=ImageRead.model_validate(image))
     finally:
         if not consumed:

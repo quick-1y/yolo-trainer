@@ -16,11 +16,15 @@
     "@mantine/notifications": "^9.6.3",
     "@tanstack/react-query": "^5.104.0",
     "i18next": "^26.4.2",
+    "konva": "^10.7.0",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "react-i18next": "^17.0.15",
+    "react-konva": "^19.3.0",
     "react-router-dom": "^7.18.4",
-    "react-virtuoso": "^4.18.16"
+    "react-virtuoso": "^4.18.16",
+    "zundo": "^2.3.0",
+    "zustand": "^5.0.15"
   },
   "devDependencies": {
     "@testing-library/dom": "^10.4.2",
@@ -36,6 +40,7 @@
     "postcss-simple-vars": "^7.0.1",
     "typescript": "^5.7.0",
     "vite": "^8.3.1",
-    "vitest": "^5.0.2"
+    "vitest": "^5.0.2",
+    "vitest-canvas-mock": "^1.2.0"
   }
 }
