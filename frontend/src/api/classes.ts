@@ -9,6 +9,8 @@ export interface ProjectClassItem {
   color: string;
   index: number;
   created_at: string;
+  /** Number of boxes of this class across the whole project. */
+  object_count: number;
 }
 
 export interface ClassCreateInput {

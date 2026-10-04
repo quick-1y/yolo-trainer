@@ -65,8 +65,8 @@ export function DeleteClassModal({
     });
   }
 
-  // The body is built here, in one place, so a later phase can add its
-  // "N objects will be deleted" sentence next to the index-shift one.
+  // The body is built here, in one place; the "N objects will be deleted"
+  // sentence (P2 D-16) is a separate bold paragraph rendered below it.
   const sentences = [t("classes:delete.body", { name: projectClass.name })];
   if (hasLaterClasses) {
     sentences.push(t("classes:delete.shiftNote"));
@@ -83,6 +83,11 @@ export function DeleteClassModal({
     >
       <Stack>
         <Text>{sentences.join(" ")}</Text>
+        {projectClass.object_count > 0 ? (
+          <Text size="sm" fw={600}>
+            {t("classes:delete.objects", { count: projectClass.object_count })}
+          </Text>
+        ) : null}
         {apiErrorMessage ? (
           <Alert color="red" title={t("common:error.title")}>
             {apiErrorMessage}

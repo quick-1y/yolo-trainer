@@ -31,6 +31,7 @@
     "title": "Delete class",
     "body": "Class \"{{name}}\" will be permanently deleted.",
     "shiftNote": "Classes after it will move up by one index.",
+    "objects": "Objects that will be deleted with it: {{count}}.",
     "confirm": "Delete class",
     "done": "Class \"{{name}}\" deleted."
   }
