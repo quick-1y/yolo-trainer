@@ -42,7 +42,7 @@ Detailed technical background for every category: `docs/roadmap.md`, `docs/phase
 ### Annotation
 
 - [x] **ANNO-01**: User can browse project images in a virtualized thumbnail grid that stays responsive with thousands of images
-- [ ] **ANNO-02**: User can open an image in an annotation editor with zoom/pan and navigate to next/previous image
+- [x] **ANNO-02**: User can open an image in an annotation editor with zoom/pan and navigate to next/previous image
 - [x] **ANNO-03**: User can draw, select, move, resize, and delete bounding boxes and assign a class to each
 - [ ] **ANNO-04**: User can draw polygons and edit them (add, move, delete vertices), and assign a class to each
 - [ ] **ANNO-05**: User can click on an object to get an auto-generated polygon/box (click-to-segment, SAM-style) as a drawing tool
@@ -152,7 +152,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | DATA-06 | Phase 10 | Pending |
 | DATA-07 | Phase 9 | Pending |
 | ANNO-01 | Phase 2 | Complete |
-| ANNO-02 | Phase 3 | Pending |
+| ANNO-02 | Phase 3 | Complete |
 | ANNO-03 | Phase 3 | Complete |
 | ANNO-04 | Phase 6 | Pending |
 | ANNO-05 | Phase 6 | Pending |
