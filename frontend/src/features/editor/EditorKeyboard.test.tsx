@@ -150,3 +150,192 @@ describe("undo and redo buttons", () => {
     expect((getStage().findOne("Transformer") as Konva.Transformer).nodes()).toHaveLength(0);
   });
 });
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+function transformer(): Konva.Transformer {
+  return getStage().findOne("Transformer") as Konva.Transformer;
+}
+
+function press(init: KeyboardEventInit): KeyboardEvent {
+  const event = new KeyboardEvent("keydown", { bubbles: true, cancelable: true, ...init });
+  act(() => {
+    document.body.dispatchEvent(event);
+  });
+  return event;
+}
+
+function toolButton(name: "Select" | "Box"): HTMLElement {
+  return within(toolbar()).getByRole("button", { name });
+}
+
+async function openWithSelectedBox() {
+  const api = stubEditorApi({ boxes: [BOX] });
+  const { user } = await openEditor();
+  await user.click(toolButton("Select"));
+  act(() => {
+    boxNode().fire("click", {});
+  });
+  await waitFor(() => expect(transformer().nodes()).toHaveLength(1));
+  return { ...api, user };
+}
+
+describe("keyboard shortcuts", () => {
+  it("deletes the selected box on Delete with one save, and Ctrl+Z brings it back with one more", async () => {
+    setUpCanvas();
+    const { puts } = await openWithSelectedBox();
+
+    press({ code: "Delete", key: "Delete" });
+
+    await waitFor(() => expect(puts).toHaveLength(1));
+    expect(savedBoxes(puts[0])).toEqual([]);
+    expect(useEditorUi.getState().selectedId).toBeNull();
+    expect(getStage().findOne(`#box-${BOX_ID}`)).toBeUndefined();
+
+    press({ code: "KeyZ", key: "z", ctrlKey: true });
+
+    await waitFor(() => expect(puts).toHaveLength(2));
+    expect(savedBoxes(puts[1])).toHaveLength(1);
+    expect(savedBoxes(puts[1])[0].id).toBe(BOX_ID);
+    await sleep(700);
+    expect(puts).toHaveLength(2);
+  });
+
+  it("deletes on Backspace and prevents the browser's back navigation", async () => {
+    setUpCanvas();
+    const { puts } = await openWithSelectedBox();
+
+    const event = press({ code: "Backspace", key: "Backspace" });
+
+    expect(event.defaultPrevented).toBe(true);
+    await waitFor(() => expect(puts).toHaveLength(1));
+    expect(savedBoxes(puts[0])).toEqual([]);
+  });
+
+  it("redoes with Ctrl+Shift+Z and with Ctrl+Y", async () => {
+    setUpCanvas();
+    const { puts } = await openWithSelectedBox();
+    press({ code: "Delete", key: "Delete" });
+    await waitFor(() => expect(puts).toHaveLength(1));
+    press({ code: "KeyZ", key: "z", ctrlKey: true });
+    await waitFor(() => expect(puts).toHaveLength(2));
+
+    press({ code: "KeyZ", key: "Z", ctrlKey: true, shiftKey: true });
+    await waitFor(() => expect(puts).toHaveLength(3));
+    expect(savedBoxes(puts[2])).toEqual([]);
+
+    press({ code: "KeyZ", key: "z", ctrlKey: true });
+    await waitFor(() => expect(puts).toHaveLength(4));
+    press({ code: "KeyY", key: "y", ctrlKey: true });
+    await waitFor(() => expect(puts).toHaveLength(5));
+    expect(savedBoxes(puts[4])).toEqual([]);
+  });
+
+  it("does nothing for a held Delete", async () => {
+    setUpCanvas();
+    const { puts } = await openWithSelectedBox();
+
+    press({ code: "Delete", key: "Delete", repeat: true });
+    await sleep(700);
+
+    expect(puts).toHaveLength(0);
+    expect(useEditorUi.getState().selectedId).toBe(BOX_ID);
+  });
+
+  it("does nothing on Delete when no box is selected", async () => {
+    setUpCanvas();
+    const { puts } = stubEditorApi({ boxes: [BOX] });
+    await openEditor();
+
+    press({ code: "Delete", key: "Delete" });
+    await sleep(700);
+
+    expect(puts).toHaveLength(0);
+  });
+
+  it("switches tools with V and B, also on the Russian layout", async () => {
+    setUpCanvas();
+    stubEditorApi();
+    await openEditor();
+    expect(toolButton("Box")).toHaveAttribute("aria-pressed", "true");
+
+    press({ code: "KeyV", key: "м" });
+    await waitFor(() => expect(toolButton("Select")).toHaveAttribute("aria-pressed", "true"));
+    expect(toolButton("Box")).toHaveAttribute("aria-pressed", "false");
+
+    press({ code: "KeyB", key: "и" });
+    await waitFor(() => expect(toolButton("Box")).toHaveAttribute("aria-pressed", "true"));
+  });
+
+  it("does not switch to the Box tool when the project has no classes", async () => {
+    setUpCanvas();
+    stubEditorApi({ classes: [] });
+    await openEditor();
+    press({ code: "KeyV", key: "v" });
+    await waitFor(() => expect(toolButton("Select")).toHaveAttribute("aria-pressed", "true"));
+
+    press({ code: "KeyB", key: "b" });
+    await sleep(50);
+
+    expect(toolButton("Select")).toHaveAttribute("aria-pressed", "true");
+    expect(toolButton("Box")).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("cancels a draft on Escape: nothing is created or saved", async () => {
+    setUpCanvas();
+    const { puts } = stubEditorApi();
+    await openEditor();
+    const content = getStage().content;
+
+    firePointer(content, "pointerdown", { clientX: 100, clientY: 100 });
+    firePointer(content, "pointermove", { clientX: 400, clientY: 300 });
+    const draft = getStage().find("Rect").find((node) => node.attrs.dash !== undefined);
+    expect(draft?.visible()).toBe(true);
+
+    press({ code: "Escape", key: "Escape" });
+
+    expect(draft?.visible()).toBe(false);
+    firePointer(content, "pointerup", { clientX: 400, clientY: 300 });
+    await sleep(700);
+    expect(puts).toHaveLength(0);
+    expect(peekEditor({ projectId: 1, imageId: 5 })?.store.getState().doc.boxes).toEqual([]);
+  });
+
+  it("a later draft still works after an Escape cancel", async () => {
+    setUpCanvas();
+    const { puts } = stubEditorApi();
+    await openEditor();
+    const content = getStage().content;
+    firePointer(content, "pointerdown", { clientX: 100, clientY: 100 });
+    press({ code: "Escape", key: "Escape" });
+    firePointer(content, "pointerup", { clientX: 200, clientY: 200 });
+
+    drag([100, 100], [400, 300]);
+
+    await waitFor(() => expect(puts).toHaveLength(1));
+    expect(savedBoxes(puts[0])).toHaveLength(1);
+  });
+
+  it("deselects on Escape when no draft is active", async () => {
+    setUpCanvas();
+    await openWithSelectedBox();
+
+    press({ code: "Escape", key: "Escape" });
+
+    await waitFor(() => expect(transformer().nodes()).toHaveLength(0));
+    expect(useEditorUi.getState().selectedId).toBeNull();
+  });
+
+  it("puts the key caps of the shortcuts in the tool bar tooltips", async () => {
+    setUpCanvas();
+    stubEditorApi({ boxes: [BOX] });
+    const { user } = await openEditor();
+    press({ code: "KeyZ", key: "z", ctrlKey: true });
+
+    await user.hover(toolButton("Select").parentElement as HTMLElement);
+
+    const tip = await screen.findByRole("tooltip");
+    expect(within(tip).getByText("Select")).toBeInTheDocument();
+    expect(within(tip).getByText("V")).toBeInTheDocument();
+  });
+});
