@@ -70,13 +70,5 @@
     "title": "No matching images",
     "body": "No filenames contain \"{{query}}\". Try a different search.",
     "clear": "Clear search"
-  },
-  "viewer": {
-    "dimensions": "{{width}} × {{height}} px",
-    "position": "{{index}} of {{total}}",
-    "close": "Close",
-    "prev": "Previous image",
-    "next": "Next image",
-    "loadFailed": "Could not load this image."
   }
 }

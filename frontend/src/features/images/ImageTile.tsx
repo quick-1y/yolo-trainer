@@ -22,7 +22,7 @@ interface ImageTileProps {
  * name in the native `title` (no per-tile Mantine Tooltip, no HTML injection).
  * A thumbnail that fails to load is replaced by a "No preview" block; the
  * tile and its caption stay, and the tile stays clickable. The whole tile is a
- * button: click or Enter opens the full-size viewer (D-10). The selection
+ * button: click or Enter opens the annotation editor on this image. The selection
  * checkbox is a separate tab stop whose clicks never reach the tile (D-11).
  */
 export const ImageTile = memo(function ImageTile({
@@ -72,7 +72,7 @@ export const ImageTile = memo(function ImageTile({
       <div
         className={classes.select}
         onClick={(event) => {
-          // The whole 32 x 32 hit area toggles; nothing here ever opens the viewer.
+          // The whole 32 x 32 hit area toggles; nothing here ever opens the editor.
           event.stopPropagation();
           onToggleSelect(index, event.shiftKey);
         }}

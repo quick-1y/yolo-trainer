@@ -102,7 +102,7 @@ function checkbox(index: number): HTMLElement {
 }
 
 describe("select and delete images", () => {
-  it("selecting a tile checkbox shows the selection bar and does not open the viewer", async () => {
+  it("selecting a tile checkbox shows the selection bar and does not open the editor", async () => {
     stubFetch(() => jsonResponse({ deleted: 0 }));
     const { user } = await renderGrid();
 

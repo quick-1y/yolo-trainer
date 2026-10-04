@@ -137,7 +137,7 @@ export function thumbnailUrl(projectId: number, imageId: number): string {
   return `/api/projects/${projectId}/images/${imageId}/thumbnail`;
 }
 
-/** The stored original; only the open viewer and the annotation editor request it. */
+/** The stored original; only the annotation editor requests it. */
 export function fileUrl(projectId: number, imageId: number): string {
   return `/api/projects/${projectId}/images/${imageId}/file`;
 }

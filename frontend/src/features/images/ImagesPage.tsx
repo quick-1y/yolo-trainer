@@ -1,17 +1,16 @@
 import { Alert, Box, Button, EmptyState, Group, Skeleton, Stack, Text, Title } from "@mantine/core";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useOutletContext, useSearchParams } from "react-router-dom";
+import { useNavigate, useOutletContext, useSearchParams } from "react-router-dom";
 
 import { ApiError } from "../../api/client";
 import { useAppConfig } from "../../api/config";
 import { type ImageSort, useImagesInfinite } from "../../api/images";
 import type { Project } from "../../api/projects";
-import { readGridParams } from "../editor/lib/urls";
+import { editorPath, readGridParams } from "../editor/lib/urls";
 import { DeleteImagesModal } from "./DeleteImagesModal";
 import { ImageGrid } from "./ImageGrid";
 import { ImagesToolbar } from "./ImagesToolbar";
-import { ImageViewerModal } from "./ImageViewerModal";
 import { SelectionBar } from "./SelectionBar";
 import { UploadButtons } from "./UploadButtons";
 import { useUpload } from "./UploadContext";
@@ -56,18 +55,16 @@ export function ImagesPage() {
   // Sort and filename search live in the URL (D-03): reloadable, and the editor carries them
   // to its own URL so "← Images" returns to the same view. Writes use `replace`, so typing
   // never adds history entries.
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const grid = readGridParams(searchParams);
   const sort: ImageSort = grid.sort ?? "newest";
   const query = normalizeQuery(grid.q ?? "");
-  const [viewerIndex, setViewerIndex] = useState<number | null>(null);
   // Ids of the selected images (D-11) and the dialog that deletes them.
   const [selected, setSelected] = useState<ReadonlySet<number>>(() => new Set());
   const [deleteOpen, setDeleteOpen] = useState(false);
   // Snapshot taken when the dialog opens, so its text survives the clearing of the selection.
   const [deleteIds, setDeleteIds] = useState<number[]>([]);
-  // Set when the viewer asked for the next page: advance once it is in `items`.
-  const [advancePending, setAdvancePending] = useState(false);
   const images = useImagesInfinite(project.id, sort, query);
   const config = useAppConfig();
   const { state, cancel, dismiss } = useUpload();
@@ -104,6 +101,19 @@ export function ImagesPage() {
     writeGrid({ sort: value, query: gridRef.current.query });
   const handleSearchChange = (value: string) =>
     writeGrid({ sort: gridRef.current.sort, query: normalizeQuery(value) });
+  // A tile opens the annotation editor, carrying the grid's sort and search so the editor
+  // walks the same order and "← Images" comes back to this view (P2 D-10, D-03).
+  const handleOpen = useCallback(
+    (index: number) => {
+      const image = itemsRef.current[index];
+      if (image === undefined) {
+        return;
+      }
+      const { sort: currentSort, query: currentQuery } = gridRef.current;
+      navigate(editorPath(project.id, image.id, { sort: currentSort, q: currentQuery }));
+    },
+    [navigate, project.id],
+  );
   // Index (in the loaded list) of the last tile toggled without Shift: the start of a Shift range.
   const anchorIndex = useRef<number | null>(null);
   const toggleSelect = useCallback((index: number, shiftKey: boolean) => {
@@ -146,10 +156,10 @@ export function ImagesPage() {
     clearSelection();
   }, [sort, query, clearSelection]);
 
-  // Esc clears the selection, but only when nothing else owns Esc: the viewer and the
-  // delete dialog close themselves first and keep the selection.
+  // Esc clears the selection, but only when nothing else owns Esc: the delete dialog
+  // closes itself first and keeps the selection.
   useEffect(() => {
-    if (!selecting || viewerIndex !== null || deleteOpen) {
+    if (!selecting || deleteOpen) {
       return;
     }
     const onKeyDown = (event: KeyboardEvent) => {
@@ -159,19 +169,7 @@ export function ImagesPage() {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [selecting, viewerIndex, deleteOpen, clearSelection]);
-
-  useEffect(() => {
-    if (!advancePending) {
-      return;
-    }
-    if (viewerIndex !== null && viewerIndex + 1 < items.length) {
-      setViewerIndex(viewerIndex + 1);
-      setAdvancePending(false);
-    } else if (images.isFetchNextPageError) {
-      setAdvancePending(false);
-    }
-  }, [advancePending, viewerIndex, items.length, images.isFetchNextPageError]);
+  }, [selecting, deleteOpen, clearSelection]);
 
   // Deleting every loaded image leaves an empty list while the server still has more pages:
   // pruneDeletedImages keeps next_cursor, and VirtuosoGrid's endReached never fires for zero
@@ -292,7 +290,7 @@ export function ImagesPage() {
             key={`${sort}|${query}`}
             projectId={project.id}
             items={items}
-            onOpen={setViewerIndex}
+            onOpen={handleOpen}
             selected={selected}
             onToggleSelect={toggleSelect}
             hasNextPage={images.hasNextPage}
@@ -309,25 +307,6 @@ export function ImagesPage() {
         onClose={() => setDeleteOpen(false)}
         onDeleted={clearSelection}
       />
-      {viewerIndex !== null && (
-        <ImageViewerModal
-          projectId={project.id}
-          items={items}
-          index={viewerIndex}
-          total={total}
-          hasNextPage={images.hasNextPage}
-          isFetchingNextPage={images.isFetchingNextPage}
-          onIndexChange={setViewerIndex}
-          onRequestMore={() => {
-            setAdvancePending(true);
-            void images.fetchNextPage();
-          }}
-          onClose={() => {
-            setViewerIndex(null);
-            setAdvancePending(false);
-          }}
-        />
-      )}
     </Box>
   );
 }
