@@ -27,6 +27,7 @@ function allHandlers(): Spies {
     undo: spy(),
     redo: spy(),
     deselect: spy(),
+    classDigit: spy(),
   };
 }
 
@@ -154,6 +155,36 @@ describe("useEditorHotkeys", () => {
     press({ code: "KeyB", key: "и" });
 
     expect(calledIds(handlers)).toEqual(["box"]);
+  });
+
+  it("maps a digit key to classDigit with the physical code, also on a layout where key differs", () => {
+    const handlers = allHandlers();
+    mount(handlers);
+
+    press({ code: "Digit3", key: "№" });
+
+    expect(calledIds(handlers)).toEqual(["classDigit"]);
+    expect(handlers.classDigit.mock.calls[0][0].code).toBe("Digit3");
+  });
+
+  it("ignores a held digit, Ctrl+digit and the numpad digits", () => {
+    const handlers = allHandlers();
+    mount(handlers);
+
+    press({ code: "Digit3", key: "3", repeat: true });
+    press({ code: "Digit3", key: "3", ctrlKey: true });
+    press({ code: "Numpad3", key: "3" });
+
+    expect(calledIds(handlers)).toEqual([]);
+  });
+
+  it("turns the digits off while the editor is read-only", () => {
+    const handlers = allHandlers();
+    mount(handlers, { enabled: true, readOnly: true });
+
+    press({ code: "Digit1", key: "1" });
+
+    expect(calledIds(handlers)).toEqual([]);
   });
 
   it("maps Ctrl+Z to undo only", () => {

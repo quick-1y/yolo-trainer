@@ -28,6 +28,8 @@ export interface EditorState {
   updateBox: (id: string, geometry: NormBox) => void;
   /** Remove one box: one `set`, one history entry. An unknown id changes nothing. */
   deleteBox: (id: string) => void;
+  /** Change one box's class: one `set`, one history entry. The same class or an unknown id changes nothing. */
+  setBoxClass: (id: string, classId: number) => void;
   /** Touches only `meta`; creates no history entry. */
   setMeta: (partial: Partial<EditorMeta>) => void;
 }
@@ -88,6 +90,24 @@ export function createEditorStore(doc: EditorDoc, version: number) {
               doc: {
                 ...state.doc,
                 boxes: state.doc.boxes.filter((box) => box.id !== id),
+                // Any annotation change demotes a reviewed image, in the same entry (D-15).
+                isReviewed: false,
+              },
+            };
+          }),
+        setBoxClass: (id, classId) =>
+          set((state) => {
+            const current = state.doc.boxes.find((box) => box.id === id);
+            if (current === undefined || current.class_id === classId) {
+              // Unknown id or nothing changes: the same state means no history entry and no save.
+              return state;
+            }
+            return {
+              doc: {
+                ...state.doc,
+                boxes: state.doc.boxes.map((box) =>
+                  box.id === id ? { ...box, class_id: classId } : box,
+                ),
                 // Any annotation change demotes a reviewed image, in the same entry (D-15).
                 isReviewed: false,
               },

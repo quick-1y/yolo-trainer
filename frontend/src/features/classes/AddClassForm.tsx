@@ -3,7 +3,7 @@ import { useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { useTranslation } from "react-i18next";
 
-import { useCreateClass } from "../../api/classes";
+import { type ProjectClassItem, useCreateClass } from "../../api/classes";
 import { ApiError } from "../../api/client";
 
 // Mirrors the server-side limit (schemas.ClassName) - client rules are UX
@@ -12,9 +12,11 @@ const MAX_NAME_LENGTH = 100;
 
 interface AddClassFormProps {
   projectId: number;
+  /** Called with the server's answer after a class was created (the Classes page does not use it). */
+  onCreated?: (created: ProjectClassItem) => void;
 }
 
-export function AddClassForm({ projectId }: AddClassFormProps) {
+export function AddClassForm({ projectId, onCreated }: AddClassFormProps) {
   const { t } = useTranslation(["classes"]);
   const createClass = useCreateClass(projectId);
   const [name, setName] = useState("");
@@ -42,9 +44,10 @@ export function AddClassForm({ projectId }: AddClassFormProps) {
     setError(null);
     submitting.current = true;
     try {
-      await createClass.mutateAsync({ name: trimmed });
+      const created = await createClass.mutateAsync({ name: trimmed });
       setName("");
       inputRef.current?.focus();
+      onCreated?.(created);
     } catch (caught) {
       // Keep the typed value so the user can correct it.
       setError(caught instanceof ApiError ? caught.message : String(caught));

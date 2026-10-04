@@ -9,7 +9,7 @@ export interface ShortcutDef {
   labelKey: string;
   /**
    * Mantine hotkey strings, written for `usePhysicalKeys: true`: letters as
-   * lowercase letters ("v", "mod+z"), digits as "digit1", named keys as
+   * lowercase letters ("v", "mod+z"), digits as digit1 to digit9, named keys as
    * "Delete" / "Escape". Never the "KeyV" form: Mantine lower-cases the whole
    * string before it strips a case-sensitive "Key" prefix, so it never matches.
    */
@@ -86,6 +86,26 @@ export const SHORTCUTS = [
     caps: [["Esc"]],
     allowRepeat: false,
     editing: false,
+  },
+  {
+    // The digit is read from `event.code` ("Digit3" is the third class), so every layout works.
+    id: "classDigit",
+    group: "classes",
+    labelKey: "shortcuts.classDigit",
+    hotkeys: [
+      "digit1",
+      "digit2",
+      "digit3",
+      "digit4",
+      "digit5",
+      "digit6",
+      "digit7",
+      "digit8",
+      "digit9",
+    ],
+    caps: [["1-9"]],
+    allowRepeat: false,
+    editing: true,
   },
 ] as const satisfies readonly ShortcutDef[];
 

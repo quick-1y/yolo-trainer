@@ -12,6 +12,7 @@ import { fileUrl, useImage } from "../../api/images";
 import { useProject } from "../../api/projects";
 import { ProjectNotFound } from "../project/ProjectNotFound";
 import { EditorTopBar } from "./EditorTopBar";
+import { ClassPanel } from "./ClassPanel";
 import { ToolBar } from "./ToolBar";
 import { AnnotationCanvas, type AnnotationCanvasHandle } from "./canvas/AnnotationCanvas";
 import { useLoadedImage } from "./canvas/useLoadedImage";
@@ -131,7 +132,8 @@ function LoadedEditor({ projectId, imageId }: { projectId: number; imageId: numb
   if (isNotFound(image.error) || isNotFound(annotations.error)) {
     return <EditorNotFound projectId={projectId} />;
   }
-  const failure = project.error ?? image.error ?? annotations.error ?? classes.error;
+  // A classes failure is shown inside the class panel, so the rest of the editor stays usable.
+  const failure = project.error ?? image.error ?? annotations.error;
   if (failure) {
     return (
       <FullScreen>
@@ -145,7 +147,6 @@ function LoadedEditor({ projectId, imageId }: { projectId: number; imageId: numb
                 void project.refetch();
                 void image.refetch();
                 void annotations.refetch();
-                void classes.refetch();
               }}
             >
               {t("common:retry")}
@@ -171,6 +172,8 @@ function LoadedEditor({ projectId, imageId }: { projectId: number; imageId: numb
       imgW={image.data.width}
       imgH={image.data.height}
       classes={classes.data}
+      classesError={classes.data === undefined ? classes.error : null}
+      onRetryClasses={() => void classes.refetch()}
       entry={entry}
     />
   );
@@ -184,6 +187,9 @@ interface WorkspaceProps {
   imgH: number;
   /** Undefined while the classes load. */
   classes: ProjectClassItem[] | undefined;
+  /** The classes request failed and there is no data to fall back on. */
+  classesError: unknown;
+  onRetryClasses: () => void;
   entry: EditorEntry;
 }
 
@@ -193,7 +199,17 @@ const CHROME = {
   minHeight: 0,
 } as const;
 
-function Workspace({ projectId, imageId, filename, imgW, imgH, classes, entry }: WorkspaceProps) {
+function Workspace({
+  projectId,
+  imageId,
+  filename,
+  imgW,
+  imgH,
+  classes,
+  classesError,
+  onRetryClasses,
+  entry,
+}: WorkspaceProps) {
   const { t } = useTranslation(["editor", "common"]);
   const boxes = useStore(entry.store, (state) => state.doc.boxes);
   const loaded = useLoadedImage(fileUrl(projectId, imageId));
@@ -217,6 +233,8 @@ function Workspace({ projectId, imageId, filename, imgW, imgH, classes, entry }:
   const select = useEditorUi((state) => state.select);
   const setTool = useEditorUi((state) => state.setTool);
   const hover = useEditorUi((state) => state.hover);
+  const activeClassId = useEditorUi((state) => state.activeClassId);
+  const setActiveClass = useEditorUi((state) => state.setActiveClass);
 
   // A new image starts with nothing selected or hovered (the tool is kept).
   useLayoutEffect(() => {
@@ -224,8 +242,9 @@ function Workspace({ projectId, imageId, filename, imgW, imgH, classes, entry }:
   }, [imageId]);
 
   const classList = classes ?? [];
-  // The class panel and digit keys arrive later; until then the first class by index is active (D-05).
-  const activeClass = classList[0];
+  // One class is always active (D-05): the picked one, else the first by index. A deleted
+  // active class and a project with a single class both fall back to the first.
+  const activeClass = classList.find((item) => item.id === activeClassId) ?? classList[0];
   const classColors = useMemo(
     () => Object.fromEntries(classList.map((item) => [item.id, item.color])),
     // `classes` is the stable query data.
@@ -259,6 +278,30 @@ function Workspace({ projectId, imageId, filename, imgW, imgH, classes, entry }:
     entry.store.getState().updateBox(id, geometry);
   };
 
+  // With a box selected a class choice reclassifies that box and leaves the active class
+  // alone (D-06); otherwise it picks the class to draw with (D-05). One path for the panel
+  // rows and the digit keys.
+  const chooseClass = (index: number) => {
+    const target = classList[index];
+    if (target === undefined) {
+      return;
+    }
+    if (selectedId !== null) {
+      entry.store.getState().setBoxClass(selectedId, target.id);
+    } else {
+      setActiveClass(target.id);
+    }
+  };
+
+  // Boxes of each class on this image, for the class rows.
+  const classCounts = useMemo(() => {
+    const counts: Record<number, number> = {};
+    for (const box of boxes) {
+      counts[box.class_id] = (counts[box.class_id] ?? 0) + 1;
+    }
+    return counts;
+  }, [boxes]);
+
   const canPickBox = classList.length > 0 && loaded.status === "loaded";
   // Handlers are read at key time, so they always see the current selection and tool.
   useEditorHotkeys(
@@ -275,6 +318,7 @@ function Workspace({ projectId, imageId, filename, imgW, imgH, classes, entry }:
           select(null);
         }
       },
+      classDigit: (event) => chooseClass(Number.parseInt(event.code.slice("Digit".length), 10) - 1),
       undo: () => entry.store.temporal.getState().undo(),
       redo: () => entry.store.temporal.getState().redo(),
       deselect: () => {
@@ -336,8 +380,26 @@ function Workspace({ projectId, imageId, filename, imgW, imgH, classes, entry }:
             </Alert>
           )}
         </Box>
-        {/* Class panel and object list: filled by a later plan. */}
-        <Box style={{ ...CHROME, borderLeft: "1px solid var(--mantine-color-dark-4)" }} />
+        <Box
+          style={{
+            ...CHROME,
+            borderLeft: "1px solid var(--mantine-color-dark-4)",
+            display: "flex",
+            flexDirection: "column",
+            overflow: "hidden",
+          }}
+        >
+          <ClassPanel
+            projectId={projectId}
+            items={classes}
+            error={classesError}
+            onRetry={onRetryClasses}
+            activeClassId={activeClass?.id}
+            counts={classCounts}
+            hasSelection={selectedId !== null}
+            onChoose={chooseClass}
+          />
+        </Box>
       </Box>
     </EditorModalGateContext>
   );

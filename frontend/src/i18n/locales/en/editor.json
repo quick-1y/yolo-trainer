@@ -25,18 +25,31 @@
   "shortcuts": {
     "group": {
       "tools": "Tools",
-      "editing": "Editing"
+      "editing": "Editing",
+      "classes": "Classes"
     },
     "select": "Select tool",
     "box": "Box tool",
     "delete": "Delete selected box",
     "undo": "Undo",
     "redo": "Redo",
-    "deselect": "Deselect or cancel drawing"
+    "deselect": "Deselect or cancel drawing",
+    "classDigit": "Choose class 1-9 (changes the class of the selected box)"
   },
   "notFound": {
     "title": "Image not found",
     "body": "This image does not exist in this project or was deleted.",
     "back": "Back to images"
+  },
+  "classPanel": {
+    "title": "Classes",
+    "count": "Classes: {{count}}",
+    "hintChange": "Selected box: choose a class to change it.",
+    "countOnImageAria": "{{name}}: objects on this image: {{count}}",
+    "add": "Add class",
+    "empty": {
+      "title": "No classes yet",
+      "body": "Add a class to start drawing boxes."
+    }
   }
 }
