@@ -38,6 +38,8 @@ interface EditorApiOptions {
   classes?: unknown[];
   boxes?: unknown[];
   version?: number;
+  /** The stored image is reviewed. */
+  isReviewed?: boolean;
   /** Status of GET /images/5 (and its annotations); 404 simulates a deleted image. */
   imageStatus?: number;
 }
@@ -55,7 +57,13 @@ function json(body: unknown, status = 200): Response {
  * throws, so an unexpected request fails the test loudly.
  */
 export function stubEditorApi(options: EditorApiOptions = {}) {
-  const { classes = [CAR_CLASS], boxes = [], version = 0, imageStatus = 200 } = options;
+  const {
+    classes = [CAR_CLASS],
+    boxes = [],
+    version = 0,
+    isReviewed = false,
+    imageStatus = 200,
+  } = options;
   const puts: Array<Record<string, unknown>> = [];
 
   const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
@@ -77,8 +85,8 @@ export function stubEditorApi(options: EditorApiOptions = {}) {
         ? json({
             version,
             is_background: false,
-            is_reviewed: false,
-            status: boxes.length > 0 ? "annotated" : "unannotated",
+            is_reviewed: isReviewed,
+            status: isReviewed ? "reviewed" : boxes.length > 0 ? "annotated" : "unannotated",
             boxes,
           })
         : json({ detail: "Image not found." }, imageStatus);

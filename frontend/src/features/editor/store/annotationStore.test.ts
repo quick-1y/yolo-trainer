@@ -47,6 +47,87 @@ describe("createEditorStore", () => {
   });
 });
 
+describe("updateBox", () => {
+  const MOVED = { x: 0.5, y: 0.4, w: 0.3, h: 0.2 };
+
+  function storeWithBox(isReviewed = false) {
+    return createEditorStore({ boxes: [BOX], isBackground: false, isReviewed }, 0);
+  }
+
+  it("is one history entry per action", () => {
+    const store = storeWithBox();
+    store.getState().createBox({ ...BOX, id: "b" });
+    const before = store.temporal.getState().pastStates.length;
+
+    store.getState().updateBox("a", MOVED);
+    expect(store.temporal.getState().pastStates).toHaveLength(before + 1);
+    store.getState().updateBox("b", { x: 0.6, y: 0.6, w: 0.1, h: 0.1 });
+    expect(store.temporal.getState().pastStates).toHaveLength(before + 2);
+  });
+
+  it("replaces only the geometry of that box", () => {
+    const store = storeWithBox();
+    store.getState().createBox({ ...BOX, id: "b", class_id: 9 });
+
+    store.getState().updateBox("a", MOVED);
+
+    expect(store.getState().doc.boxes).toEqual([
+      { id: "a", class_id: 1, ...MOVED },
+      { ...BOX, id: "b", class_id: 9 },
+    ]);
+  });
+
+  it("adds no history entry for a meta change", () => {
+    const store = storeWithBox();
+    store.getState().updateBox("a", MOVED);
+    const before = store.temporal.getState().pastStates.length;
+
+    store.getState().setMeta({ saveState: "saving" });
+
+    expect(store.temporal.getState().pastStates).toHaveLength(before);
+  });
+
+  it("demotes a reviewed image in the same entry", () => {
+    const store = storeWithBox(true);
+
+    store.getState().updateBox("a", MOVED);
+
+    expect(store.getState().doc.isReviewed).toBe(false);
+    expect(store.temporal.getState().pastStates).toHaveLength(1);
+  });
+
+  it("undo restores the previous geometry and the reviewed flag", () => {
+    const store = storeWithBox(true);
+    store.getState().updateBox("a", MOVED);
+
+    store.temporal.getState().undo();
+
+    expect(store.getState().doc.boxes[0]).toEqual(BOX);
+    expect(store.getState().doc.isReviewed).toBe(true);
+  });
+
+  it("ignores an unknown id and keeps the same doc (no history entry)", () => {
+    const store = storeWithBox();
+    const doc = store.getState().doc;
+
+    store.getState().updateBox("missing", MOVED);
+
+    expect(store.getState().doc).toBe(doc);
+    expect(store.temporal.getState().pastStates).toHaveLength(0);
+  });
+
+  it("treats an unchanged geometry as no change (no history entry, still reviewed)", () => {
+    const store = storeWithBox(true);
+    const doc = store.getState().doc;
+
+    store.getState().updateBox("a", { x: BOX.x, y: BOX.y, w: BOX.w, h: BOX.h });
+
+    expect(store.getState().doc).toBe(doc);
+    expect(store.getState().doc.isReviewed).toBe(true);
+    expect(store.temporal.getState().pastStates).toHaveLength(0);
+  });
+});
+
 describe("doc <-> payload", () => {
   it("round-trips the API shape", () => {
     const doc = docFromSet({

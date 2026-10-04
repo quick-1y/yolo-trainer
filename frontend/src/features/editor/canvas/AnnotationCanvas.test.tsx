@@ -13,7 +13,7 @@ import {
 import { CAR_CLASS, stubEditorApi } from "../../../test/editorApi";
 import { renderWithProviders } from "../../../test/render";
 import { resetEditorUi } from "../store/editorUiStore";
-import { resetEditors } from "../store/storeRegistry";
+import { peekEditor, resetEditors } from "../store/storeRegistry";
 
 const BOX_ID = "3f2b8c1e-5d4a-4e7b-9c6d-1a2b3c4d5e6f";
 const OTHER_ID = "9a8b7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d";
@@ -48,6 +48,21 @@ function transformer(): Konva.Transformer {
 
 function crosshairLines(): Konva.Line[] {
   return getStage().find(".crosshair-line") as Konva.Line[];
+}
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** The registry entry of the opened image (project 1, image 5). */
+function editor() {
+  const entry = peekEditor({ projectId: 1, imageId: 5 });
+  if (!entry) {
+    throw new Error("No editor entry");
+  }
+  return entry;
+}
+
+function pastStates(): number {
+  return editor().store.temporal.getState().pastStates.length;
 }
 
 function fire(node: Konva.Node, type: string): void {
@@ -297,5 +312,165 @@ describe("box label chips", () => {
 
     const label = getStage().findOne(`#label-${BOX_ID}`) as Konva.Label;
     expect(label.y()).toBe(0);
+  });
+});
+
+type SavedBox = { id: string; x: number; y: number; w: number; h: number };
+
+function savedBoxes(put: Record<string, unknown>): SavedBox[] {
+  return (put as { boxes: SavedBox[] }).boxes;
+}
+
+// 60 x 40 image px on the 300 x 200 test image.
+const SMALL = { id: BOX_ID, class_id: 7, x: 0.1, y: 0.1, w: 0.2, h: 0.2 };
+
+async function openSelected(options: Parameters<typeof stubEditorApi>[0]) {
+  const api = stubEditorApi(options);
+  const { user } = await openEditor();
+  await user.click(screen.getByRole("button", { name: "Select" }));
+  fire(boxNode(), "click");
+  await waitFor(() => expect(transformer().nodes()).toHaveLength(1));
+  return api;
+}
+
+describe("moving a box", () => {
+  it("clamps the drag inside the image and saves once, on release", async () => {
+    setUpCanvas();
+    const { puts } = await openSelected({ boxes: [SMALL] });
+    const node = boxNode();
+    const before = pastStates();
+
+    node.setAttrs({ x: 280, y: -5 });
+    fire(node, "dragmove");
+
+    expect(node.x()).toBe(240);
+    expect(node.y()).toBe(0);
+    // Nothing is written while the drag is in progress.
+    expect(pastStates()).toBe(before);
+    await sleep(700);
+    expect(puts).toHaveLength(0);
+
+    fire(node, "dragend");
+
+    await waitFor(() => expect(puts).toHaveLength(1));
+    const [box] = savedBoxes(puts[0]);
+    expect(box.x).toBeCloseTo(0.8, 6);
+    expect(box.y).toBe(0);
+    expect(box.w).toBeCloseTo(0.2, 6);
+    expect(box.h).toBeCloseTo(0.2, 6);
+    expect(pastStates()).toBe(before + 1);
+    await sleep(700);
+    expect(puts).toHaveLength(1);
+  });
+
+  it("is undoable as one step", async () => {
+    setUpCanvas();
+    const { puts } = await openSelected({ boxes: [SMALL] });
+    const node = boxNode();
+    node.setAttrs({ x: 150, y: 100 });
+    fire(node, "dragend");
+    await waitFor(() => expect(puts).toHaveLength(1));
+
+    act(() => {
+      editor().store.temporal.getState().undo();
+    });
+
+    expect(editor().store.getState().doc.boxes[0]).toMatchObject({ x: 0.1, y: 0.1 });
+    await waitFor(() => expect(puts).toHaveLength(2));
+    expect(savedBoxes(puts[1])[0]).toMatchObject({ x: 0.1, y: 0.1 });
+  });
+
+  it("selects an unselected box when its drag starts", async () => {
+    setUpCanvas();
+    stubEditorApi({ boxes: [SMALL] });
+    const { user } = await openEditor();
+    await user.click(screen.getByRole("button", { name: "Select" }));
+
+    fire(boxNode(), "dragstart");
+
+    await waitFor(() => expect(transformer().nodes()).toEqual([boxNode()]));
+  });
+
+  it("clears is_reviewed of a reviewed image in the same save", async () => {
+    setUpCanvas();
+    const { puts } = await openSelected({ boxes: [SMALL], isReviewed: true });
+    const node = boxNode();
+
+    node.setAttrs({ x: 100, y: 100 });
+    fire(node, "dragend");
+
+    await waitFor(() => expect(puts).toHaveLength(1));
+    expect((puts[0] as { is_reviewed: boolean }).is_reviewed).toBe(false);
+    expect(pastStates()).toBe(1);
+  });
+
+  it("does not save a drag that ends where it started", async () => {
+    setUpCanvas();
+    const { puts } = await openSelected({ boxes: [SMALL] });
+
+    fire(boxNode(), "dragend");
+    await sleep(700);
+
+    expect(puts).toHaveLength(0);
+    expect(pastStates()).toBe(0);
+  });
+});
+
+describe("resizing a box", () => {
+  it("commits the scaled size on transformend, resets the scale and saves once", async () => {
+    setUpCanvas();
+    const { puts } = await openSelected({ boxes: [BOX] });
+    const node = boxNode();
+    const before = pastStates();
+
+    node.scaleX(0.5);
+    fire(node, "transformend");
+
+    await waitFor(() => expect(puts).toHaveLength(1));
+    expect(node.scaleX()).toBe(1);
+    expect(node.scaleY()).toBe(1);
+    const [box] = savedBoxes(puts[0]);
+    expect(box.w).toBeCloseTo(0.25, 6);
+    expect(box.h).toBeCloseTo(0.5, 6);
+    expect(box.x).toBeCloseTo(0.1, 6);
+    expect(pastStates()).toBe(before + 1);
+    await waitFor(() => expect(node.width()).toBeCloseTo(75, 3));
+    await sleep(700);
+    expect(puts).toHaveLength(1);
+  });
+
+  it("clips a resize that grows past the image edge", async () => {
+    setUpCanvas();
+    const { puts } = await openSelected({ boxes: [BOX] });
+    const node = boxNode();
+
+    node.scaleX(4);
+    node.scaleY(4);
+    fire(node, "transformend");
+
+    await waitFor(() => expect(puts).toHaveLength(1));
+    const [box] = savedBoxes(puts[0]);
+    expect(box.x + box.w).toBeLessThanOrEqual(1);
+    expect(box.y + box.h).toBeLessThanOrEqual(1);
+  });
+
+  it("never produces a negative or empty size when dragged through the opposite edge", async () => {
+    setUpCanvas();
+    const { puts } = await openSelected({ boxes: [BOX] });
+    const node = boxNode();
+
+    node.scaleX(-0.5);
+    node.scaleY(-0.001);
+    fire(node, "transformend");
+
+    await waitFor(() => expect(puts).toHaveLength(1));
+    const [box] = savedBoxes(puts[0]);
+    expect(box.w).toBeGreaterThan(0);
+    expect(box.h).toBeGreaterThan(0);
+    // At least one image pixel each way.
+    expect(box.w * 300).toBeGreaterThanOrEqual(1 - 1e-3);
+    expect(box.h * 200).toBeGreaterThanOrEqual(1 - 1e-3);
+    expect(box.x).toBeGreaterThanOrEqual(0);
+    expect(box.y).toBeGreaterThanOrEqual(0);
   });
 });
