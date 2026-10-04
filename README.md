@@ -182,9 +182,15 @@ Known limitations:
 backend/     FastAPI app, worker entrypoint, shared helper module, tests, pyproject.toml
 frontend/    React + Vite + Mantine single-page app
 docker/      Dockerfiles and nginx config
-scripts/     Smoke-test, full-suite, and fresh-clone check scripts
+scripts/     Full-suite, compose smoke-test, fresh-clone, legacy CLI git-clean check, and large-project seed scripts
 config/      config.ini for the legacy CLI scripts
 docs/        Background/reference documentation
+spikes/      Phase 0 architecture-validation spike scripts (results in docs/phase-0-decisions.md)
+example_ready_dataset/   Sample Roboflow detect dataset; only data.yaml and its two README files are tracked, the images and labels are git-ignored
+.github/     CI workflow (backend and frontend checks)
 .planning/   Project planning artifacts (roadmap, requirements, phase plans)
+docker-compose.yml   Docker Compose stack (api, worker, web services)
+pyproject.toml, uv.lock, .python-version   uv workspace root (Python 3.12, locked dependencies)
+.env.example Template for .env settings
 train_yolo.py, finetune_yolo.py, gpu_test.py   Legacy CLI scripts (see above)
 ```

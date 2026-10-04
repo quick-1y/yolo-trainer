@@ -182,9 +182,15 @@ uv run python finetune_yolo.py
 backend/     Приложение FastAPI, точка входа воркера, общий вспомогательный модуль, тесты, pyproject.toml
 frontend/    Одностраничное приложение на React + Vite + Mantine
 docker/      Dockerfile'ы и конфигурация nginx
-scripts/     Скрипты smoke-теста, полного набора проверок и проверки чистого клона
+scripts/     Скрипты полного набора проверок, smoke-теста compose, проверки чистого клона, проверки git-чистоты после CLI-обучения и наполнения большого проекта
 config/      config.ini для устаревших CLI-скриптов
 docs/        Справочная документация
+spikes/      Скрипты spike-проверок архитектуры фазы 0 (результаты — в docs/phase-0-decisions.md)
+example_ready_dataset/   Пример датасета Roboflow для detect; в git хранятся только data.yaml и два его README, изображения и разметка игнорируются
+.github/     Workflow CI (проверки backend и frontend)
 .planning/   Артефакты планирования проекта (дорожная карта, требования, планы фаз)
+docker-compose.yml   Стек Docker Compose (сервисы api, worker, web)
+pyproject.toml, uv.lock, .python-version   Корень uv-workspace (Python 3.12, зафиксированные зависимости)
+.env.example Шаблон настроек для .env
 train_yolo.py, finetune_yolo.py, gpu_test.py   Устаревшие CLI-скрипты (см. выше)
 ```
