@@ -14,7 +14,8 @@
       "label": "Background",
       "hint": "Mark this image as having no objects",
       "disabledHint": "Delete all boxes first to mark this image as background."
-    }
+    },
+    "nextUnannotated": "Next unannotated"
   },
   "save": {
     "saved": "Saved",
@@ -52,7 +53,11 @@
     "prev": "Previous image",
     "next": "Next image",
     "reviewed": "Toggle reviewed",
-    "background": "Toggle background"
+    "background": "Toggle background",
+    "nextUnannotated": "Next unannotated image"
+  },
+  "nav": {
+    "noOther": "No other unannotated images."
   },
   "notFound": {
     "title": "Image not found",

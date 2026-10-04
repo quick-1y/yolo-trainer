@@ -65,6 +65,20 @@ export interface Neighbors {
   next_id: number | null;
 }
 
+/** GET /projects/{p}/images/next-unannotated: the next image still needing work, or none. */
+export interface NextUnannotated {
+  image_id: number | null;
+}
+
+/** GET /projects/{p}/images/status-counts: the whole project, whatever the search. */
+export interface StatusCounts {
+  total: number;
+  unannotated: number;
+  annotated: number;
+  reviewed: number;
+  background: number;
+}
+
 export const PAGE_SIZE = 100;
 
 export const imageKeys = {
@@ -75,6 +89,8 @@ export const imageKeys = {
   detail: (projectId: number, imageId: number) => ["image", projectId, imageId] as const,
   neighbors: (projectId: number, imageId: number, sort: string, q: string) =>
     ["image", projectId, imageId, "neighbors", sort, q] as const,
+  // Its own root, like `detail`: the list-cache helpers never touch it.
+  summary: (projectId: number) => ["imageSummary", projectId] as const,
 };
 
 export function getImage(projectId: number, imageId: number): Promise<ImageDetail> {
@@ -114,6 +130,39 @@ export function useNeighbors(
     queryKey: imageKeys.neighbors(projectId ?? 0, imageId ?? 0, sort, q),
     queryFn: () => getNeighbors(projectId as number, imageId as number, { sort, q }),
     enabled: projectId !== null && imageId !== null,
+  });
+}
+
+/**
+ * The first unannotated image after `after` in the grid order of one sort and search,
+ * wrapping to the start; `image_id` is null when no other image needs work.
+ */
+export function getNextUnannotated(
+  projectId: number,
+  { sort = "newest", q = "", after }: { sort?: ImageSort; q?: string; after?: number } = {},
+): Promise<NextUnannotated> {
+  const params = new URLSearchParams({ sort });
+  if (q) {
+    params.set("q", q);
+  }
+  if (after !== undefined) {
+    params.set("after", String(after));
+  }
+  return apiRequest<NextUnannotated>(
+    `/projects/${projectId}/images/next-unannotated?${params.toString()}`,
+  );
+}
+
+export function getStatusCounts(projectId: number): Promise<StatusCounts> {
+  return apiRequest<StatusCounts>(`/projects/${projectId}/images/status-counts`);
+}
+
+/** How far along the project is; the grid's summary reads it. */
+export function useStatusCounts(projectId: number | null) {
+  return useQuery({
+    queryKey: imageKeys.summary(projectId ?? 0),
+    queryFn: () => getStatusCounts(projectId as number),
+    enabled: projectId !== null,
   });
 }
 

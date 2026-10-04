@@ -144,6 +144,15 @@ export const SHORTCUTS = [
     allowRepeat: false,
     editing: true,
   },
+  {
+    id: "nextUnannotated",
+    group: "navigation",
+    labelKey: "shortcuts.nextUnannotated",
+    hotkeys: ["n"],
+    caps: [["N"]],
+    allowRepeat: false,
+    editing: false,
+  },
 ] as const satisfies readonly ShortcutDef[];
 
 export type ShortcutId = (typeof SHORTCUTS)[number]["id"];

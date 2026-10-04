@@ -32,6 +32,7 @@ function allHandlers(): Spies {
     next: spy(),
     reviewed: spy(),
     background: spy(),
+    nextUnannotated: spy(),
   };
 }
 
@@ -112,6 +113,7 @@ describe("buildHotkeys", () => {
       "next",
       "reviewed",
       "background",
+      "nextUnannotated",
     ]);
     expect(SHORTCUTS.filter((def) => def.editing).map((def) => def.id)).toEqual([
       "delete",

@@ -94,3 +94,14 @@ export function BackgroundIcon() {
     </Icon>
   );
 }
+
+/** Next unannotated: a document with an arrow leaving it to the right. */
+export function NextUnannotatedIcon() {
+  return (
+    <Icon>
+      <rect x="3" y="5" width="12" height="14" rx="2" />
+      <path d="M15 12h6" />
+      <path d="M18 9l3 3-3 3" />
+    </Icon>
+  );
+}

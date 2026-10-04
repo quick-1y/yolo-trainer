@@ -6,7 +6,7 @@ import { useSearchParams } from "react-router-dom";
 import { useStore } from "zustand";
 
 import { useNeighbors } from "../../api/images";
-import { BackgroundIcon } from "./icons";
+import { BackgroundIcon, NextUnannotatedIcon } from "./icons";
 import { primaryCaps } from "./lib/shortcuts";
 import { editorPath, imagesPath, readGridParams } from "./lib/urls";
 import { type DocStatus, type EditorStore, type SaveState, docStatus } from "./store/annotationStore";
@@ -180,6 +180,57 @@ function ToggleControl({
   );
 }
 
+interface NextUnannotatedControlProps {
+  label: string;
+  caps: string[];
+  wide: boolean;
+  /** This control's own navigation is waiting for the save or the lookup. */
+  loading: boolean;
+  /** Another move is under way. */
+  busy: boolean;
+  onClick: () => void;
+}
+
+/** "Next unannotated": a text button at 1440px and wider, a 32 px icon button below. */
+function NextUnannotatedControl({
+  label,
+  caps,
+  wide,
+  loading,
+  busy,
+  onClick,
+}: NextUnannotatedControlProps) {
+  return (
+    <Tooltip openDelay={400} label={<ToolTipLabel label={label} caps={caps} />}>
+      <div style={{ flexShrink: 0, display: "flex" }}>
+        {wide ? (
+          <Button
+            variant="default"
+            size="sm"
+            loading={loading}
+            disabled={busy && !loading}
+            leftSection={<NextUnannotatedIcon />}
+            onClick={onClick}
+          >
+            {label}
+          </Button>
+        ) : (
+          <ActionIcon
+            variant="default"
+            size={32}
+            aria-label={label}
+            loading={loading}
+            disabled={busy && !loading}
+            onClick={onClick}
+          >
+            <NextUnannotatedIcon />
+          </ActionIcon>
+        )}
+      </div>
+    </Tooltip>
+  );
+}
+
 interface EditorTopBarProps {
   projectId: number;
   imageId: number;
@@ -187,6 +238,8 @@ interface EditorTopBarProps {
   store: EditorStore;
   /** Every move out of the image, through the saver flush. */
   navigation: EditorNavigation;
+  /** Save, then jump to the next unannotated image (the N key does the same). */
+  onNextUnannotated: () => void;
 }
 
 /** The 48 px bar: Back, the filename, the save indicator and the previous / next arrows. */
@@ -196,6 +249,7 @@ export function EditorTopBar({
   filename,
   store,
   navigation,
+  onNextUnannotated,
 }: EditorTopBarProps) {
   const { t } = useTranslation("editor");
   const [searchParams] = useSearchParams();
@@ -274,6 +328,14 @@ export function EditorTopBar({
         icon={<span aria-hidden="true">✓</span>}
         wideIcon={false}
         onClick={() => store.getState().toggleReviewed()}
+      />
+      <NextUnannotatedControl
+        label={t("topBar.nextUnannotated")}
+        caps={primaryCaps("nextUnannotated")}
+        wide={wide}
+        loading={pending === "nextUnannotated"}
+        busy={pending !== null}
+        onClick={onNextUnannotated}
       />
       <Divider orientation="vertical" h={24} />
       <ActionIcon

@@ -19,12 +19,18 @@ export interface LeaveDialogState {
   close: () => void;
 }
 
+/**
+ * Where a move goes: a path, or a lookup that yields one (null: stay where you are). The
+ * lookup runs after the save, so it sees the project as the server stores it.
+ */
+export type NavTarget = string | (() => Promise<string | null>);
+
 export interface EditorNavigation {
   /**
-   * Leave the image for `path`: first await the image's saver flush, then navigate.
+   * Leave the image for `target`: first await the image's saver flush, then navigate.
    * Ignored while another navigation is pending or the leave dialog is open (one at a time).
    */
-  goTo: (path: string, control: NavControl) => Promise<void>;
+  goTo: (target: NavTarget, control: NavControl) => Promise<void>;
   /** The control whose navigation is waiting for the save, or null. */
   pending: NavControl | null;
   leave: LeaveDialogState;
@@ -58,7 +64,7 @@ export function useEditorNavigation(projectId: number, imageId: number): EditorN
   }, []);
 
   const goTo = useCallback(
-    async (path: string, control: NavControl) => {
+    async (target: NavTarget, control: NavControl) => {
       if (busy.current || targetRef.current !== null) {
         return;
       }
@@ -66,6 +72,10 @@ export function useEditorNavigation(projectId: number, imageId: number): EditorN
       setPending(control);
       try {
         const outcome = await flushCurrent();
+        const path = typeof target === "string" ? target : await target();
+        if (path === null) {
+          return;
+        }
         if (outcome === "saved") {
           navigate(path);
         } else {

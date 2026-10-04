@@ -26,6 +26,7 @@ import { useEditorUi } from "./store/editorUiStore";
 import { type EditorEntry, getEditor } from "./store/storeRegistry";
 import { EditorModalGateContext, useEditorHotkeys } from "./useEditorHotkeys";
 import { useEditorNavigation } from "./useEditorNavigation";
+import { useNextUnannotated } from "./useNextUnannotated";
 
 const MATTE = "#141414";
 
@@ -220,6 +221,7 @@ function Workspace({
 
   // Every way out of this image waits for its save (D-11); a second move is ignored meanwhile.
   const navigation = useEditorNavigation(projectId, imageId);
+  const goNextUnannotated = useNextUnannotated(projectId, imageId, navigation);
   const [searchParams] = useSearchParams();
   const grid = readGridParams(searchParams);
   const neighbors = useNeighbors(projectId, imageId, grid.sort, grid.q).data;
@@ -374,6 +376,7 @@ function Workspace({
       },
       prev: () => stepTo(prevId, "prev"),
       next: () => stepTo(nextId, "next"),
+      nextUnannotated: goNextUnannotated,
     },
     // While a move waits for the save, editing keys are off too: nothing new may slip in.
     { enabled: openModals === 0 && navigation.pending === null, readOnly: false },
@@ -397,6 +400,7 @@ function Workspace({
           filename={filename}
           store={entry.store}
           navigation={navigation}
+          onNextUnannotated={goNextUnannotated}
         />
         <ToolBar
           store={entry.store}
