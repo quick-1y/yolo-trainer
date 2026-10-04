@@ -22,6 +22,18 @@
     "noClassesHint": "Add a class to start drawing.",
     "loadFailed": "Could not load this image."
   },
+  "shortcuts": {
+    "group": {
+      "tools": "Tools",
+      "editing": "Editing"
+    },
+    "select": "Select tool",
+    "box": "Box tool",
+    "delete": "Delete selected box",
+    "undo": "Undo",
+    "redo": "Redo",
+    "deselect": "Deselect or cancel drawing"
+  },
   "notFound": {
     "title": "Image not found",
     "body": "This image does not exist in this project or was deleted.",

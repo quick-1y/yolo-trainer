@@ -4,6 +4,7 @@ import { useTranslation } from "react-i18next";
 import { useStore } from "zustand";
 
 import { BoxIcon, RedoIcon, SelectIcon, UndoIcon } from "./icons";
+import { primaryCaps } from "./lib/shortcuts";
 import { type EditorTool, useEditorUi } from "./store/editorUiStore";
 import type { EditorStore } from "./store/annotationStore";
 
@@ -133,11 +134,16 @@ export function ToolBar({ store, hasClasses, imageLoaded }: ToolBarProps) {
       }}
     >
       <Stack gap={8} align="center">
-        <ToolButton tool="select" label={t("tools.select")} caps={["V"]} icon={<SelectIcon />} />
+        <ToolButton
+          tool="select"
+          label={t("tools.select")}
+          caps={primaryCaps("select")}
+          icon={<SelectIcon />}
+        />
         <ToolButton
           tool="box"
           label={t("tools.box")}
-          caps={["B"]}
+          caps={primaryCaps("box")}
           icon={<BoxIcon />}
           disabled={!hasClasses || !imageLoaded}
           disabledHint={hasClasses ? undefined : t("tools.boxDisabled")}
@@ -145,14 +151,14 @@ export function ToolBar({ store, hasClasses, imageLoaded }: ToolBarProps) {
         <Divider w={24} />
         <HistoryButton
           label={t("tools.undo")}
-          caps={["Ctrl", "Z"]}
+          caps={primaryCaps("undo")}
           icon={<UndoIcon />}
           disabled={pastCount === 0}
           onClick={() => store.temporal.getState().undo()}
         />
         <HistoryButton
           label={t("tools.redo")}
-          caps={["Ctrl", "Shift", "Z"]}
+          caps={primaryCaps("redo")}
           icon={<RedoIcon />}
           disabled={futureCount === 0}
           onClick={() => store.temporal.getState().redo()}

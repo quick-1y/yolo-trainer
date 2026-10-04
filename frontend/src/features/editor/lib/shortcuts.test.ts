@@ -1,6 +1,6 @@
 import { act, renderHook } from "@testing-library/react";
 import { type ReactNode, createElement } from "react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { type Mock, afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   EditorModalGateContext,
@@ -12,14 +12,21 @@ import { SHORTCUTS, buildHotkeys, capLabel, type ShortcutId } from "./shortcuts"
 
 type Handlers = Partial<Record<ShortcutId, (event: KeyboardEvent) => void>>;
 
-function allHandlers(): Record<ShortcutId, ReturnType<typeof vi.fn>> {
+type Spy = Mock<(event: KeyboardEvent) => void>;
+type Spies = Record<ShortcutId, Spy>;
+
+function spy(): Spy {
+  return vi.fn<(event: KeyboardEvent) => void>();
+}
+
+function allHandlers(): Spies {
   return {
-    select: vi.fn(),
-    box: vi.fn(),
-    delete: vi.fn(),
-    undo: vi.fn(),
-    redo: vi.fn(),
-    deselect: vi.fn(),
+    select: spy(),
+    box: spy(),
+    delete: spy(),
+    undo: spy(),
+    redo: spy(),
+    deselect: spy(),
   };
 }
 
@@ -35,7 +42,7 @@ function mount(handlers: Handlers, options = { enabled: true, readOnly: false })
   return renderHook(() => useEditorHotkeys(handlers, options));
 }
 
-function calledIds(handlers: Record<ShortcutId, ReturnType<typeof vi.fn>>): string[] {
+function calledIds(handlers: Spies): string[] {
   return Object.entries(handlers)
     .filter(([, handler]) => handler.mock.calls.length > 0)
     .map(([id]) => id);
@@ -63,7 +70,7 @@ describe("buildHotkeys", () => {
   });
 
   it("skips rows that have no handler", () => {
-    const keys = buildHotkeys({ select: vi.fn() }, { enabled: true, readOnly: false }).map(
+    const keys = buildHotkeys({ select: spy() }, { enabled: true, readOnly: false }).map(
       ([hotkey]) => hotkey,
     );
 

@@ -1,6 +1,6 @@
 import { Alert, Box, Button, Loader, Stack, Text } from "@mantine/core";
 import { useQueryClient } from "@tanstack/react-query";
-import { type ReactNode, useEffect, useLayoutEffect, useMemo } from "react";
+import { type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useParams } from "react-router-dom";
 import { useStore } from "zustand";
@@ -13,7 +13,7 @@ import { useProject } from "../../api/projects";
 import { ProjectNotFound } from "../project/ProjectNotFound";
 import { EditorTopBar } from "./EditorTopBar";
 import { ToolBar } from "./ToolBar";
-import { AnnotationCanvas } from "./canvas/AnnotationCanvas";
+import { AnnotationCanvas, type AnnotationCanvasHandle } from "./canvas/AnnotationCanvas";
 import { useLoadedImage } from "./canvas/useLoadedImage";
 import { newId } from "./lib/ids";
 import { imagesPath } from "./lib/urls";
@@ -21,6 +21,7 @@ import type { NormBox } from "./lib/geometry";
 import { docFromSet } from "./store/annotationStore";
 import { useEditorUi } from "./store/editorUiStore";
 import { type EditorEntry, getEditor } from "./store/storeRegistry";
+import { EditorModalGateContext, useEditorHotkeys } from "./useEditorHotkeys";
 
 const MATTE = "#141414";
 
@@ -196,11 +197,25 @@ function Workspace({ projectId, imageId, filename, imgW, imgH, classes, entry }:
   const { t } = useTranslation(["editor", "common"]);
   const boxes = useStore(entry.store, (state) => state.doc.boxes);
   const loaded = useLoadedImage(fileUrl(projectId, imageId));
+  const canvasRef = useRef<AnnotationCanvasHandle>(null);
+
+  // Dialogs register here while open; every shortcut is off until they close (Pitfall 10).
+  const [openModals, setOpenModals] = useState(0);
+  const modalGate = useMemo(
+    () => ({
+      acquire: () => {
+        setOpenModals((count) => count + 1);
+        return () => setOpenModals((count) => Math.max(0, count - 1));
+      },
+    }),
+    [],
+  );
 
   const tool = useEditorUi((state) => state.tool);
   const rawSelectedId = useEditorUi((state) => state.selectedId);
   const hoveredId = useEditorUi((state) => state.hoveredId);
   const select = useEditorUi((state) => state.select);
+  const setTool = useEditorUi((state) => state.setTool);
   const hover = useEditorUi((state) => state.hover);
 
   // A new image starts with nothing selected or hovered (the tool is kept).
@@ -244,54 +259,86 @@ function Workspace({ projectId, imageId, filename, imgW, imgH, classes, entry }:
     entry.store.getState().updateBox(id, geometry);
   };
 
+  const canPickBox = classList.length > 0 && loaded.status === "loaded";
+  // Handlers are read at key time, so they always see the current selection and tool.
+  useEditorHotkeys(
+    {
+      select: () => setTool("select"),
+      box: () => {
+        if (canPickBox) {
+          setTool("box");
+        }
+      },
+      delete: () => {
+        if (selectedId !== null) {
+          entry.store.getState().deleteBox(selectedId);
+          select(null);
+        }
+      },
+      undo: () => entry.store.temporal.getState().undo(),
+      redo: () => entry.store.temporal.getState().redo(),
+      deselect: () => {
+        if (canvasRef.current?.isDrawing()) {
+          canvasRef.current.cancelDraft();
+        } else {
+          select(null);
+        }
+      },
+    },
+    { enabled: openModals === 0, readOnly: false },
+  );
+
   return (
-    <Box
-      style={{
-        display: "grid",
-        gridTemplateColumns: "48px 1fr 320px",
-        gridTemplateRows: "48px 1fr",
-        height: "100dvh",
-        overflow: "hidden",
-        background: MATTE,
-      }}
-    >
-      <EditorTopBar projectId={projectId} filename={filename} store={entry.store} />
-      <ToolBar
-        store={entry.store}
-        hasClasses={classList.length > 0}
-        imageLoaded={loaded.status === "loaded"}
-      />
-      <Box style={{ minWidth: 0, minHeight: 0, position: "relative" }}>
-        <AnnotationCanvas
-          image={loaded.image}
-          imgW={imgW}
-          imgH={imgH}
-          boxes={boxes}
-          classColors={classColors}
-          labels={labels}
-          activeColor={activeClass?.color ?? "#FFFFFF"}
-          tool={tool}
-          selectedId={selectedId}
-          hoveredId={hoveredId}
-          canDraw={canDraw}
-          noClasses={classes !== undefined && classes.length === 0}
-          onCreate={handleCreate}
-          onSelect={select}
-          onHover={hover}
-          onChange={handleChange}
+    <EditorModalGateContext value={modalGate}>
+      <Box
+        style={{
+          display: "grid",
+          gridTemplateColumns: "48px 1fr 320px",
+          gridTemplateRows: "48px 1fr",
+          height: "100dvh",
+          overflow: "hidden",
+          background: MATTE,
+        }}
+      >
+        <EditorTopBar projectId={projectId} filename={filename} store={entry.store} />
+        <ToolBar
+          store={entry.store}
+          hasClasses={classList.length > 0}
+          imageLoaded={loaded.status === "loaded"}
         />
-        {loaded.status === "error" && (
-          <Alert
-            color="red"
-            title={t("common:error.title")}
-            style={{ position: "absolute", top: 16, left: 16, right: 16 }}
-          >
-            {t("canvas.loadFailed")}
-          </Alert>
-        )}
+        <Box style={{ minWidth: 0, minHeight: 0, position: "relative" }}>
+          <AnnotationCanvas
+            ref={canvasRef}
+            image={loaded.image}
+            imgW={imgW}
+            imgH={imgH}
+            boxes={boxes}
+            classColors={classColors}
+            labels={labels}
+            activeColor={activeClass?.color ?? "#FFFFFF"}
+            tool={tool}
+            selectedId={selectedId}
+            hoveredId={hoveredId}
+            canDraw={canDraw}
+            noClasses={classes !== undefined && classes.length === 0}
+            onCreate={handleCreate}
+            onSelect={select}
+            onHover={hover}
+            onChange={handleChange}
+          />
+          {loaded.status === "error" && (
+            <Alert
+              color="red"
+              title={t("common:error.title")}
+              style={{ position: "absolute", top: 16, left: 16, right: 16 }}
+            >
+              {t("canvas.loadFailed")}
+            </Alert>
+          )}
+        </Box>
+        {/* Class panel and object list: filled by a later plan. */}
+        <Box style={{ ...CHROME, borderLeft: "1px solid var(--mantine-color-dark-4)" }} />
       </Box>
-      {/* Class panel and object list: filled by a later plan. */}
-      <Box style={{ ...CHROME, borderLeft: "1px solid var(--mantine-color-dark-4)" }} />
-    </Box>
+    </EditorModalGateContext>
   );
 }

@@ -1,6 +1,6 @@
 import { Loader, Paper, useMantineTheme } from "@mantine/core";
 import type Konva from "konva";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { type Ref, useEffect, useImperativeHandle, useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Image as KonvaImage, Layer, Rect, Stage, Transformer } from "react-konva";
 
@@ -31,7 +31,17 @@ function fitScale(width: number, height: number, imgW: number, imgH: number): nu
   return Number.isFinite(scale) && scale > 0 ? scale : 1;
 }
 
+/** What the editor page may ask of the canvas (Esc cancels a draft in progress). */
+export interface AnnotationCanvasHandle {
+  /** Drop the draft in progress: nothing is created when the pointer is released. */
+  cancelDraft: () => void;
+  /** A draft is being dragged out right now. */
+  isDrawing: () => boolean;
+}
+
 interface AnnotationCanvasProps {
+  /** React 19 passes `ref` as a plain prop. */
+  ref?: Ref<AnnotationCanvasHandle>;
   /** The decoded original, or null while it loads. */
   image: HTMLImageElement | null;
   /** The image size stored in the database (EXIF-oriented). */
@@ -63,6 +73,7 @@ interface AnnotationCanvasProps {
  * always in image pixels.
  */
 export function AnnotationCanvas({
+  ref,
   image,
   imgW,
   imgH,
@@ -89,6 +100,7 @@ export function AnnotationCanvas({
   const transformerRef = useRef<Konva.Transformer>(null);
   const crosshairRef = useRef<CrosshairHandle>(null);
   const startRef = useRef<Point | null>(null);
+  const pointerIdRef = useRef<number | null>(null);
   const [size, setSize] = useState({ width: 0, height: 0 });
 
   useLayoutEffect(() => {
@@ -169,6 +181,27 @@ export function AnnotationCanvas({
     draft.getLayer()?.batchDraw();
   };
 
+  // Esc: hide the draft and forget the start point, so the pending pointerup finds
+  // nothing to commit. The capture is released here because that pointerup may never come.
+  const cancelDraft = () => {
+    if (startRef.current === null) {
+      return;
+    }
+    startRef.current = null;
+    const content = stageRef.current?.content;
+    const pointerId = pointerIdRef.current;
+    pointerIdRef.current = null;
+    if (content && pointerId !== null && content.hasPointerCapture(pointerId)) {
+      content.releasePointerCapture(pointerId);
+    }
+    hideDraft();
+  };
+
+  useImperativeHandle(ref, () => ({
+    cancelDraft,
+    isDrawing: () => startRef.current !== null,
+  }));
+
   const handlePointerDown = (event: Konva.KonvaEventObject<PointerEvent>) => {
     containerRef.current?.focus();
     if (!canDraw || event.evt.button !== 0) {
@@ -182,6 +215,7 @@ export function AnnotationCanvas({
     // Mandatory: without capture a release outside the canvas is never delivered
     // and the draft would stay stuck.
     stage.content.setPointerCapture(event.evt.pointerId);
+    pointerIdRef.current = event.evt.pointerId;
     startRef.current = point;
     showDraft(point, point);
   };
@@ -206,6 +240,7 @@ export function AnnotationCanvas({
       return;
     }
     startRef.current = null;
+    pointerIdRef.current = null;
     const stage = event.target.getStage();
     const end = stage?.getRelativePointerPosition() ?? start;
     if (stage?.content.hasPointerCapture(event.evt.pointerId)) {
