@@ -1,9 +1,10 @@
 ---
 phase: 03-box-annotation-editor
 verified: 2026-10-04T17:00:00Z
-status: human_needed
+status: passed
 score: 5/5 must-haves verified
 covered_files:
+
   - ".planning/REQUIREMENTS.md"
   - ".planning/phases/03-box-annotation-editor/03-01-PLAN.md"
   - ".planning/phases/03-box-annotation-editor/03-01-SUMMARY.md"
@@ -38,10 +39,12 @@ covered_files:
   - "frontend/src/features/editor/store/annotationSaver.ts"
   - "frontend/src/features/editor/store/annotationStore.ts"
   - "frontend/src/features/editor/store/storeRegistry.ts"
+
 covered_digest: "v1:sha256:ea11321aa54edaf355de53766adbb6f363f988387a2c5d7841fbd935f1716807"
 behavior_unverified: 0
 overrides_applied: 0
 human_verification:
+
   - test: "Решение разработчика по WR-02: запись реестра в состоянии conflict считается не-dirty и может быть вытеснена (MAX_ENTRIES = 30)"
     expected: "Решить: исправить в рамках фазы (одна строка dirty = true в ветке 409 saver-а плюс тест реестра на 31 запись) либо принять как известное ограничение"
     why_human: "Код подтверждён чтением, но достижимость узкая (конфликт из двух вкладок + уход с изображения + более 30 других записей); решение о приоритете за человеком"

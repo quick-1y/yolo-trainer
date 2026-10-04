@@ -1,44 +1,44 @@
 ---
 gsd_state_version: "1.0"
-current_phase: 03
-current_phase_name: Box Annotation Editor
-status: verifying
-stopped_at: Completed 03-13-PLAN.md
-last_updated: "2026-10-04T13:34:17.991Z"
+current_phase: 4
+current_phase_name: Train & Download
+status: planning
+stopped_at: Phase 3 complete, ready to plan Phase 4
+last_updated: "2026-10-04T16:47:22.315Z"
 last_activity: 2026-10-04
-last_activity_desc: Phase 03 execution started
-state_head: 6224f72f8a7f316c48bce9573556de8745e4a092
+last_activity_desc: Phase 3 complete, transitioned to Phase 4
+state_head: ea02447f737fb7da3dd3d556540e0f839e935f0f
 progress:
   total_phases: 12
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 36
   completed_plans: 36
-  percent: 17
+  percent: 25
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-10-03)
+See: .planning/PROJECT.md (updated 2026-10-04)
 
 **Core value:** The full loop works end-to-end in the browser: upload images → annotate → train with configurable settings → download a working `.pt`
-**Current focus:** Phase 03 — Box Annotation Editor
+**Current focus:** Phase 4 — Train & Download
 
 ## Current Position
 
-Phase: 03 (Box Annotation Editor) — EXECUTING
-Plan: 13 of 13
-Status: Phase complete — ready for verification
-Last activity: 2026-10-04 — Phase 03 execution started
+Phase: 4 — Train & Download
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-10-04 — Phase 3 complete, transitioned to Phase 4
 
-Progress: [██░░░░░░░░] 17%
+Progress: [███░░░░░░░] 25%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 23
+- Total plans completed: 36
 - Average duration: -
 - Total execution time: 0.0 hours
 
@@ -48,6 +48,7 @@ Progress: [██░░░░░░░░] 17%
 |-------|-------|-------|----------|
 | 01 | 10 | - | - |
 | 02 | 13 | - | - |
+| 3 | 13 | - | - |
 
 **Recent Trend:**
 
@@ -171,6 +172,8 @@ None yet.
 - [Phase 12]: GPU-path acceptance (DEPL-02 and GPU memory freed after cancel) needs separate NVIDIA hardware, because the dev machine has none. It does not block Phases 1-11.
 - [Phase 4]: How jobs cross from the API container to the worker is undecided. The API cannot `Popen` into another container; resolve this during planning.
 - [Phase 6]: Prior research does not cover click-to-segment (SAM). It needs phase research on model choice and CPU latency.
+- [Phase 03 known limitations, accepted in UAT 2026-10-04]: a store-registry entry in conflict state counts as not dirty and can be evicted past MAX_ENTRIES = 30 (03-REVIEW WR-02); 408/429 on save are treated as rejections and resync instead of retrying (WR-03).
+- [Phase 03 UI review]: minor spacing follow-ups (ZoomOverlay gap 4 vs 8, background button icon gap, ClassPanel add-form spacing) — see 03-UI-REVIEW.md, 23/24.
 - [Phase 02 follow-up]: CSRF hardening of `POST /images/delete` (02-REVIEW WR-03) is still open; the route relies on the JSON CORS preflight (accepted as T-02-13-05).
 
 ## Deferred Items
@@ -183,6 +186,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-10-04T13:34:17.896Z
-Stopped at: Completed 03-13-PLAN.md
+Last session: 2026-10-04
+Stopped at: Phase 3 complete, ready to plan Phase 4
 Resume file: None

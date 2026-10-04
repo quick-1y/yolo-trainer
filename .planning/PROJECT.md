@@ -26,6 +26,9 @@ The full loop works end-to-end in the browser: **upload images → annotate them
 - ✓ CPU stack (web + api + worker) runs via `docker compose up` on Windows/Linux/macOS, bound to 127.0.0.1, data persists across down/up — Phase 1 (GPU image still pending, Phase 12)
 - ✓ User can upload images via browser (files / folder, drag & drop) with a per-file added/duplicate/rejected report, and browse thousands of them in a virtualized grid — Phase 2
 - ✓ User can create, rename, recolor, and delete classes (labels) per project with contiguous indices — Phase 2
+- ✓ User can open images one by one from the grid in an annotation canvas, with grid-order prev/next, next-unannotated and per-image status (unannotated / annotated / background / reviewed) — Phase 3
+- ✓ User can draw, move, resize, reclassify and delete bounding boxes, with zoom/pan — Phase 3
+- ✓ Annotations autosave reliably (compare-and-swap versioning, retry with backoff, conflict detection), with per-image undo/redo and layout-independent keyboard shortcuts — Phase 3
 
 ### Active
 
@@ -46,11 +49,8 @@ The full loop works end-to-end in the browser: **upload images → annotate them
 - [ ] User can export the annotated dataset as a YOLO-format zip
 
 **Manual annotation**
-- [ ] User can browse images in a grid and open them one by one in an annotation canvas
-- [ ] User can draw, move, resize, and delete bounding boxes
 - [ ] User can draw and edit polygons (vertex add/move/delete)
 - [ ] User can click on an object to get an auto-generated polygon (click-to-segment, e.g. SAM) as a drawing tool
-- [ ] Annotations save reliably, with undo/redo and keyboard shortcuts
 
 **AI-assisted annotation**
 - [ ] User selects a class and clicks "AI" on the current image; a chosen model (previously trained in the service or uploaded `.pt`) detects that class and proposes shapes
@@ -116,6 +116,8 @@ The full loop works end-to-end in the browser: **upload images → annotate them
 | Host allow-list (`TrustedHostMiddleware`) + loopback bind instead of auth | No-auth single-operator tool must still resist DNS rebinding and LAN exposure | ✓ Good (Phase 1) |
 | Images stored by integer id (decoded + validated by Pillow), keyset-paged listing, AUTOINCREMENT ids | Paths never derive from user filenames; stable cursors at 5000+ images; immutable thumbnail caching is safe | ✓ Good (Phase 2) |
 | Bulk image delete chunked client-side (1000 ids per request), backend cap kept | Keeps request-size limit while allowing arbitrary selections (UAT gap G-02-5) | ✓ Good (Phase 2) |
+| Annotation save = whole-set replace guarded by compare-and-swap `annotation_version`; status/box_count derived, never stored | Idempotent retries, stale tabs get 409 instead of overwriting; class delete re-versions affected images | ✓ Good (Phase 3) |
+| Unannotated and background stay distinct statuses | An unannotated image must never become an empty-label negative example | ✓ Good (Phase 3) |
 | Existing `docs/roadmap.md` retained as detailed technical reference | Avoid losing research; GSD ROADMAP.md becomes the execution plan | — Pending |
 
 ## Evolution
@@ -136,4 +138,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-10-03 after Phase 2*
+*Last updated: 2026-10-04 after Phase 3*

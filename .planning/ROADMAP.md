@@ -17,7 +17,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Runnable Skeleton & Projects** - Clean reproducible repo plus a `docker compose up` web app where the user creates and manages detect/segment projects (completed 2026-09-29)
 - [x] **Phase 2: Image Upload & Classes** - User uploads images from the browser, browses them in a fast grid, and defines the project's classes (completed 2026-10-03)
-- [ ] **Phase 3: Box Annotation Editor** - User annotates images one by one with bounding boxes, autosave, undo/redo, shortcuts, and image status
+- [x] **Phase 3: Box Annotation Editor** - User annotates images one by one with bounding boxes, autosave, undo/redo, shortcuts, and image status (completed 2026-10-04)
 - [ ] **Phase 4: Train & Download** - User splits the dataset, trains from the browser in a background worker, and downloads a working `.pt` (core loop complete)
 - [ ] **Phase 5: Live Training Monitoring & Control** - User watches live metrics charts, cancels/resumes runs, sees run history and understandable failures
 - [ ] **Phase 6: Polygons & Segmentation Projects** - User annotates with polygons and click-to-segment, and segment projects train end-to-end
@@ -157,7 +157,7 @@ Plans:
   4. User switches tools, picks classes, saves, and navigates images with keyboard shortcuts listed in an on-screen shortcut reference
   5. Each image shows a status (unannotated / annotated / reviewed); the user can jump to the next unannotated image and mark an image as background (no objects)
 
-**Plans:** 13/13 plans executed
+**Plans:** 13/13 plans complete
 
 Plans:
 **Wave 1**
@@ -417,7 +417,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 |-------|----------------|--------|-----------|
 | 1. Runnable Skeleton & Projects | 10/10 | Complete    | 2026-09-29 |
 | 2. Image Upload & Classes | 13/13 | Complete    | 2026-10-03 |
-| 3. Box Annotation Editor | 13/13 | In Progress|  |
+| 3. Box Annotation Editor | 13/13 | Complete    | 2026-10-04 |
 | 4. Train & Download | 0/TBD | Not started | - |
 | 5. Live Training Monitoring & Control | 0/TBD | Not started | - |
 | 6. Polygons & Segmentation Projects | 0/TBD | Not started | - |
