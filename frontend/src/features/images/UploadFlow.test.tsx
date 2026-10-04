@@ -10,6 +10,7 @@ import { notifications } from "@mantine/notifications";
 
 import { AppRoutes } from "../../app/routes";
 import { renderWithProviders } from "../../test/render";
+import { handleImagesSideRequest } from "../../test/stubImagesApi";
 
 const PROJECT = {
   id: 7,
@@ -77,6 +78,10 @@ function makeStub({ manual = false, failWith }: StubOptions = {}) {
   const pending: PendingUpload[] = [];
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
+    const side = handleImagesSideRequest(new URL(url, "http://localhost"));
+    if (side !== null) {
+      return side;
+    }
     if (init?.method === "POST" && url.endsWith("/projects/7/images")) {
       const body = init.body as FormData;
       if (failWith !== undefined) {
@@ -111,7 +116,9 @@ function makeStub({ manual = false, failWith }: StubOptions = {}) {
     fetchMock.mock.calls.filter(
       ([url, init]) => init?.method === undefined && String(url).includes("/projects/7/images?"),
     ).length;
-  return { fetchMock, pending, posts, listGets };
+  const countGets = () =>
+    fetchMock.mock.calls.filter(([url]) => String(url).endsWith("/images/status-counts")).length;
+  return { fetchMock, pending, posts, listGets, countGets };
 }
 
 async function renderImagesPage(stub: ReturnType<typeof makeStub>) {
@@ -218,6 +225,19 @@ describe("Upload flow", () => {
     await waitFor(() => expect(stub.listGets()).toBe(2));
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(stub.listGets()).toBe(2);
+  });
+
+  it("asks for new status counts once when an upload finishes", async () => {
+    const stub = makeStub();
+    const { user, input } = await renderImagesPage(stub);
+    await waitFor(() => expect(stub.countGets()).toBe(1));
+
+    await user.upload(input, images(1));
+
+    expect(await screen.findByText("Upload complete")).toBeInTheDocument();
+    await waitFor(() => expect(stub.countGets()).toBe(2));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    expect(stub.countGets()).toBe(2);
   });
 
   it("cancel starts no new batch and reports how many files were processed", async () => {

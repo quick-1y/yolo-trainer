@@ -12,6 +12,7 @@ import type { ImageItem } from "../../api/images";
 import { AppRoutes } from "../../app/routes";
 import { makeImageItem } from "../../test/fixtures";
 import { renderWithProviders } from "../../test/render";
+import { handleImagesSideRequest } from "../../test/stubImagesApi";
 
 const MOCK_VIEWPORT = { viewportWidth: 1200, viewportHeight: 800, itemWidth: 184, itemHeight: 208 };
 
@@ -51,6 +52,10 @@ type DeleteHandler = (body: { ids: number[] }) => Response | Promise<Response>;
 function stubFetch(onDelete: DeleteHandler) {
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(String(input), "http://localhost");
+    const side = handleImagesSideRequest(url);
+    if (side !== null) {
+      return side;
+    }
     const method = init?.method ?? "GET";
     if (url.pathname.endsWith("/config")) {
       return jsonResponse(CONFIG);
@@ -76,6 +81,10 @@ function deleteCalls(fetchMock: ReturnType<typeof stubFetch>) {
       String(call[0]).endsWith("/projects/7/images/delete") &&
       (call[1] as RequestInit | undefined)?.method === "POST",
   );
+}
+
+function countCalls(fetchMock: ReturnType<typeof stubFetch>) {
+  return fetchMock.mock.calls.filter((call) => String(call[0]).endsWith("/images/status-counts"));
 }
 
 function detailCalls(fetchMock: ReturnType<typeof stubFetch>) {
@@ -201,6 +210,20 @@ describe("select and delete images", () => {
     expect(deleteCalls(fetchMock)).toHaveLength(1);
     // Project counts refresh without refetching the image pages.
     await waitFor(() => expect(detailCalls(fetchMock).length).toBeGreaterThan(detailBefore));
+  });
+
+  it("asks for new status counts after the images are deleted", async () => {
+    const fetchMock = stubFetch(() => jsonResponse({ deleted: 1 }));
+    const { user } = await renderGrid();
+    await waitFor(() => expect(countCalls(fetchMock)).toHaveLength(1));
+
+    await user.click(checkbox(2));
+    await user.click(await screen.findByRole("button", { name: "Delete" }));
+    const dialog = await screen.findByRole("dialog");
+    await user.click(within(dialog).getByRole("button", { name: "Delete permanently" }));
+
+    await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+    await waitFor(() => expect(countCalls(fetchMock)).toHaveLength(2));
   });
 
   it("shows the API message in a red alert and keeps the dialog open on a 500", async () => {

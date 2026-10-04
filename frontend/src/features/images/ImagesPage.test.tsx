@@ -6,6 +6,7 @@ import type { ImageItem } from "../../api/images";
 import { AppRoutes } from "../../app/routes";
 import { makeImageItem } from "../../test/fixtures";
 import { renderWithProviders } from "../../test/render";
+import { handleImagesSideRequest } from "../../test/stubImagesApi";
 
 const MOCK_VIEWPORT = { viewportWidth: 1200, viewportHeight: 800, itemWidth: 184, itemHeight: 208 };
 
@@ -43,6 +44,10 @@ type ListHandler = (cursor: string | null) => Response | Promise<Response>;
 function stubFetch(list: ListHandler) {
   const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
     const url = new URL(String(input), "http://localhost");
+    const side = handleImagesSideRequest(url);
+    if (side !== null) {
+      return side;
+    }
     if (url.pathname.endsWith("/config")) {
       return jsonResponse(CONFIG);
     }

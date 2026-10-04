@@ -31,6 +31,7 @@ import { notifications } from "@mantine/notifications";
 
 import { AppRoutes } from "../../app/routes";
 import { renderWithProviders } from "../../test/render";
+import { handleImagesSideRequest } from "../../test/stubImagesApi";
 
 const PROJECT = {
   id: 7,
@@ -66,6 +67,10 @@ function makeStub({ manual = false }: { manual?: boolean } = {}) {
   const pending: Array<() => void> = [];
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
+    const side = handleImagesSideRequest(new URL(url, "http://localhost"));
+    if (side !== null) {
+      return side;
+    }
     if (init?.method === "POST" && url.endsWith("/projects/7/images")) {
       const body = init.body as FormData;
       const respond = () =>
