@@ -8,7 +8,16 @@ import {
   useEditorHotkeys,
   useEditorModalOpen,
 } from "../useEditorHotkeys";
-import { SHORTCUTS, buildHotkeys, capLabel, type ShortcutId } from "./shortcuts";
+import enEditor from "../../../i18n/locales/en/editor.json";
+import ruEditor from "../../../i18n/locales/ru/editor.json";
+import {
+  POINTER_GESTURES,
+  SHORTCUTS,
+  buildHotkeys,
+  capLabel,
+  type ShortcutDef,
+  type ShortcutId,
+} from "./shortcuts";
 
 type Handlers = Partial<Record<ShortcutId, (event: KeyboardEvent) => void>>;
 
@@ -35,6 +44,7 @@ function allHandlers(): Spies {
     nextUnannotated: spy(),
     fit: spy(),
     save: spy(),
+    help: spy(),
   };
 }
 
@@ -118,6 +128,7 @@ describe("buildHotkeys", () => {
       "nextUnannotated",
       "fit",
       "save",
+      "help",
     ]);
     expect(SHORTCUTS.filter((def) => def.editing).map((def) => def.id)).toEqual([
       "delete",
@@ -252,6 +263,110 @@ describe("save row", () => {
     press({ code: "KeyS", key: "s" });
 
     expect(calledIds(handlers)).toEqual([]);
+  });
+});
+
+describe("help row", () => {
+  it("binds the physical Shift+Slash in the general group, as one '?' cap, usable while read-only", () => {
+    const row = SHORTCUTS.find((def) => def.id === "help");
+
+    expect(row?.group).toBe("general");
+    expect(row?.labelKey).toBe("shortcuts.help");
+    expect(row?.hotkeys).toEqual(["shift+slash"]);
+    expect(row?.caps).toEqual([["?"]]);
+    expect(row?.editing).toBe(false);
+    expect(row?.allowRepeat).toBe(false);
+  });
+
+  it("calls help for the physical Shift+Slash key, not for a bare slash or a held key", () => {
+    const handlers = allHandlers();
+    mount(handlers);
+
+    press({ code: "Slash", key: ",", shiftKey: true });
+    press({ code: "Slash", key: "/" });
+    press({ code: "Slash", key: "?", shiftKey: true, repeat: true });
+
+    expect(handlers.help).toHaveBeenCalledTimes(1);
+    expect(calledIds(handlers)).toEqual(["help"]);
+  });
+});
+
+describe("pointer gestures", () => {
+  it("lists the wheel zoom and the two pans as display-only view rows", () => {
+    expect(POINTER_GESTURES.map((row) => row.id)).toEqual(["zoom", "pan"]);
+    for (const row of POINTER_GESTURES) {
+      expect(row.group).toBe("view");
+    }
+    expect(POINTER_GESTURES[0].captionKeys).toEqual(["shortcuts.keys.wheel"]);
+    expect(POINTER_GESTURES[1].captionKeys).toEqual([
+      "shortcuts.keys.spaceDrag",
+      "shortcuts.keys.middleDrag",
+    ]);
+  });
+
+  it("never becomes a hotkey", () => {
+    const ids = new Set<string>(POINTER_GESTURES.map((row) => row.id));
+    for (const def of SHORTCUTS) {
+      expect(ids.has(def.id)).toBe(false);
+    }
+    const keys = buildHotkeys(allHandlers(), { enabled: true, readOnly: false }).map(
+      ([hotkey]) => hotkey,
+    );
+    expect(keys).not.toContain("wheel");
+  });
+});
+
+describe("shortcut table guards", () => {
+  const rows = SHORTCUTS as readonly ShortcutDef[];
+  const FORBIDDEN = ["mod+w", "mod+t", "f5", "alt+arrowleft"];
+
+  function lookup(tree: unknown, key: string): unknown {
+    return key
+      .split(".")
+      .reduce<unknown>(
+        (node, part) =>
+          node !== null && typeof node === "object"
+            ? (node as Record<string, unknown>)[part]
+            : undefined,
+        tree,
+      );
+  }
+
+  it("never uses the case-sensitive 'Key' prefix form that Mantine never matches", () => {
+    for (const def of rows) {
+      for (const hotkey of def.hotkeys) {
+        expect(hotkey).not.toMatch(/(^|\+)key[a-z0-9]/i);
+      }
+    }
+  });
+
+  it("never binds a browser- or OS-owned combination", () => {
+    for (const def of rows) {
+      for (const hotkey of def.hotkeys) {
+        expect(FORBIDDEN).not.toContain(hotkey.toLowerCase());
+      }
+    }
+  });
+
+  it("gives every keyboard row at least one hotkey and one cap", () => {
+    for (const def of rows) {
+      expect(def.hotkeys.length, def.id).toBeGreaterThan(0);
+      expect(def.caps.length, def.id).toBeGreaterThan(0);
+      for (const caps of def.caps) {
+        expect(caps.length, def.id).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  it("has every label and caption key in both the English and the Russian editor strings", () => {
+    const keys = [
+      ...rows.map((def) => def.labelKey),
+      ...POINTER_GESTURES.flatMap((row) => [row.labelKey, ...row.captionKeys]),
+    ];
+    for (const key of keys) {
+      expect(typeof lookup(enEditor, key), `en ${key}`).toBe("string");
+      expect(typeof lookup(ruEditor, key), `ru ${key}`).toBe("string");
+    }
   });
 });
 
