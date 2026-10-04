@@ -28,6 +28,8 @@ function allHandlers(): Spies {
     redo: spy(),
     deselect: spy(),
     classDigit: spy(),
+    prev: spy(),
+    next: spy(),
   };
 }
 
@@ -104,6 +106,8 @@ describe("buildHotkeys", () => {
       "redo",
       "deselect",
       "classDigit",
+      "prev",
+      "next",
     ]);
     expect(SHORTCUTS.filter((def) => def.editing).map((def) => def.id)).toEqual([
       "delete",
@@ -127,6 +131,47 @@ describe("buildHotkeys", () => {
       "digit8",
       "digit9",
     ]);
+  });
+});
+
+describe("navigation rows", () => {
+  it("binds A and the left arrow to prev, D and the right arrow to next, in the navigation group", () => {
+    const prev = SHORTCUTS.find((def) => def.id === "prev");
+    const next = SHORTCUTS.find((def) => def.id === "next");
+
+    expect(prev?.group).toBe("navigation");
+    expect(prev?.hotkeys).toEqual(["a", "ArrowLeft"]);
+    expect(next?.group).toBe("navigation");
+    expect(next?.hotkeys).toEqual(["d", "ArrowRight"]);
+  });
+
+  it("does not repeat and stays available in read-only states", () => {
+    for (const id of ["prev", "next"]) {
+      const row = SHORTCUTS.find((def) => def.id === id);
+      expect(row?.allowRepeat).toBe(false);
+      expect(row?.editing).toBe(false);
+    }
+  });
+
+  it("maps D and the right arrow to next only, also on the Russian layout", () => {
+    const handlers = allHandlers();
+    mount(handlers);
+
+    press({ code: "KeyD", key: "в" });
+    press({ code: "ArrowRight", key: "ArrowRight" });
+
+    expect(handlers.next).toHaveBeenCalledTimes(2);
+    expect(calledIds(handlers)).toEqual(["next"]);
+  });
+
+  it("ignores a held navigation key", () => {
+    const handlers = allHandlers();
+    mount(handlers);
+
+    press({ code: "KeyA", key: "a", repeat: true });
+    press({ code: "ArrowLeft", key: "ArrowLeft", repeat: true });
+
+    expect(calledIds(handlers)).toEqual([]);
   });
 });
 

@@ -34,6 +34,24 @@ export const CAR_CLASS = {
   created_at: "2026-01-15T10:00:00Z",
 };
 
+export interface NeighborsFixture {
+  position: number | null;
+  total: number;
+  prev_id: number | null;
+  next_id: number | null;
+}
+
+/** One image, no neighbors: both arrows are disabled. */
+export const NO_NEIGHBORS: NeighborsFixture = {
+  position: 1,
+  total: 1,
+  prev_id: null,
+  next_id: null,
+};
+
+/** How the stub answers PUT: save, keep the request open until `releasePuts()`, or fail with 500. */
+export type PutMode = "ok" | "hold" | "error";
+
 interface EditorApiOptions {
   classes?: unknown[];
   boxes?: unknown[];
@@ -44,6 +62,9 @@ interface EditorApiOptions {
   imageStatus?: number;
   /** GET /classes: answer (default), never answer, or fail with 500. POST /classes always works. */
   classesMode?: "ok" | "pending" | "error";
+  /** GET /images/5/neighbors (default: a single image with no neighbors). */
+  neighbors?: NeighborsFixture;
+  putMode?: PutMode;
 }
 
 function json(body: unknown, status = 200): Response {
@@ -67,6 +88,18 @@ export function stubEditorApi(options: EditorApiOptions = {}) {
     imageStatus = 200,
   } = options;
   let classesMode = options.classesMode ?? "ok";
+  let putMode: PutMode = options.putMode ?? "ok";
+  // Resolves the PUTs held open by putMode "hold".
+  let releaseHeld: () => void = () => {};
+  let heldGate: Promise<void> = Promise.resolve();
+  const resetGate = () => {
+    heldGate = new Promise<void>((resolve) => {
+      releaseHeld = resolve;
+    });
+  };
+  resetGate();
+  const neighbors = options.neighbors ?? NO_NEIGHBORS;
+  const neighborRequests: URLSearchParams[] = [];
   // POST /classes appends here, so the next GET /classes answers with the new class.
   const classList: unknown[] = [...classes];
   const puts: Array<Record<string, unknown>> = [];
@@ -102,6 +135,15 @@ export function stubEditorApi(options: EditorApiOptions = {}) {
       classList.push(created);
       return json(created, 201);
     }
+    if (method === "GET" && path === "/api/projects/1/images/5/neighbors") {
+      neighborRequests.push(url.searchParams);
+      return json(neighbors);
+    }
+    const otherImage = /^\/api\/projects\/1\/images\/(\d+)(\/|$)/.exec(path);
+    if (method === "GET" && otherImage !== null && otherImage[1] !== "5") {
+      // Any other image (a neighbor the test navigated to) does not exist in this stub.
+      return json({ detail: "Image not found." }, 404);
+    }
     if (method === "GET" && path === "/api/projects/1/images/5") {
       return imageStatus === 200 ? json(IMAGE) : json({ detail: "Image not found." }, imageStatus);
     }
@@ -124,6 +166,11 @@ export function stubEditorApi(options: EditorApiOptions = {}) {
         is_reviewed: boolean;
       };
       puts.push(body);
+      if (putMode === "hold") {
+        await heldGate;
+      } else if (putMode === "error") {
+        return json({ detail: "The save failed." }, 500);
+      }
       return json({
         version: body.base_version + 1,
         box_count: body.boxes.length,
@@ -139,10 +186,20 @@ export function stubEditorApi(options: EditorApiOptions = {}) {
   return {
     puts,
     posts,
+    neighborRequests,
     fetchMock,
     /** Switch what the next GET /classes does (a retry after a failure). */
     setClassesMode: (mode: "ok" | "pending" | "error") => {
       classesMode = mode;
+    },
+    /** Change how later PUTs are answered; leaving "hold" never releases an already held PUT. */
+    setPutMode: (mode: PutMode) => {
+      putMode = mode;
+    },
+    /** Answer every PUT held open so far with a normal save. */
+    releasePuts: () => {
+      releaseHeld();
+      resetGate();
     },
   };
 }
