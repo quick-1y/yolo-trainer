@@ -1,7 +1,8 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import type { Box } from "../../../api/annotations";
 import { createEditorStore, docFromSet, payloadFromDoc } from "./annotationStore";
+import { getEditor, peekEditor, resetEditors } from "./storeRegistry";
 
 const BOX: Box = { id: "a", class_id: 1, x: 0.1, y: 0.1, w: 0.2, h: 0.2 };
 
@@ -125,6 +126,115 @@ describe("updateBox", () => {
     expect(store.getState().doc).toBe(doc);
     expect(store.getState().doc.isReviewed).toBe(true);
     expect(store.temporal.getState().pastStates).toHaveLength(0);
+  });
+});
+
+describe("deleteBox", () => {
+  function storeWithBoxes(isReviewed = false) {
+    return createEditorStore(
+      { boxes: [BOX, { ...BOX, id: "b" }], isBackground: false, isReviewed },
+      0,
+    );
+  }
+
+  it("removes the box in one history entry and demotes a reviewed image", () => {
+    const store = storeWithBoxes(true);
+
+    store.getState().deleteBox("a");
+
+    expect(store.getState().doc.boxes.map((box) => box.id)).toEqual(["b"]);
+    expect(store.getState().doc.isReviewed).toBe(false);
+    expect(store.temporal.getState().pastStates).toHaveLength(1);
+  });
+
+  it("keeps the same doc and adds no entry for an unknown id", () => {
+    const store = storeWithBoxes(true);
+    const doc = store.getState().doc;
+
+    store.getState().deleteBox("missing");
+
+    expect(store.getState().doc).toBe(doc);
+    expect(store.getState().doc.isReviewed).toBe(true);
+    expect(store.temporal.getState().pastStates).toHaveLength(0);
+  });
+
+  it("undo brings the box and the reviewed flag back", () => {
+    const store = storeWithBoxes(true);
+    store.getState().deleteBox("a");
+
+    store.temporal.getState().undo();
+
+    expect(store.getState().doc.boxes.map((box) => box.id)).toEqual(["a", "b"]);
+    expect(store.getState().doc.isReviewed).toBe(true);
+  });
+});
+
+describe("history", () => {
+  const EMPTY = { boxes: [], isBackground: false, isReviewed: false };
+
+  it("steps back through create, move and delete and forward again, in order", () => {
+    const store = createEditorStore(EMPTY, 0);
+    store.getState().createBox(BOX);
+    store.getState().updateBox("a", { x: 0.5, y: 0.5, w: 0.1, h: 0.1 });
+    store.getState().deleteBox("a");
+
+    store.temporal.getState().undo();
+    expect(store.getState().doc.boxes[0]).toMatchObject({ x: 0.5, y: 0.5 });
+    store.temporal.getState().undo();
+    expect(store.getState().doc.boxes[0]).toEqual(BOX);
+    store.temporal.getState().undo();
+    expect(store.getState().doc.boxes).toEqual([]);
+    expect(store.temporal.getState().pastStates).toHaveLength(0);
+
+    store.temporal.getState().redo();
+    expect(store.getState().doc.boxes[0]).toEqual(BOX);
+    store.temporal.getState().redo();
+    expect(store.getState().doc.boxes[0]).toMatchObject({ x: 0.5, y: 0.5 });
+    store.temporal.getState().redo();
+    expect(store.getState().doc.boxes).toEqual([]);
+    expect(store.temporal.getState().futureStates).toHaveLength(0);
+  });
+
+  it("a new action after an undo empties the redo stack", () => {
+    const store = createEditorStore(EMPTY, 0);
+    store.getState().createBox(BOX);
+    store.getState().createBox({ ...BOX, id: "b" });
+    store.temporal.getState().undo();
+    expect(store.temporal.getState().futureStates).toHaveLength(1);
+
+    store.getState().createBox({ ...BOX, id: "c" });
+
+    expect(store.temporal.getState().futureStates).toHaveLength(0);
+  });
+
+  it("keeps at most 100 steps after 101 creates", () => {
+    const store = createEditorStore(EMPTY, 0);
+    for (let index = 0; index < 101; index += 1) {
+      store.getState().createBox({ ...BOX, id: `box-${index}` });
+    }
+
+    expect(store.temporal.getState().pastStates).toHaveLength(100);
+  });
+
+  it("survives switching to another image and back in the same tab", () => {
+    resetEditors();
+    const send = vi.fn(async () => ({
+      version: 1,
+      box_count: 1,
+      status: "annotated",
+      is_background: false,
+      is_reviewed: false,
+    }));
+    const init = { doc: EMPTY, version: 0 };
+    const first = getEditor({ projectId: 1, imageId: 1 }, init, send);
+    first.store.getState().createBox(BOX);
+
+    getEditor({ projectId: 1, imageId: 2 }, init, send);
+
+    expect(peekEditor({ projectId: 1, imageId: 1 })?.store.temporal.getState().pastStates).toHaveLength(
+      1,
+    );
+    resetEditors();
   });
 });
 
