@@ -2,13 +2,13 @@ import { Alert, Box, Button, Loader, Stack, Text } from "@mantine/core";
 import { useQueryClient } from "@tanstack/react-query";
 import { type ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Link, useParams } from "react-router-dom";
+import { Link, useParams, useSearchParams } from "react-router-dom";
 import { useStore } from "zustand";
 
 import { createAnnotationSender, useAnnotations } from "../../api/annotations";
 import { ApiError } from "../../api/client";
 import { type ProjectClassItem, useClasses } from "../../api/classes";
-import { fileUrl, useImage } from "../../api/images";
+import { fileUrl, useImage, useNeighbors } from "../../api/images";
 import { useProject } from "../../api/projects";
 import { ProjectNotFound } from "../project/ProjectNotFound";
 import { EditorTopBar } from "./EditorTopBar";
@@ -18,12 +18,13 @@ import { ToolBar } from "./ToolBar";
 import { AnnotationCanvas, type AnnotationCanvasHandle } from "./canvas/AnnotationCanvas";
 import { useLoadedImage } from "./canvas/useLoadedImage";
 import { newId } from "./lib/ids";
-import { imagesPath } from "./lib/urls";
+import { editorPath, imagesPath, readGridParams } from "./lib/urls";
 import type { NormBox } from "./lib/geometry";
 import { docFromSet } from "./store/annotationStore";
 import { useEditorUi } from "./store/editorUiStore";
 import { type EditorEntry, getEditor } from "./store/storeRegistry";
 import { EditorModalGateContext, useEditorHotkeys } from "./useEditorHotkeys";
+import { useEditorNavigation } from "./useEditorNavigation";
 
 const MATTE = "#141414";
 
@@ -216,6 +217,28 @@ function Workspace({
   const loaded = useLoadedImage(fileUrl(projectId, imageId));
   const canvasRef = useRef<AnnotationCanvasHandle>(null);
 
+  // Every way out of this image waits for its save (D-11); a second move is ignored meanwhile.
+  const navigation = useEditorNavigation(projectId, imageId);
+  const [searchParams] = useSearchParams();
+  const grid = readGridParams(searchParams);
+  const neighbors = useNeighbors(projectId, imageId, grid.sort, grid.q).data;
+  const prevId = neighbors?.prev_id ?? null;
+  const nextId = neighbors?.next_id ?? null;
+
+  // Warm the browser cache with the neighbors' originals: stepping through images then shows
+  // each one at once (the file route sends immutable cache headers). The images are kept in a
+  // ref so the requests are not abandoned before they finish.
+  const warmed = useRef<HTMLImageElement[]>([]);
+  useEffect(() => {
+    warmed.current = [prevId, nextId]
+      .filter((id): id is number => id !== null)
+      .map((id) => {
+        const image = new Image();
+        image.src = fileUrl(projectId, id);
+        return image;
+      });
+  }, [projectId, prevId, nextId]);
+
   // Dialogs register here while open; every shortcut is off until they close (Pitfall 10).
   const [openModals, setOpenModals] = useState(0);
   const modalGate = useMemo(
@@ -266,7 +289,11 @@ function Workspace({
     }
   }, [rawSelectedId, selectedId, select]);
   // Neither the editor nor the API looks at the project's task type (D-18).
-  const canDraw = tool === "box" && loaded.status === "loaded" && activeClass !== undefined;
+  const canDraw =
+    tool === "box" &&
+    loaded.status === "loaded" &&
+    activeClass !== undefined &&
+    navigation.pending === null;
 
   const handleCreate = (norm: NormBox) => {
     if (activeClass === undefined) {
@@ -311,6 +338,11 @@ function Workspace({
   }, [boxes]);
 
   const canPickBox = classList.length > 0 && loaded.status === "loaded";
+  const stepTo = (id: number | null, control: "prev" | "next") => {
+    if (id !== null) {
+      void navigation.goTo(editorPath(projectId, id, grid), control);
+    }
+  };
   // Handlers are read at key time, so they always see the current selection and tool.
   useEditorHotkeys(
     {
@@ -336,8 +368,11 @@ function Workspace({
           select(null);
         }
       },
+      prev: () => stepTo(prevId, "prev"),
+      next: () => stepTo(nextId, "next"),
     },
-    { enabled: openModals === 0, readOnly: false },
+    // While a move waits for the save, editing keys are off too: nothing new may slip in.
+    { enabled: openModals === 0 && navigation.pending === null, readOnly: false },
   );
 
   return (
@@ -352,7 +387,13 @@ function Workspace({
           background: MATTE,
         }}
       >
-        <EditorTopBar projectId={projectId} filename={filename} store={entry.store} />
+        <EditorTopBar
+          projectId={projectId}
+          imageId={imageId}
+          filename={filename}
+          store={entry.store}
+          navigation={navigation}
+        />
         <ToolBar
           store={entry.store}
           hasClasses={classList.length > 0}

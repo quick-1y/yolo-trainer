@@ -1,10 +1,12 @@
-import { Button, Loader, Text, Tooltip } from "@mantine/core";
+import { ActionIcon, Button, Divider, Loader, Text, Tooltip } from "@mantine/core";
 import { useTranslation } from "react-i18next";
-import { useNavigate, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import { useStore } from "zustand";
 
+import { useNeighbors } from "../../api/images";
 import type { EditorStore, SaveState } from "./store/annotationStore";
-import { imagesPath, readGridParams } from "./lib/urls";
+import { editorPath, imagesPath, readGridParams } from "./lib/urls";
+import type { EditorNavigation } from "./useEditorNavigation";
 
 /** Same 120 px slot for every state, so the bar never shifts when the state changes. */
 const INDICATOR_WIDTH = 120;
@@ -58,16 +60,30 @@ function SaveIndicator({ state }: { state: SaveState }) {
 
 interface EditorTopBarProps {
   projectId: number;
+  imageId: number;
   filename: string;
   store: EditorStore;
+  /** Every move out of the image, through the saver flush. */
+  navigation: EditorNavigation;
 }
 
-/** The 48 px bar: Back, the filename and the save indicator. */
-export function EditorTopBar({ projectId, filename, store }: EditorTopBarProps) {
+/** The 48 px bar: Back, the filename, the save indicator and the previous / next arrows. */
+export function EditorTopBar({
+  projectId,
+  imageId,
+  filename,
+  store,
+  navigation,
+}: EditorTopBarProps) {
   const { t } = useTranslation("editor");
-  const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const saveState = useStore(store, (state) => state.meta.saveState);
+  const grid = readGridParams(searchParams);
+  // The same query as the editor page's: one request, shared through the cache.
+  const neighbors = useNeighbors(projectId, imageId, grid.sort, grid.q).data;
+  const { goTo, pending } = navigation;
+  const prevId = neighbors?.prev_id ?? null;
+  const nextId = neighbors?.next_id ?? null;
 
   return (
     <div
@@ -88,7 +104,8 @@ export function EditorTopBar({ projectId, filename, store }: EditorTopBarProps) 
         size="sm"
         aria-label={t("topBar.backAria")}
         style={{ flexShrink: 0 }}
-        onClick={() => navigate(imagesPath(projectId, readGridParams(searchParams)))}
+        loading={pending === "back"}
+        onClick={() => void goTo(imagesPath(projectId, grid), "back")}
       >
         {`← ${t("topBar.back")}`}
       </Button>
@@ -102,6 +119,38 @@ export function EditorTopBar({ projectId, filename, store }: EditorTopBarProps) 
         {filename}
       </Text>
       <SaveIndicator state={saveState} />
+      <div style={{ flex: 1 }} />
+      <Divider orientation="vertical" h={24} />
+      <ActionIcon
+        variant="default"
+        size={32}
+        aria-label={t("topBar.prevAria")}
+        disabled={prevId === null}
+        loading={pending === "prev"}
+        onClick={() => prevId !== null && void goTo(editorPath(projectId, prevId, grid), "prev")}
+      >
+        ‹
+      </ActionIcon>
+      {neighbors?.position != null && (
+        <Text
+          span
+          size="xs"
+          c="dark.1"
+          style={{ fontVariantNumeric: "tabular-nums", whiteSpace: "nowrap", flexShrink: 0 }}
+        >
+          {t("topBar.position", { index: neighbors.position, total: neighbors.total })}
+        </Text>
+      )}
+      <ActionIcon
+        variant="default"
+        size={32}
+        aria-label={t("topBar.nextAria")}
+        disabled={nextId === null}
+        loading={pending === "next"}
+        onClick={() => nextId !== null && void goTo(editorPath(projectId, nextId, grid), "next")}
+      >
+        ›
+      </ActionIcon>
     </div>
   );
 }

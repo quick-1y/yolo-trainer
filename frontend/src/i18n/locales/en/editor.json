@@ -1,7 +1,10 @@
 {
   "topBar": {
     "back": "Images",
-    "backAria": "Back to images"
+    "backAria": "Back to images",
+    "position": "{{index}} of {{total}}",
+    "prevAria": "Previous image",
+    "nextAria": "Next image"
   },
   "save": {
     "saved": "Saved",
@@ -26,7 +29,8 @@
     "group": {
       "tools": "Tools",
       "editing": "Editing",
-      "classes": "Classes"
+      "classes": "Classes",
+      "navigation": "Navigation"
     },
     "select": "Select tool",
     "box": "Box tool",
@@ -34,7 +38,9 @@
     "undo": "Undo",
     "redo": "Redo",
     "deselect": "Deselect or cancel drawing",
-    "classDigit": "Choose class 1-9 (changes the class of the selected box)"
+    "classDigit": "Choose class 1-9 (changes the class of the selected box)",
+    "prev": "Previous image",
+    "next": "Next image"
   },
   "notFound": {
     "title": "Image not found",

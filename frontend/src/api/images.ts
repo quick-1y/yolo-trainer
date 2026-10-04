@@ -56,6 +56,15 @@ export interface ImageAnnotationState {
 /** GET /projects/{p}/images/{i}: the list item plus its annotation state. */
 export type ImageDetail = ImageItem & ImageAnnotationState;
 
+/** GET /projects/{p}/images/{i}/neighbors: where an image sits in the grid order of one sort and search. */
+export interface Neighbors {
+  /** 1-based index in the filtered grid; null when the image does not match the search. */
+  position: number | null;
+  total: number;
+  prev_id: number | null;
+  next_id: number | null;
+}
+
 export const PAGE_SIZE = 100;
 
 export const imageKeys = {
@@ -64,6 +73,8 @@ export const imageKeys = {
   // A different root from ["images", ...] on purpose: the list-cache helpers
   // (setQueriesData / invalidate on imageKeys.project) never touch a detail entry.
   detail: (projectId: number, imageId: number) => ["image", projectId, imageId] as const,
+  neighbors: (projectId: number, imageId: number, sort: string, q: string) =>
+    ["image", projectId, imageId, "neighbors", sort, q] as const,
 };
 
 export function getImage(projectId: number, imageId: number): Promise<ImageDetail> {
@@ -74,6 +85,34 @@ export function useImage(projectId: number | null, imageId: number | null) {
   return useQuery({
     queryKey: imageKeys.detail(projectId ?? 0, imageId ?? 0),
     queryFn: () => getImage(projectId as number, imageId as number),
+    enabled: projectId !== null && imageId !== null,
+  });
+}
+
+export function getNeighbors(
+  projectId: number,
+  imageId: number,
+  { sort = "newest", q = "" }: { sort?: ImageSort; q?: string } = {},
+): Promise<Neighbors> {
+  const params = new URLSearchParams({ sort });
+  if (q) {
+    params.set("q", q);
+  }
+  return apiRequest<Neighbors>(
+    `/projects/${projectId}/images/${imageId}/neighbors?${params.toString()}`,
+  );
+}
+
+/** The editor's prev/next ids and "N of M", read from the server so a hard reload keeps working. */
+export function useNeighbors(
+  projectId: number | null,
+  imageId: number | null,
+  sort: ImageSort = "newest",
+  q = "",
+) {
+  return useQuery({
+    queryKey: imageKeys.neighbors(projectId ?? 0, imageId ?? 0, sort, q),
+    queryFn: () => getNeighbors(projectId as number, imageId as number, { sort, q }),
     enabled: projectId !== null && imageId !== null,
   });
 }

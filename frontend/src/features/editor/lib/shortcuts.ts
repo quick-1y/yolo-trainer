@@ -107,6 +107,25 @@ export const SHORTCUTS = [
     allowRepeat: false,
     editing: true,
   },
+  {
+    // Navigation only moves between images, so it still works while the editor is read-only.
+    id: "prev",
+    group: "navigation",
+    labelKey: "shortcuts.prev",
+    hotkeys: ["a", "ArrowLeft"],
+    caps: [["A"], ["←"]],
+    allowRepeat: false,
+    editing: false,
+  },
+  {
+    id: "next",
+    group: "navigation",
+    labelKey: "shortcuts.next",
+    hotkeys: ["d", "ArrowRight"],
+    caps: [["D"], ["→"]],
+    allowRepeat: false,
+    editing: false,
+  },
 ] as const satisfies readonly ShortcutDef[];
 
 export type ShortcutId = (typeof SHORTCUTS)[number]["id"];

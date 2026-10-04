@@ -1,7 +1,7 @@
-import { act, screen, waitFor } from "@testing-library/react";
-import { useEffect } from "react";
-import { useLocation } from "react-router-dom";
-import { type Mock, afterEach, describe, expect, it } from "vitest";
+import { act, renderHook, screen, waitFor } from "@testing-library/react";
+import { type ReactNode, useEffect } from "react";
+import { MemoryRouter, useLocation } from "react-router-dom";
+import { type Mock, afterEach, describe, expect, it, vi } from "vitest";
 
 import { AppRoutes } from "../../app/routes";
 import {
@@ -14,7 +14,9 @@ import {
 import { type NeighborsFixture, stubEditorApi } from "../../test/editorApi";
 import { renderWithProviders } from "../../test/render";
 import { resetEditorUi } from "./store/editorUiStore";
-import { peekEditor, resetEditors } from "./store/storeRegistry";
+import { docFromSet } from "./store/annotationStore";
+import { getEditor, peekEditor, resetEditors } from "./store/storeRegistry";
+import { useEditorNavigation } from "./useEditorNavigation";
 
 const MIDDLE: NeighborsFixture = { position: 2, total: 3, prev_id: 4, next_id: 6 };
 const ROUTE = "/projects/1/annotate/5?sort=name&q=img";
@@ -277,6 +279,61 @@ describe("keyboard navigation", () => {
 
     expect(visited.filter((entry) => entry.startsWith("/projects/1/annotate/6"))).toHaveLength(1);
     expect(puts).toHaveLength(1);
+  });
+});
+
+describe("useEditorNavigation", () => {
+  it("runs one navigation at a time: later goTo calls while one is pending do nothing", async () => {
+    let release: () => void = () => {};
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const entry = getEditor(
+      { projectId: 1, imageId: 5 },
+      {
+        doc: docFromSet({
+          version: 0,
+          is_background: false,
+          is_reviewed: false,
+          status: "unannotated",
+          boxes: [],
+        }),
+        version: 0,
+      },
+      async (input) => {
+        await gate;
+        return {
+          version: input.base_version + 1,
+          box_count: input.boxes.length,
+          status: "annotated",
+          is_background: false,
+          is_reviewed: false,
+        };
+      },
+    );
+    entry.store
+      .getState()
+      .createBox({ id: "3f2b8c1e-5d4a-4e7b-9c6d-1a2b3c4d5e6f", class_id: 7, x: 0, y: 0, w: 1, h: 1 });
+    const flush = vi.spyOn(entry.saver, "flush");
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <MemoryRouter initialEntries={["/start"]}>
+        {children}
+        <LocationProbe />
+      </MemoryRouter>
+    );
+    const { result } = renderHook(() => useEditorNavigation(1, 5), { wrapper });
+
+    act(() => {
+      void result.current.goTo("/first", "next");
+      void result.current.goTo("/second", "prev");
+      void result.current.goTo("/third", "back");
+    });
+    expect(result.current.pending).toBe("next");
+    release();
+
+    await waitFor(() => expect(currentLocation()).toBe("/first"));
+    expect(flush).toHaveBeenCalledTimes(1);
+    expect(result.current.pending).toBeNull();
   });
 });
 
