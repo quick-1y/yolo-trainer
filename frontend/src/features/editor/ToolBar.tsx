@@ -1,21 +1,46 @@
-import { ActionIcon, Group, Kbd, Stack, Tooltip } from "@mantine/core";
+import { ActionIcon, Divider, Group, Kbd, Stack, Tooltip } from "@mantine/core";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
+import { useStore } from "zustand";
 
-import { BoxIcon, SelectIcon } from "./icons";
+import { BoxIcon, RedoIcon, SelectIcon, UndoIcon } from "./icons";
 import { type EditorTool, useEditorUi } from "./store/editorUiStore";
+import type { EditorStore } from "./store/annotationStore";
+
+interface ToolTipLabelProps {
+  label: string;
+  /** Key caps of the shortcut, drawn as one `Kbd` each. */
+  caps: string[];
+}
+
+function ToolTipLabel({ label, caps }: ToolTipLabelProps) {
+  return (
+    <Group gap={8} wrap="nowrap">
+      <span>{label}</span>
+      {caps.length > 0 && (
+        <Group gap={2} wrap="nowrap">
+          {caps.map((cap) => (
+            <Kbd key={cap} size="xs">
+              {cap}
+            </Kbd>
+          ))}
+        </Group>
+      )}
+    </Group>
+  );
+}
 
 interface ToolButtonProps {
   tool: EditorTool;
   label: string;
-  shortcut: string;
+  caps: string[];
   icon: ReactNode;
   /** Tooltip text when disabled; the label and shortcut are shown otherwise. */
   disabledHint?: string;
   disabled?: boolean;
 }
 
-function ToolButton({ tool, label, shortcut, icon, disabledHint, disabled }: ToolButtonProps) {
+function ToolButton({ tool, label, caps, icon, disabledHint, disabled }: ToolButtonProps) {
   const active = useEditorUi((state) => state.tool === tool);
   const setTool = useEditorUi((state) => state.setTool);
   const showHint = disabled === true && disabledHint !== undefined;
@@ -24,16 +49,7 @@ function ToolButton({ tool, label, shortcut, icon, disabledHint, disabled }: Too
     <Tooltip
       openDelay={400}
       position="right"
-      label={
-        showHint ? (
-          disabledHint
-        ) : (
-          <Group gap={8} wrap="nowrap">
-            <span>{label}</span>
-            <Kbd size="xs">{shortcut}</Kbd>
-          </Group>
-        )
-      }
+      label={showHint ? disabledHint : <ToolTipLabel label={label} caps={caps} />}
     >
       {/* A disabled button swallows pointer events, so the Tooltip sits on a wrapper. */}
       <div style={{ width: 40, height: 40 }}>
@@ -54,16 +70,54 @@ function ToolButton({ tool, label, shortcut, icon, disabledHint, disabled }: Too
   );
 }
 
+interface HistoryButtonProps {
+  label: string;
+  caps: string[];
+  icon: ReactNode;
+  disabled: boolean;
+  onClick: () => void;
+}
+
+/** Undo / Redo: plain action buttons (not toggles), disabled when the stack is empty. */
+function HistoryButton({ label, caps, icon, disabled, onClick }: HistoryButtonProps) {
+  return (
+    <Tooltip
+      openDelay={400}
+      position="right"
+      label={<ToolTipLabel label={label} caps={caps} />}
+      disabled={disabled}
+    >
+      <div style={{ width: 40, height: 40 }}>
+        <ActionIcon
+          size={40}
+          radius={8}
+          variant="subtle"
+          color="gray"
+          aria-label={label}
+          disabled={disabled}
+          onClick={onClick}
+        >
+          {icon}
+        </ActionIcon>
+      </div>
+    </Tooltip>
+  );
+}
+
 interface ToolBarProps {
+  /** The current image's store; its temporal history drives Undo and Redo. */
+  store: EditorStore;
   /** The project has at least one class. */
   hasClasses: boolean;
   /** The original has decoded. */
   imageLoaded: boolean;
 }
 
-/** The 48 px vertical tool bar: Select (V) and Box (B). */
-export function ToolBar({ hasClasses, imageLoaded }: ToolBarProps) {
+/** The 48 px vertical tool bar: Select (V), Box (B), a divider, Undo and Redo. */
+export function ToolBar({ store, hasClasses, imageLoaded }: ToolBarProps) {
   const { t } = useTranslation("editor");
+  const pastCount = useStore(store.temporal, (state) => state.pastStates.length);
+  const futureCount = useStore(store.temporal, (state) => state.futureStates.length);
 
   return (
     <div
@@ -79,19 +133,29 @@ export function ToolBar({ hasClasses, imageLoaded }: ToolBarProps) {
       }}
     >
       <Stack gap={8} align="center">
-        <ToolButton
-          tool="select"
-          label={t("tools.select")}
-          shortcut="V"
-          icon={<SelectIcon />}
-        />
+        <ToolButton tool="select" label={t("tools.select")} caps={["V"]} icon={<SelectIcon />} />
         <ToolButton
           tool="box"
           label={t("tools.box")}
-          shortcut="B"
+          caps={["B"]}
           icon={<BoxIcon />}
           disabled={!hasClasses || !imageLoaded}
           disabledHint={hasClasses ? undefined : t("tools.boxDisabled")}
+        />
+        <Divider w={24} />
+        <HistoryButton
+          label={t("tools.undo")}
+          caps={["Ctrl", "Z"]}
+          icon={<UndoIcon />}
+          disabled={pastCount === 0}
+          onClick={() => store.temporal.getState().undo()}
+        />
+        <HistoryButton
+          label={t("tools.redo")}
+          caps={["Ctrl", "Shift", "Z"]}
+          icon={<RedoIcon />}
+          disabled={futureCount === 0}
+          onClick={() => store.temporal.getState().redo()}
         />
       </Stack>
     </div>

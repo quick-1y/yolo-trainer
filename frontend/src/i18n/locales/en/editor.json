@@ -13,7 +13,9 @@
     "aria": "Tools",
     "select": "Select",
     "box": "Box",
-    "boxDisabled": "Add a class to start drawing."
+    "boxDisabled": "Add a class to start drawing.",
+    "undo": "Undo",
+    "redo": "Redo"
   },
   "canvas": {
     "aria": "Annotation canvas",

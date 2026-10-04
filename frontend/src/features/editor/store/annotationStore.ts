@@ -26,6 +26,8 @@ export interface EditorState {
   createBox: (box: Box) => void;
   /** Replace one box's geometry (a finished move or resize): one `set`, one history entry. */
   updateBox: (id: string, geometry: NormBox) => void;
+  /** Remove one box: one `set`, one history entry. An unknown id changes nothing. */
+  deleteBox: (id: string) => void;
   /** Touches only `meta`; creates no history entry. */
   setMeta: (partial: Partial<EditorMeta>) => void;
 }
@@ -71,6 +73,21 @@ export function createEditorStore(doc: EditorDoc, version: number) {
                 boxes: state.doc.boxes.map((box) =>
                   box.id === id ? { ...box, ...geometry } : box,
                 ),
+                // Any annotation change demotes a reviewed image, in the same entry (D-15).
+                isReviewed: false,
+              },
+            };
+          }),
+        deleteBox: (id) =>
+          set((state) => {
+            if (!state.doc.boxes.some((box) => box.id === id)) {
+              // Unknown id: the same state means no history entry and no save.
+              return state;
+            }
+            return {
+              doc: {
+                ...state.doc,
+                boxes: state.doc.boxes.filter((box) => box.id !== id),
                 // Any annotation change demotes a reviewed image, in the same entry (D-15).
                 isReviewed: false,
               },

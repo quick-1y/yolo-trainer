@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { Box } from "../../../api/annotations";
+import type { Box, SaveResult } from "../../../api/annotations";
 import { createEditorStore, docFromSet, payloadFromDoc } from "./annotationStore";
 import { getEditor, peekEditor, resetEditors } from "./storeRegistry";
 
@@ -218,13 +218,15 @@ describe("history", () => {
 
   it("survives switching to another image and back in the same tab", () => {
     resetEditors();
-    const send = vi.fn(async () => ({
-      version: 1,
-      box_count: 1,
-      status: "annotated",
-      is_background: false,
-      is_reviewed: false,
-    }));
+    const send = vi.fn(
+      async (): Promise<SaveResult> => ({
+        version: 1,
+        box_count: 1,
+        status: "annotated",
+        is_background: false,
+        is_reviewed: false,
+      }),
+    );
     const init = { doc: EMPTY, version: 0 };
     const first = getEditor({ projectId: 1, imageId: 1 }, init, send);
     first.store.getState().createBox(BOX);

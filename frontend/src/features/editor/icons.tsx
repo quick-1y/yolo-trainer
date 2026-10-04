@@ -42,3 +42,23 @@ export function BoxIcon() {
     </Icon>
   );
 }
+
+/** Undo: an arrow curving back to the left. */
+export function UndoIcon() {
+  return (
+    <Icon>
+      <path d="M9 14L4 9l5-5" />
+      <path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11" />
+    </Icon>
+  );
+}
+
+/** Redo: the mirror image of Undo. */
+export function RedoIcon() {
+  return (
+    <Icon>
+      <path d="M15 14l5-5-5-5" />
+      <path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13" />
+    </Icon>
+  );
+}

@@ -1,6 +1,6 @@
 import { Alert, Box, Button, Loader, Stack, Text } from "@mantine/core";
 import { useQueryClient } from "@tanstack/react-query";
-import { type ReactNode, useLayoutEffect, useMemo } from "react";
+import { type ReactNode, useEffect, useLayoutEffect, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useParams } from "react-router-dom";
 import { useStore } from "zustand";
@@ -222,6 +222,13 @@ function Workspace({ projectId, imageId, filename, imgW, imgH, classes, entry }:
   );
   // A selection whose box is gone (undo, delete) is no selection.
   const selectedId = boxes.some((box) => box.id === rawSelectedId) ? rawSelectedId : null;
+  // An undo, redo or delete that removes the selected box also drops the stored
+  // selection, so it cannot come back when a box with that id reappears.
+  useEffect(() => {
+    if (rawSelectedId !== null && selectedId === null) {
+      select(null);
+    }
+  }, [rawSelectedId, selectedId, select]);
   // Neither the editor nor the API looks at the project's task type (D-18).
   const canDraw = tool === "box" && loaded.status === "loaded" && activeClass !== undefined;
 
@@ -249,7 +256,11 @@ function Workspace({ projectId, imageId, filename, imgW, imgH, classes, entry }:
       }}
     >
       <EditorTopBar projectId={projectId} filename={filename} store={entry.store} />
-      <ToolBar hasClasses={classList.length > 0} imageLoaded={loaded.status === "loaded"} />
+      <ToolBar
+        store={entry.store}
+        hasClasses={classList.length > 0}
+        imageLoaded={loaded.status === "loaded"}
+      />
       <Box style={{ minWidth: 0, minHeight: 0, position: "relative" }}>
         <AnnotationCanvas
           image={loaded.image}
