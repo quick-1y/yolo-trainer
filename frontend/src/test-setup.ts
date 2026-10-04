@@ -12,8 +12,11 @@ import i18n from "./i18n";
 // modal from one test leaks into the next test's DOM.
 afterEach(cleanup);
 
-// findBy*/waitFor default to 1 s, too tight for Mantine transitions under parallel load.
-configure({ asyncUtilTimeout: 4000 });
+// findBy*/waitFor default to 1 s; 4 s (set earlier) still expired under full-suite load
+// (50 jsdom workers, ClassRow/ImagesUrlState/ImagesSelection flakes failing at ~4.6 s).
+// 8 s stays well under testTimeout (15 s, vite.config.ts) and weakens no assertion: it only
+// bounds how long a passing wait may take, a genuinely failing wait still fails.
+configure({ asyncUtilTimeout: 8000 });
 
 // Mantine reads `window.matchMedia` (color-scheme detection) and
 // `ResizeObserver` (several components) - jsdom implements neither.
