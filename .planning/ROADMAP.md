@@ -220,7 +220,38 @@ Plans:
   4. When the run finishes, its model is registered automatically with metrics, classes, task type, and source run; the user downloads the `.pt`, and it loads and predicts via `YOLO(path)` in a plain Python script, the same way the downstream project uses `trained_models/best.pt`
   5. Each run stores a snapshot of its settings and the exact dataset (images, labels, splits, classes) it trained on; later annotation edits do not change what the run records it was trained with
 
-**Plans**: TBD
+**Plans:** 11 plans
+
+Plans:
+**Wave 1**
+
+- [ ] 04-01-PLAN.md — Tracer: split -> start a run -> INSERT-first snapshot -> hard-linked dataset -> worker claims from SQLite -> train_job subprocess with callbacks -> best.pt registered -> `.pt` download loads with `YOLO(path)` (migration 0005, compose smoke training stage, fake-trainer pipeline test) (wave 1)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 04-02-PLAN.md — Training section in the browser: run list, run page with polling and download, start form with standard defaults; options endpoint and quality verdict (wave 2)
+- [ ] 04-03-PLAN.md — Manual splits: tile pill, per-split counts, "Set split" for selections (chunked), editor top bar split menu (wave 2)
+- [ ] 04-04-PLAN.md — Snapshot integrity: label/data.yaml/manifest tests, hard links + copy fallback, immutability after edits, consistent capture, 0004 -> head migration test (wave 2)
+- [ ] 04-05-PLAN.md — Worker robustness: FIFO/atomic claim, api + worker restart sweeps, SIGTERM -> interrupted, failure evidence, heartbeat active_run_id, real CPU training test (`-m training`) (wave 2)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 04-06-PLAN.md — Auto-split: seeded ratio preview + confirmed apply (409 on drift), "Split dataset" dialog on the Images page (wave 3)
+- [ ] 04-07-PLAN.md — Run page complete: failed log, interrupted/cancelled views, settings card, remove from queue; download contract tests (wave 3)
+- [ ] 04-09-PLAN.md — Project delete with runs/models (blocked while active), orphan cleanup of data/runs and data/models, dialog counts (wave 3)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [ ] 04-08-PLAN.md — Start form complete: dataset summary, blockers with fixes, warnings, models trained here as a base (task-type protected), run-name rules (wave 4)
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
+- [ ] 04-10-PLAN.md — Global active-run indicator in the header and the editor, sidebar loader, test-harness opt-in for the poller (wave 5)
+
+**Wave 6** *(blocked on Wave 5 completion)*
+
+- [ ] 04-11-PLAN.md — `verify_model_download.py`, README training docs (en/ru), full-suite gate with real training, end-of-phase checklist (wave 6)
+
 **UI hint**: yes
 **Notes**:
 
@@ -418,7 +449,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 1. Runnable Skeleton & Projects | 10/10 | Complete    | 2026-09-29 |
 | 2. Image Upload & Classes | 13/13 | Complete    | 2026-10-03 |
 | 3. Box Annotation Editor | 13/13 | Complete    | 2026-10-04 |
-| 4. Train & Download | 0/TBD | Not started | - |
+| 4. Train & Download | 0/11 | Planned | - |
 | 5. Live Training Monitoring & Control | 0/TBD | Not started | - |
 | 6. Polygons & Segmentation Projects | 0/TBD | Not started | - |
 | 7. Model Library | 0/TBD | Not started | - |
