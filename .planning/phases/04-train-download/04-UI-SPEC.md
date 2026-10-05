@@ -1,7 +1,8 @@
 ---
 phase: "04"
 slug: "train-download"
-status: draft
+status: approved
+reviewed_at: "2026-10-05"
 shadcn_initialized: false
 preset: none
 created: "2026-10-05"
@@ -414,7 +415,7 @@ Result: success closes the dialog and shows a green notification `autoSplit.done
 
 ## UI Considerations
 
-Authored by gsd-ui-researcher. The ui-phase UI-consideration probe (Step 9.5) reconciles this section and replaces rows idempotently on re-run; element kinds below are the researcher's proposal and are not yet user-confirmed. Resolved: 60 covered, 3 backstop, 0 unresolved (8 dismissed with reasons).
+Authored by gsd-ui-researcher. The ui-phase UI-consideration probe (Step 9.5) reconciles this section and replaces rows idempotently on re-run; Step 9.5 probe ran on 2026-10-05 over 9 surfaces (47 applicable categories, 2 elements unclassified by the heuristic: ActiveRunIndicator, DeleteProjectModal — both covered by explicit rows below); the user accepted this table and its element kinds as the resolution. Resolved: 60 covered, 3 backstop, 0 unresolved (8 dismissed with reasons).
 
 Status legend: ✅ covered — the Resolution column is the truth to lift into `must_haves.truths`; 🧪 backstop — lift as `{ statement: <Resolution>, verification: backstop }`; ➖ dismissed — not applicable, reason given, not lifted. Empty/error COPY lives in the Copywriting Contract; rows below reference it.
 
@@ -548,7 +549,7 @@ Route shapes are Claude's discretion in 04-CONTEXT.md; the UI contract above nee
 
 ---
 
-## Defaults to confirm (chosen by this spec, not locked by CONTEXT)
+## Defaults confirmed (chosen by this spec, confirmed by the user 2026-10-05)
 
 1. Indicator shows only for a `running` run (not for `queued` or `preparing`), and its editor form is compact (icon-only below 1440px).
 2. Split chip is a neutral text pill at the tile's bottom-right and is hidden for unassigned images (no color per split).
@@ -563,12 +564,12 @@ Route shapes are Claude's discretion in 04-CONTEXT.md; the UI contract above nee
 
 ## Checker Sign-Off
 
-- [ ] Dimension 1 Copywriting: PASS
-- [ ] Dimension 2 Visuals: PASS
-- [ ] Dimension 3 Color: PASS
-- [ ] Dimension 4 Typography: PASS
-- [ ] Dimension 5 Spacing: PASS
-- [ ] Dimension 6 Registry Safety: PASS
-- [ ] Dimension 7 Inventory Provenance: PASS
+- [x] Dimension 1 Copywriting: PASS
+- [x] Dimension 2 Visuals: PASS
+- [x] Dimension 3 Color: PASS
+- [x] Dimension 4 Typography: PASS
+- [x] Dimension 5 Spacing: PASS
+- [x] Dimension 6 Registry Safety: PASS
+- [x] Dimension 7 Inventory Provenance: PASS
 
-**Approval:** pending
+**Approval:** approved 2026-10-05 (gsd-ui-checker, 7/7 PASS)
