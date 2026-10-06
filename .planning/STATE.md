@@ -1,18 +1,18 @@
 ---
 gsd_state_version: "1.0"
-current_phase: 4
+current_phase: 04
 current_phase_name: Train & Download
 status: executing
-stopped_at: Phase 4 UI-SPEC approved
-last_updated: "2026-10-05T06:58:23.425Z"
-last_activity: 2026-10-04
-last_activity_desc: Phase 3 complete, transitioned to Phase 4
-state_head: 5e51678c13ef4e4aae0812ec26577570bfd2c356
+stopped_at: Completed 04-01-PLAN.md
+last_updated: "2026-10-06T06:12:34.425Z"
+last_activity: 2026-10-06
+last_activity_desc: Phase 04 execution resumed (wave continue)
+state_head: 77e0a4b9befb7c6387d32d05a00f393de8fe4cf9
 progress:
   total_phases: 12
   completed_phases: 3
   total_plans: 47
-  completed_plans: 36
+  completed_plans: 37
   percent: 25
 ---
 
@@ -23,14 +23,14 @@ progress:
 See: .planning/PROJECT.md (updated 2026-10-04)
 
 **Core value:** The full loop works end-to-end in the browser: upload images → annotate → train with configurable settings → download a working `.pt`
-**Current focus:** Phase 4 — Train & Download
+**Current focus:** Phase 04 — Train & Download
 
 ## Current Position
 
-Phase: 4 (Train & Download) — READY TO EXECUTE
-Plan: Not started
+Phase: 04 (Train & Download) — EXECUTING
+Plan: 2 of 11
 Status: Ready to execute
-Last activity: 2026-10-04 - Completed quick task 261004-squ: Очистка и упорядочивание репозитория
+Last activity: 2026-10-06 — Phase 04 execution resumed (wave continue)
 
 Progress: [███░░░░░░░] 25%
 
@@ -95,6 +95,7 @@ Progress: [███░░░░░░░] 25%
 | Phase 03 P11 | 19 min | 2 tasks | 19 files |
 | Phase 03 P12 | 22 min | 3 tasks | 19 files |
 | Phase 03 P13 | 28 min | 2 tasks | 12 files |
+| Phase 04 P01 | 13 min | 2 tasks | 30 files |
 
 ## Accumulated Context
 
@@ -162,6 +163,9 @@ Recent decisions affecting current work:
 - [Phase 03]: Plan 03-12: Reload and the 422 resync call resetQueries on the annotation set (not invalidate) after discardEditor; a 404 on save also discards the entry; read-only is one boolean in Workspace fanned out to tools, canvas, keys, class panel, object list and top bar toggles — The cached set is the last saved copy, so invalidating would rebuild an editable stale view first; a gone image must not keep the beforeunload guard on; one flag keeps every reason (conflict, orientation mismatch, load failure) consistent
 - [Phase 03]: 03-13: POINTER_GESTURES is a separate display-only list so zoom/pan rows appear in the shortcut reference but never become hotkeys — Keeps buildHotkeys driven only by SHORTCUTS rows
 - [Phase 03]: 03-13: jsdom popover content is queried with hidden:true; floating-ui hide middleware marks zero-size references clipped, so Mantine sets display:none (root cause of the ClassRow flake, not a timeout) — A 300 ms delay after the click reproduced the failure deterministically; asyncUtilTimeout raised to 8000 as well
+- [Phase 04]: 04-01: images.split added via one portable ALTER TABLE ADD COLUMN with named CHECK (no batch rebuild); all seven run statuses in the CHECK from migration 0005
+- [Phase 04]: 04-01: worker polls SQLite with one atomic UPDATE...RETURNING claim guarded by NOT EXISTS(running); the supervisor is the single writer of run state, train_job never opens the DB
+- [Phase 04]: 04-01: Task 2 tests were written against Task 1's already-correct tracer (resumed run), committed as characterization tests; train_job no-ops ultralytics check_font so a run's only outbound access is the weights download
 
 ### Pending Todos
 
@@ -193,6 +197,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-10-05T06:04:50.214Z
-Stopped at: Phase 4 UI-SPEC approved
-Resume file: .planning/phases/04-train-download/04-UI-SPEC.md
+Last session: 2026-10-06T06:12:34.290Z
+Stopped at: Completed 04-01-PLAN.md
+Resume file: None
