@@ -1,10 +1,9 @@
-"""Worker heartbeat loop entrypoint (D-17).
+"""Worker entrypoint: heartbeat file plus the DB-polled training runner (D-17, Phase 4).
 
-The Phase 1 worker proves the heavy CPU ML image (torch + ultralytics) builds
-and stays alive: it writes a heartbeat file under `DATA_DIR/worker/` at a
-fixed interval, carrying device and version info. It runs no training jobs
-yet - how jobs cross from the api container to this worker is a Phase 4
-decision (STATE.md blocker).
+The worker writes a heartbeat file under `DATA_DIR/worker/` at a fixed interval
+(device and version info) from a background thread, while the main thread runs
+the `Supervisor`: it polls the database for queued runs and trains them, one at
+a time, in a subprocess inside this container (D-11).
 
 `WorkerSettings` is intentionally separate from `yolo_trainer_api.settings.
 Settings` so the worker does not depend on api configuration.
@@ -22,11 +21,14 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from types import FrameType
+from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from yolo_trainer_common import layout
 from yolo_trainer_common.device import ComputeDevice, detect_compute_device
+from yolo_trainer_common.heartbeat import is_heartbeat_fresh
 
 logger = logging.getLogger(__name__)
 
@@ -46,9 +48,36 @@ class WorkerSettings(BaseSettings):
         validation_alias="WORKER_HEARTBEAT_INTERVAL_SECONDS",
     )
 
+    # Same escape hatch as the api (env SQLITE_JOURNAL_MODE); both containers must agree.
+    sqlite_journal_mode: Literal["WAL", "DELETE"] = Field(
+        default="WAL", validation_alias="SQLITE_JOURNAL_MODE"
+    )
+
+    # env WORKER_POLL_INTERVAL_SECONDS: how often an idle worker looks for a queued run.
+    poll_interval_seconds: int = Field(
+        default=2,
+        ge=1,
+        validation_alias="WORKER_POLL_INTERVAL_SECONDS",
+    )
+
+    @field_validator("sqlite_journal_mode", mode="before")
+    @classmethod
+    def _normalize_journal_mode(cls, value: object) -> object:
+        if isinstance(value, str):
+            return value.upper()
+        return value
+
     @property
     def heartbeat_path(self) -> Path:
-        return self.data_dir / "worker" / "heartbeat.json"
+        return layout.heartbeat_file(self.data_dir)
+
+    @property
+    def db_path(self) -> Path:
+        return self.data_dir / "app.db"
+
+    @property
+    def sync_database_url(self) -> str:
+        return f"sqlite:///{self.db_path.resolve().as_posix()}"
 
 
 def _to_iso_z(value: datetime) -> str:
@@ -91,27 +120,6 @@ def write_heartbeat(path: Path, payload: dict[str, object]) -> None:
     tmp_path = path.with_name(f".{path.name}.tmp-{os.getpid()}")
     tmp_path.write_text(json.dumps(payload), encoding="utf-8")
     os.replace(tmp_path, path)
-
-
-def is_heartbeat_fresh(path: Path, max_age_seconds: int = 60, now: datetime | None = None) -> bool:
-    """Return True if `path` holds a valid heartbeat newer than `max_age_seconds`.
-
-    False for a missing file, invalid JSON, or a missing/unparseable
-    `last_heartbeat` field.
-    """
-    if now is None:
-        now = datetime.now(UTC)
-
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-        last_heartbeat = datetime.fromisoformat(
-            str(payload["last_heartbeat"]).replace("Z", "+00:00")
-        )
-    except (OSError, json.JSONDecodeError, KeyError, ValueError):
-        return False
-
-    age_seconds = (now - last_heartbeat).total_seconds()
-    return age_seconds < max_age_seconds
 
 
 def run(
@@ -173,10 +181,29 @@ def main(argv: list[str] | None = None) -> int:
         device.cuda_available,
     )
 
+    from yolo_trainer_worker.queue import create_worker_engine
+    from yolo_trainer_worker.supervisor import Supervisor
+
     stop_event = threading.Event()
     _install_signal_handlers(stop_event)
 
-    run(settings, stop_event, versions=versions)
+    # The heartbeat keeps ticking in the background while the main thread trains.
+    heartbeat = threading.Thread(
+        target=run,
+        args=(settings, stop_event),
+        kwargs={"device_probe": lambda: device, "versions": versions},
+        name="heartbeat",
+        daemon=True,
+    )
+    heartbeat.start()
+
+    engine = create_worker_engine(settings)
+    try:
+        Supervisor(engine, settings, device).serve(stop_event)
+    finally:
+        stop_event.set()
+        heartbeat.join(timeout=5)
+        engine.dispose()
     return 0
 
 

@@ -13,6 +13,7 @@ from pydantic import (
     Field,
     computed_field,
     field_serializer,
+    field_validator,
     model_validator,
 )
 
@@ -100,6 +101,9 @@ class ProjectRead(BaseModel):
     updated_at: datetime
     image_count: int = 0
     class_count: int = 0
+    run_count: int = 0
+    model_count: int = 0
+    active_run_count: int = 0
 
     @field_serializer("created_at", "updated_at")
     def _serialize_utc(self, value: datetime) -> str:
@@ -161,6 +165,9 @@ class ClassRead(BaseModel):
 
 ImageStatus = Literal["unannotated", "annotated", "reviewed"]
 
+# Dataset split of an image (D-01); `None` means unassigned.
+Split = Literal["train", "valid", "test"]
+
 # About 170 JSON bytes per box keeps a full set under nginx's unchanged 1 MiB
 # /api/ body limit.
 MAX_BOXES = 2000
@@ -187,6 +194,7 @@ class ImageRead(BaseModel):
     box_count: int = 0
     is_background: bool = False
     is_reviewed: bool = False
+    split: Split | None = None
 
     @computed_field  # type: ignore[prop-decorator]
     @property
@@ -301,11 +309,21 @@ class NextUnannotated(BaseModel):
     image_id: int | None
 
 
+class SplitCounts(BaseModel):
+    """Images per split; `none` is the unassigned ones (D-01)."""
+
+    train: int
+    valid: int
+    test: int
+    none: int
+
+
 class StatusCounts(BaseModel):
     """Project-wide status counts; unannotated + annotated + reviewed = total.
 
     `background` counts the flagged images separately: they are also counted in
-    `annotated` (or `reviewed`), never in `unannotated`.
+    `annotated` (or `reviewed`), never in `unannotated`. `splits` counts every
+    image once: train + valid + test + none = total.
     """
 
     total: int
@@ -313,6 +331,7 @@ class StatusCounts(BaseModel):
     annotated: int
     reviewed: int
     background: int
+    splits: SplitCounts
 
 
 class ImageDeleteRequest(BaseModel):
@@ -325,6 +344,22 @@ class ImageDeleteRequest(BaseModel):
 
 class ImageDeleteResult(BaseModel):
     deleted: int
+
+
+class SplitRequest(BaseModel):
+    """Assign the listed images to one split, or to none (`null`); 1..1000 ids per request.
+
+    `split` has no default on purpose: omitting it is an error, `null` is a choice.
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    ids: list[int] = Field(min_length=1, max_length=1000)
+    split: Split | None
+
+
+class SplitResult(BaseModel):
+    updated: int
 
 
 UploadStatus = Literal["added", "duplicate", "rejected"]
@@ -347,3 +382,130 @@ class ConfigRead(BaseModel):
     max_upload_mb: int
     max_upload_bytes: int
     accepted_extensions: list[str]
+
+
+# --------------------------------------------------------------------------
+# Training runs
+# --------------------------------------------------------------------------
+
+RunStatus = Literal[
+    "preparing", "queued", "running", "completed", "failed", "interrupted", "cancelled"
+]
+# A run in one of these statuses holds the queue or the worker (D-11, D-21).
+ACTIVE_RUN_STATUSES = ("preparing", "queued", "running")
+
+DeviceChoice = Literal["auto", "cpu", "0"]
+
+
+def _utc_iso(value: datetime | None) -> str | None:
+    if value is None:
+        return None
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=UTC)
+    return value.isoformat().replace("+00:00", "Z")
+
+
+class OfficialBase(BaseModel):
+    """An official Ultralytics model chosen by name; never a path (T4-01)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["official"]
+    name: Annotated[str, Field(max_length=32)]
+
+
+class RunCreate(BaseModel):
+    """Start a training run (TRAN-01); every bound is enforced again here (T4-07)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    name: ProjectName | None = None
+    base: OfficialBase
+    epochs: Annotated[int, Field(strict=True, ge=1, le=1000)]
+    imgsz: Annotated[int, Field(strict=True, ge=32, le=2048)]
+    batch: Annotated[int, Field(strict=True)]
+    device: DeviceChoice
+
+    @field_validator("imgsz")
+    @classmethod
+    def _imgsz_multiple_of_32(cls, value: int) -> int:
+        if value % 32 != 0:
+            raise ValueError("must be a multiple of 32")
+        return value
+
+    @field_validator("batch")
+    @classmethod
+    def _batch_auto_or_in_range(cls, value: int) -> int:
+        if value != -1 and not 1 <= value <= 512:
+            raise ValueError("must be -1 (auto) or a whole number from 1 to 512")
+        return value
+
+
+class RunSettings(BaseModel):
+    epochs: int
+    imgsz: int
+    batch: int
+    device: DeviceChoice
+
+
+class RunResolved(BaseModel):
+    """What the worker actually used for an `auto` request (D-09)."""
+
+    device: str
+    batch: int
+    workers: int
+
+
+class DatasetCounts(BaseModel):
+    train: int
+    valid: int
+    test: int
+
+
+class RunMetrics(BaseModel):
+    precision: float | None = None
+    recall: float | None = None
+    map50: float | None = None
+    map50_95: float | None = None
+
+
+class RunModelRef(BaseModel):
+    id: int
+    file_name: str
+    size_bytes: int
+    ultralytics_version: str | None = None
+
+
+class RunSummary(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    project_id: int
+    name: str
+    status: RunStatus
+    queue_position: int | None = None
+    task_type: TaskType
+    base_kind: Literal["official", "model"]
+    base_name: str
+    epoch: int | None = None
+    epochs: int | None = None
+    last_map50: float | None = None
+    map50: float | None = None
+    created_at: datetime
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+    model: RunModelRef | None = None
+
+    @field_serializer("created_at", "started_at", "finished_at")
+    def _serialize_utc(self, value: datetime | None) -> str | None:
+        return _utc_iso(value)
+
+
+class RunRead(RunSummary):
+    settings: RunSettings
+    resolved: RunResolved | None = None
+    dataset_counts: DatasetCounts | None = None
+    class_names: list[str] | None = None
+    metrics: RunMetrics | None = None
+    error_message: str | None = None
+    log_tail: str | None = None

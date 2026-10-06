@@ -6,6 +6,7 @@ import unicodedata
 from datetime import UTC, datetime
 
 from sqlalchemy import (
+    JSON,
     BigInteger,
     Boolean,
     CheckConstraint,
@@ -23,6 +24,7 @@ from sqlalchemy import (
 from sqlalchemy.orm import Mapped, column_property, mapped_column
 
 from yolo_trainer_api.db import Base
+from yolo_trainer_api.schemas import ACTIVE_RUN_STATUSES
 
 
 def normalize_project_name(name: str) -> str:
@@ -98,9 +100,14 @@ class Image(Base):
     annotation_version: Mapped[int] = mapped_column(
         Integer, nullable=False, default=0, server_default="0"
     )
+    # Dataset split (Phase 4, D-01): NULL means unassigned, which is also what every
+    # new upload starts as. Changing it is not an annotation change (D-02).
+    split: Mapped[str | None] = mapped_column(String(5), nullable=True)
 
     __table_args__ = (
         CheckConstraint("ext IN ('jpg', 'png', 'webp', 'bmp')", name="ck_images_ext"),
+        CheckConstraint("split IN ('train', 'valid', 'test')", name="ck_images_split"),
+        Index("ix_images_project_split", "project_id", "split"),
         Index("ix_images_project_id_id", "project_id", "id"),
         Index("ix_images_project_filename_key", "project_id", "filename_key", "id"),
         Index("uq_images_project_sha256", "project_id", "sha256", unique=True),
@@ -186,6 +193,108 @@ class Annotation(Base):
     )
 
 
+class TrainingRun(Base):
+    """One training run of a project (Phase 4).
+
+    The dataset is snapshotted when the run is inserted (D-20); the worker claims
+    the oldest `queued` row (D-11). `name` doubles as the registered model's display
+    name (D-10). No ORM relationships: FK cascades remove rows.
+    """
+
+    __tablename__ = "training_runs"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    project_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("projects.id", ondelete="CASCADE"), nullable=False
+    )
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    normalized_name: Mapped[str] = mapped_column(Text, nullable=False)
+    status: Mapped[str] = mapped_column(String(16), nullable=False)
+    task_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    base_kind: Mapped[str] = mapped_column(String(16), nullable=False)
+    base_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    base_model_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("models.id", ondelete="SET NULL"), nullable=True
+    )
+    settings: Mapped[dict] = mapped_column(JSON, nullable=False)
+    resolved: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    dataset_counts: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    class_names: Mapped[list | None] = mapped_column(JSON, nullable=True)
+    metrics: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    epoch: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    epochs: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    last_map50: Mapped[float | None] = mapped_column(Float, nullable=True)
+    worker_pid: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    log_tail: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow
+    )
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    progress_updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('preparing', 'queued', 'running', 'completed', 'failed', "
+            "'interrupted', 'cancelled')",
+            name="ck_training_runs_status",
+        ),
+        CheckConstraint("task_type IN ('detect', 'segment')", name="ck_training_runs_task_type"),
+        CheckConstraint("base_kind IN ('official', 'model')", name="ck_training_runs_base_kind"),
+        Index("uq_training_runs_project_name", "project_id", "normalized_name", unique=True),
+        Index("ix_training_runs_status_id", "status", "id"),
+        Index("ix_training_runs_project_id", "project_id"),
+        Index("ix_training_runs_base_model_id", "base_model_id"),
+        {"sqlite_autoincrement": True},
+    )
+
+
+class TrainedModel(Base):
+    """A registered model: the `best.pt` of a finished run (D-16).
+
+    The file lives at `data/models/<id>.pt`; its path is derived from the id and
+    never stored. `project_id` is nullable because a Phase 7 upload has no project.
+    """
+
+    __tablename__ = "models"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    project_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("projects.id", ondelete="CASCADE"), nullable=True
+    )
+    source_run_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("training_runs.id", ondelete="CASCADE"), nullable=True
+    )
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    task_type: Mapped[str] = mapped_column(String(16), nullable=False)
+    source: Mapped[str] = mapped_column(String(16), nullable=False)
+    class_names: Mapped[list] = mapped_column(JSON, nullable=False)
+    metrics: Mapped[dict | None] = mapped_column(JSON, nullable=True)
+    precision: Mapped[float | None] = mapped_column(Float, nullable=True)
+    recall: Mapped[float | None] = mapped_column(Float, nullable=True)
+    map50: Mapped[float | None] = mapped_column(Float, nullable=True)
+    map50_95: Mapped[float | None] = mapped_column(Float, nullable=True)
+    base_name: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    size_bytes: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    ultralytics_version: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=utcnow
+    )
+
+    __table_args__ = (
+        CheckConstraint("task_type IN ('detect', 'segment')", name="ck_models_task_type"),
+        CheckConstraint("source IN ('trained', 'uploaded')", name="ck_models_source"),
+        Index("ix_models_project_id", "project_id"),
+        Index("ix_models_source_run_id", "source_run_id"),
+        Index("ix_models_task_type", "task_type"),
+        {"sqlite_autoincrement": True},
+    )
+
+
 # Read-only counts loaded together with every Project row (select and refresh).
 # Attached after both child classes exist; not part of the table definition.
 Project.image_count = column_property(
@@ -198,6 +307,25 @@ Project.class_count = column_property(
     select(func.count(ProjectClass.id))
     .where(ProjectClass.project_id == Project.id)
     .correlate_except(ProjectClass)
+    .scalar_subquery()
+)
+# Runs and models of a project, shown in the delete-project dialog (D-21).
+Project.run_count = column_property(
+    select(func.count(TrainingRun.id))
+    .where(TrainingRun.project_id == Project.id)
+    .correlate_except(TrainingRun)
+    .scalar_subquery()
+)
+Project.model_count = column_property(
+    select(func.count(TrainedModel.id))
+    .where(TrainedModel.project_id == Project.id)
+    .correlate_except(TrainedModel)
+    .scalar_subquery()
+)
+Project.active_run_count = column_property(
+    select(func.count(TrainingRun.id))
+    .where(TrainingRun.project_id == Project.id, TrainingRun.status.in_(ACTIVE_RUN_STATUSES))
+    .correlate_except(TrainingRun)
     .scalar_subquery()
 )
 # Number of boxes of a class across the whole project, shown in the delete-class

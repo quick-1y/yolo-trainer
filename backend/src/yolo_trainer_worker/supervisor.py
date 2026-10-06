@@ -1,0 +1,351 @@
+"""Supervises one training subprocess at a time and writes its progress to the database.
+
+The worker service polls the database, claims the oldest queued run and runs
+`python -m yolo_trainer_worker.train_job` as a child process (argument list, no
+shell). The child never opens the database: it writes `progress.jsonl`,
+`result.json` / `error.json` and a log; this class tails those files and is the
+single writer of run state (D-11, D-12, D-13, D-15, D-16).
+"""
+
+from __future__ import annotations
+
+import json
+import logging
+import os
+import signal
+import subprocess
+import sys
+import threading
+from collections.abc import Callable
+from dataclasses import asdict, dataclass
+from pathlib import Path
+from typing import TYPE_CHECKING
+
+from sqlalchemy import Engine
+from sqlalchemy.exc import OperationalError
+
+from yolo_trainer_common import layout
+from yolo_trainer_common.device import ComputeDevice
+from yolo_trainer_common.progress import (
+    EVENT_FIT_EPOCH_END,
+    ProgressTail,
+    clean_log_tail,
+    map50_key,
+)
+from yolo_trainer_worker import queue
+
+if TYPE_CHECKING:
+    from yolo_trainer_worker.main import WorkerSettings
+
+logger = logging.getLogger(__name__)
+
+CPU_BATCH_FALLBACK = 16
+MAX_GPU_WORKERS = 8
+TERMINATE_GRACE_SECONDS = 10
+LOG_TAIL_BYTES = 64 * 1024
+
+DATASET_MISSING_MESSAGE = "The prepared dataset is missing."
+CLASS_MISMATCH_MESSAGE = "The trained model's class names do not match the dataset."
+STOPPED_MESSAGE = "The worker was stopped while this run was in progress."
+
+
+@dataclass(frozen=True)
+class Resolved:
+    """What an `auto` request turned into on this host (D-09)."""
+
+    device: str
+    batch: int
+    workers: int
+
+
+def resolve_settings(settings: dict, device: ComputeDevice, cpu_count: int) -> Resolved:
+    """Device "auto" -> GPU 0 when CUDA exists, else cpu; batch -1 -> 16 on CPU;
+    workers 0 on CPU (Ultralytics forces it) and `min(8, cpu_count)` on GPU."""
+    requested = settings.get("device", "auto")
+    if requested == "auto":
+        chosen = "0" if device.cuda_available else "cpu"
+    else:
+        chosen = str(requested)
+    on_gpu = chosen != "cpu"
+    batch = int(settings["batch"])
+    if batch == -1 and not on_gpu:
+        batch = CPU_BATCH_FALLBACK
+    workers = min(MAX_GPU_WORKERS, max(1, cpu_count)) if on_gpu else 0
+    return Resolved(device=chosen, batch=batch, workers=workers)
+
+
+def default_command(run_directory: Path, data_dir: Path, resolved: Resolved) -> list[str]:
+    """The training command line: an argument list, built from validated values only (T4-02)."""
+    return [
+        sys.executable,
+        "-m",
+        "yolo_trainer_worker.train_job",
+        "--run-dir",
+        str(run_directory),
+        "--data-dir",
+        str(data_dir),
+        "--device",
+        resolved.device,
+        "--batch",
+        str(resolved.batch),
+        "--workers",
+        str(resolved.workers),
+    ]
+
+
+CommandBuilder = Callable[[Path, Path, Resolved], list[str]]
+
+
+def _read_log_tail(path: Path) -> str:
+    """The cleaned last lines of the run log (the last 64 KiB are read)."""
+    try:
+        with path.open("rb") as handle:
+            handle.seek(0, os.SEEK_END)
+            size = handle.tell()
+            handle.seek(max(0, size - LOG_TAIL_BYTES))
+            raw = handle.read()
+    except OSError:
+        return ""
+    return clean_log_tail(raw.decode("utf-8", errors="replace"))
+
+
+def _read_error_message(path: Path) -> str | None:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    message = payload.get("message") if isinstance(payload, dict) else None
+    return message if isinstance(message, str) and message.strip() else None
+
+
+class Supervisor:
+    """Claims queued runs and drives their training subprocess to a final status."""
+
+    def __init__(
+        self,
+        engine: Engine,
+        settings: WorkerSettings,
+        device: ComputeDevice,
+        command: CommandBuilder = default_command,
+        tick_seconds: float = 1.0,
+    ) -> None:
+        self.engine = engine
+        self.settings = settings
+        self.device = device
+        self.command = command
+        self.tick_seconds = tick_seconds
+        self.active_run_id: int | None = None
+
+    def serve(self, stop_event: threading.Event) -> None:
+        """Reconcile once, then claim and run queued runs until `stop_event` is set."""
+        poll = self.settings.poll_interval_seconds
+        while not stop_event.is_set():
+            try:
+                swept = queue.reconcile_on_start(self.engine)
+            except OperationalError:
+                # The api may not have migrated yet (Pitfall 9); try again shortly.
+                logger.warning("Run table not ready; retrying", exc_info=True)
+                stop_event.wait(poll)
+                continue
+            if swept:
+                logger.warning("Marked %s run(s) as interrupted after a restart", swept)
+            break
+
+        while not stop_event.is_set():
+            try:
+                run_id = queue.claim_next(self.engine)
+            except OperationalError:
+                logger.warning("Could not poll the run queue; retrying", exc_info=True)
+                stop_event.wait(poll)
+                continue
+            if run_id is None:
+                stop_event.wait(poll)
+                continue
+            try:
+                self.run_claimed(run_id, stop_event)
+            except Exception:
+                logger.exception("Supervising run %s failed unexpectedly", run_id)
+                try:
+                    queue.mark_failed(
+                        self.engine, run_id, "The worker failed while supervising this run.", None
+                    )
+                except Exception:
+                    logger.exception("Could not mark run %s as failed", run_id)
+
+    def run_claimed(self, run_id: int, stop_event: threading.Event) -> str:
+        """Run one claimed run to its end; returns the final status."""
+        self.active_run_id = run_id
+        try:
+            return self._run(run_id, stop_event)
+        finally:
+            self.active_run_id = None
+
+    def _run(self, run_id: int, stop_event: threading.Event) -> str:
+        data_dir = self.settings.data_dir
+        run_directory = layout.run_dir(data_dir, run_id)
+        run = queue.load_run(self.engine, run_id)
+        if run is None:
+            return "gone"
+        if not (run_directory / layout.JOB_FILE).is_file():
+            queue.mark_failed(self.engine, run_id, DATASET_MISSING_MESSAGE, None)
+            return "failed"
+
+        resolved = resolve_settings(run["settings"], self.device, os.cpu_count() or 1)
+        layout.write_json_atomic(run_directory / layout.RESOLVED_FILE, asdict(resolved))
+        layout.ultralytics_config_dir(data_dir).mkdir(parents=True, exist_ok=True)
+        log_path = run_directory / layout.LOG_FILE
+        env = {
+            **os.environ,
+            "PYTHONUNBUFFERED": "1",
+            "PYTHONUTF8": "1",
+            "YOLO_AUTOINSTALL": "false",
+            "YOLO_CONFIG_DIR": str(layout.ultralytics_config_dir(data_dir)),
+        }
+        popen_options: dict[str, object] = {}
+        if os.name == "posix":
+            popen_options["start_new_session"] = True
+        else:
+            popen_options["creationflags"] = subprocess.CREATE_NEW_PROCESS_GROUP
+
+        with log_path.open("ab") as log:
+            try:
+                process = subprocess.Popen(
+                    self.command(run_directory, data_dir, resolved),
+                    cwd=run_directory,
+                    stdout=log,
+                    stderr=subprocess.STDOUT,
+                    env=env,
+                    **popen_options,
+                )
+            except OSError as exc:
+                queue.mark_failed(
+                    self.engine, run_id, f"Could not start the training process: {exc}", None
+                )
+                return "failed"
+            queue.record_start(self.engine, run_id, asdict(resolved), process.pid)
+            outcome, final_metrics = self._watch(run_id, run, process, run_directory, stop_event)
+        if outcome is not None:
+            return outcome
+        return self._finish(run_id, run, process.returncode, run_directory, final_metrics)
+
+    # -- watching ---------------------------------------------------------
+
+    def _watch(
+        self,
+        run_id: int,
+        run: dict,
+        process: subprocess.Popen,
+        run_directory: Path,
+        stop_event: threading.Event,
+    ) -> tuple[str | None, dict]:
+        """Tail the child's progress until it exits.
+
+        Returns `(outcome, metrics)`: a non-None outcome ends the run early; `metrics` are the
+        final-validation metrics, or the last real epoch's when no final event arrived.
+        """
+        tail = ProgressTail()
+        progress_path = run_directory / layout.PROGRESS_FILE
+        key = map50_key(run["task_type"])
+        last_real: dict = {}
+        final: dict = {}
+        outcome: str | None = None
+        while True:
+            exit_code = process.poll()
+            for event in tail.read_new_events(progress_path):
+                if event.get("event") != EVENT_FIT_EPOCH_END:
+                    continue
+                metrics = event.get("metrics") or {}
+                if event.get("final_validation"):
+                    # The post-training validation of best.pt: never an epoch (D-12).
+                    final = metrics
+                    continue
+                last_real = metrics
+                value = metrics.get(key)
+                changed = queue.record_epoch(
+                    self.engine,
+                    run_id,
+                    int(event.get("epoch", 0)),
+                    event.get("epochs") or run.get("epochs"),
+                    value if isinstance(value, int | float) else None,
+                )
+                if changed == 0 and exit_code is None:
+                    # The run row is gone or no longer running: stop the child.
+                    self._terminate(process)
+                    outcome = "gone"
+            if outcome is not None or exit_code is not None:
+                break
+            if stop_event.is_set():
+                self._terminate(process)
+                queue.mark_interrupted(
+                    self.engine,
+                    run_id,
+                    STOPPED_MESSAGE,
+                    _read_log_tail(run_directory / layout.LOG_FILE),
+                )
+                outcome = "interrupted"
+                break
+            stop_event.wait(self.tick_seconds)
+        return outcome, final or last_real
+
+    @staticmethod
+    def _terminate(process: subprocess.Popen) -> None:
+        """Stop the child and its group: SIGTERM, a grace period, then SIGKILL."""
+        if process.poll() is not None:
+            return
+        try:
+            if os.name == "posix":
+                os.killpg(process.pid, signal.SIGTERM)
+            else:
+                process.terminate()
+        except (ProcessLookupError, PermissionError):
+            pass
+        try:
+            process.wait(timeout=TERMINATE_GRACE_SECONDS)
+        except subprocess.TimeoutExpired:
+            try:
+                if os.name == "posix":
+                    os.killpg(process.pid, signal.SIGKILL)
+                else:
+                    process.kill()
+            except (ProcessLookupError, PermissionError):
+                pass
+            process.wait()
+
+    # -- finishing --------------------------------------------------------
+
+    def _finish(
+        self,
+        run_id: int,
+        run: dict,
+        exit_code: int,
+        run_directory: Path,
+        final_metrics: dict,
+    ) -> str:
+        log_tail = _read_log_tail(run_directory / layout.LOG_FILE)
+        result_path = run_directory / layout.RESULT_FILE
+        best = layout.best_weights(run_directory)
+        if exit_code == 0 and result_path.is_file() and best.is_file():
+            try:
+                result = json.loads(result_path.read_text(encoding="utf-8"))
+                if result.get("names") != run["class_names"]:
+                    queue.mark_failed(self.engine, run_id, CLASS_MISMATCH_MESSAGE, log_tail)
+                    return "failed"
+                queue.register_model(
+                    self.engine, self.settings.data_dir, run_id, result, final_metrics
+                )
+            except Exception as exc:
+                logger.exception("Could not register the model of run %s", run_id)
+                queue.mark_failed(
+                    self.engine, run_id, f"Could not register the trained model: {exc}", log_tail
+                )
+                return "failed"
+            return "completed"
+
+        message = _read_error_message(run_directory / layout.ERROR_FILE)
+        if message is None:
+            if exit_code == 0:
+                message = "The training process finished without producing a model."
+            else:
+                message = f"The training process exited with code {exit_code}."
+        queue.mark_failed(self.engine, run_id, message, log_tail)
+        return "failed"

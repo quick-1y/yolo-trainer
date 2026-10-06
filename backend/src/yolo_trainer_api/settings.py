@@ -8,6 +8,8 @@ from typing import Annotated, Literal
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
+from yolo_trainer_common import layout
+
 
 class Settings(BaseSettings):
     """Application configuration.
@@ -61,6 +63,22 @@ class Settings(BaseSettings):
     @property
     def projects_dir(self) -> Path:
         return self.data_dir / "projects"
+
+    @property
+    def runs_dir(self) -> Path:
+        return layout.runs_root(self.data_dir)
+
+    @property
+    def models_dir(self) -> Path:
+        return layout.models_root(self.data_dir)
+
+    @property
+    def weights_dir(self) -> Path:
+        return layout.weights_root(self.data_dir)
+
+    @property
+    def worker_dir(self) -> Path:
+        return layout.worker_root(self.data_dir)
 
     @property
     def max_upload_bytes(self) -> int:

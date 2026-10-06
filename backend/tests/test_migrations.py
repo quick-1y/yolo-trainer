@@ -120,3 +120,90 @@ def test_a_database_at_0003_upgrades_to_head_and_keeps_its_images_unannotated(
         assert items[0]["is_reviewed"] is False
         classes = client.get("/api/projects/1/classes").json()
         assert [c["name"] for c in classes] == ["car"]
+
+
+def _seed_0004(settings: Settings) -> None:
+    stamp = "2026-10-04 10:00:00.000000"
+    connection = sqlite3.connect(settings.db_path)
+    try:
+        connection.execute("PRAGMA foreign_keys=ON")
+        connection.execute(
+            "INSERT INTO projects (id, name, normalized_name, task_type, created_at, updated_at) "
+            "VALUES (1, 'Old', 'old', 'detect', ?, ?)",
+            (stamp, stamp),
+        )
+        connection.execute(
+            "INSERT INTO images (id, project_id, original_filename, filename_key, ext, sha256, "
+            "size_bytes, width, height, created_at) "
+            "VALUES (1, 1, 'a.png', 'a.png', 'png', ?, 10, 64, 48, ?)",
+            ("a" * 64, stamp),
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+
+def test_a_database_at_0004_upgrades_with_every_existing_image_unassigned(
+    tmp_path: Path,
+) -> None:
+    settings = Settings(
+        data_dir=tmp_path / "data", allowed_hosts=["testserver", "localhost", "127.0.0.1"]
+    )
+    settings.data_dir.mkdir(parents=True)
+    config = _alembic_config(settings.sync_database_url)
+    command.upgrade(config, "0004")
+    _seed_0004(settings)
+
+    command.upgrade(config, "head")
+
+    connection = sqlite3.connect(settings.db_path)
+    try:
+        assert connection.execute("SELECT split FROM images WHERE id = 1").fetchone() == (None,)
+        tables = {
+            row[0]
+            for row in connection.execute("SELECT name FROM sqlite_master WHERE type='table'")
+        }
+        assert {"training_runs", "models"} <= tables
+        try:
+            connection.execute("UPDATE images SET split = 'holdout' WHERE id = 1")
+        except sqlite3.IntegrityError as error:
+            assert "ck_images_split" in str(error)
+        else:
+            raise AssertionError("an unknown split value was accepted")
+        sql = connection.execute(
+            "SELECT sql FROM sqlite_master WHERE name = 'training_runs'"
+        ).fetchone()[0]
+        assert "cancelled" in sql  # the seven-value status CHECK is in place from the start
+    finally:
+        connection.close()
+
+    with make_client(settings) as client:
+        (item,) = client.get("/api/projects/1/images").json()["items"]
+        assert item["split"] is None
+
+
+def test_0005_downgrades_to_0004_and_back_keeping_the_images(tmp_path: Path) -> None:
+    settings = Settings(
+        data_dir=tmp_path / "data", allowed_hosts=["testserver", "localhost", "127.0.0.1"]
+    )
+    settings.data_dir.mkdir(parents=True)
+    config = _alembic_config(settings.sync_database_url)
+    command.upgrade(config, "head")
+    _seed_0004(settings)
+
+    command.downgrade(config, "0004")
+
+    connection = sqlite3.connect(settings.db_path)
+    try:
+        columns = [row[1] for row in connection.execute("PRAGMA table_info(images)")]
+        assert "split" not in columns
+        assert connection.execute("SELECT count(*) FROM images").fetchone() == (1,)
+        assert (
+            connection.execute(
+                "SELECT name FROM sqlite_master WHERE name IN ('models', 'training_runs')"
+            ).fetchall()
+            == []
+        )
+    finally:
+        connection.close()
+    command.upgrade(config, "head")

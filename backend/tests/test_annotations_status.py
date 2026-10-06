@@ -221,6 +221,7 @@ def test_empty_project(client: TestClient) -> None:
         "annotated": 0,
         "reviewed": 0,
         "background": 0,
+        "splits": {"train": 0, "valid": 0, "test": 0, "none": 0},
     }
 
 
@@ -236,7 +237,14 @@ def test_status_counts_split_the_derived_statuses_and_count_background_apart(
     _save(client, project_id, bg, None, background=True)
     _save(client, project_id, rv, class_id, boxes=1, reviewed=True)
     counts = _counts(client, project_id)
-    assert counts == {"total": 5, "unannotated": 1, "annotated": 3, "reviewed": 1, "background": 1}
+    assert counts == {
+        "total": 5,
+        "unannotated": 1,
+        "annotated": 3,
+        "reviewed": 1,
+        "background": 1,
+        "splits": {"train": 0, "valid": 0, "test": 0, "none": 5},
+    }
     assert counts["unannotated"] + counts["annotated"] + counts["reviewed"] == counts["total"]
     assert u  # the untouched image is the unannotated one
     # a background image reports annotated with zero boxes
@@ -262,13 +270,21 @@ def test_status_counts_split_the_derived_statuses_and_count_background_apart(
         "annotated": 2,
         "reviewed": 2,
         "background": 1,
+        "splits": {"train": 0, "valid": 0, "test": 0, "none": 5},
     }
 
 
 def test_status_counts_ignore_the_search(client: TestClient, queue: dict) -> None:
     project_id = queue["project"]
     plain = _counts(client, project_id)
-    assert plain == {"total": 5, "unannotated": 2, "annotated": 3, "reviewed": 0, "background": 0}
+    assert plain == {
+        "total": 5,
+        "unannotated": 2,
+        "annotated": 3,
+        "reviewed": 0,
+        "background": 0,
+        "splits": {"train": 0, "valid": 0, "test": 0, "none": 5},
+    }
     assert _counts(client, project_id, q="a.jpg") == plain
 
 

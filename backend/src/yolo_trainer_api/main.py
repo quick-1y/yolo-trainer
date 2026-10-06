@@ -18,7 +18,10 @@ from yolo_trainer_api.routers.annotations import router as annotations_router
 from yolo_trainer_api.routers.classes import router as classes_router
 from yolo_trainer_api.routers.config import router as config_router
 from yolo_trainer_api.routers.images import router as images_router
+from yolo_trainer_api.routers.models import router as models_router
 from yolo_trainer_api.routers.projects import router as projects_router
+from yolo_trainer_api.routers.runs import router as runs_router
+from yolo_trainer_api.routers.splits import router as splits_router
 from yolo_trainer_api.settings import Settings, validate_data_dir
 from yolo_trainer_api.storage import reconcile_orphans
 
@@ -80,6 +83,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(images_router)
     app.include_router(annotations_router)
     app.include_router(classes_router)
+    app.include_router(splits_router)
+    app.include_router(runs_router)
+    app.include_router(models_router)
     app.include_router(config_router)
 
     return app

@@ -37,6 +37,7 @@ from yolo_trainer_api.schemas import (
     Neighbors,
     NextUnannotated,
     SaveResult,
+    SplitCounts,
     StatusCounts,
 )
 from yolo_trainer_api.security import require_xhr
@@ -112,16 +113,21 @@ async def get_status_counts(
                 count_where(unannotated_clause()),
                 count_where(Image.is_reviewed.is_(True)),
                 count_where(Image.is_background.is_(True)),
+                count_where(Image.split == "train"),
+                count_where(Image.split == "valid"),
+                count_where(Image.split == "test"),
+                count_where(Image.split.is_(None)),
             ).where(Image.project_id == project_id)
         )
     ).one()
-    total, unannotated, reviewed, background = row
+    total, unannotated, reviewed, background, in_train, in_valid, in_test, unassigned = row
     return StatusCounts(
         total=total,
         unannotated=unannotated,
         annotated=total - unannotated - reviewed,
         reviewed=reviewed,
         background=background,
+        splits=SplitCounts(train=in_train, valid=in_valid, test=in_test, none=unassigned),
     )
 
 

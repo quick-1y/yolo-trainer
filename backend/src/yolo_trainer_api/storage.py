@@ -18,6 +18,7 @@ from uuid import uuid4
 
 from yolo_trainer_api.image_processing import EXT_MEDIA, Rejected
 from yolo_trainer_api.settings import Settings
+from yolo_trainer_common import layout
 
 logger = logging.getLogger(__name__)
 
@@ -40,10 +41,15 @@ def incoming_dir(settings: Settings, project_id: int) -> Path:
     return project_dir(settings, project_id) / ".incoming"
 
 
-def image_path(settings: Settings, project_id: int, image_id: int, ext: str) -> Path:
+def image_file(projects_root: Path, project_id: int, image_id: int, ext: str) -> Path:
+    """The id-keyed image path below a projects root; the one place that builds it."""
     if ext not in EXT_MEDIA:
         raise ValueError(f"Unsupported image extension: {ext!r}")
-    return images_dir(settings, project_id) / f"{int(image_id)}.{ext}"
+    return projects_root / str(int(project_id)) / "images" / f"{int(image_id)}.{ext}"
+
+
+def image_path(settings: Settings, project_id: int, image_id: int, ext: str) -> Path:
+    return image_file(settings.projects_dir, project_id, image_id, ext)
 
 
 def thumb_path(settings: Settings, project_id: int, image_id: int) -> Path:
@@ -130,6 +136,35 @@ def remove_project_dir(settings: Settings, project_id: int) -> None:
     if not target.exists():
         return
     shutil.rmtree(target)
+
+
+def _remove_direct_child(root: Path, target: Path, *, is_dir: bool) -> None:
+    """Delete `target` only when it is a direct, non-symlink child of `root`."""
+    if target.parent != root:
+        raise ValueError(f"Refusing to remove {target}: not a direct child of {root}")
+    if target.is_symlink():
+        raise ValueError(f"Refusing to remove {target}: it is a symbolic link")
+    if not target.exists():
+        return
+    if is_dir:
+        shutil.rmtree(target)
+    else:
+        target.unlink()
+
+
+def remove_run_dir(settings: Settings, run_id: int) -> None:
+    """Delete a run's whole folder (D-19, D-21). A missing folder is fine.
+
+    The path comes from an integer id; the same guards as `remove_project_dir`.
+    """
+    _remove_direct_child(settings.runs_dir, layout.run_dir(settings.data_dir, run_id), is_dir=True)
+
+
+def remove_model_file(settings: Settings, model_id: int) -> None:
+    """Delete a registered model's `.pt` file. A missing file is fine."""
+    _remove_direct_child(
+        settings.models_dir, layout.model_file(settings.data_dir, model_id), is_dir=False
+    )
 
 
 @dataclass
