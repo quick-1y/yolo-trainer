@@ -9,6 +9,7 @@ import { ProjectLayout } from "../features/project/ProjectLayout";
 import { ProjectOverviewPage } from "../features/project/ProjectOverviewPage";
 import { ProjectSettingsPage } from "../features/project/ProjectSettingsPage";
 import { ProjectsPage } from "../features/projects/ProjectsPage";
+import { NewRunPage } from "../features/training/NewRunPage";
 import { RunPage } from "../features/training/RunPage";
 import { TrainingPage } from "../features/training/TrainingPage";
 import { AppLayout } from "./AppLayout";
@@ -55,6 +56,7 @@ export function AppRoutes() {
           <Route path="images" element={<ImagesPage />} />
           <Route path="classes" element={<ClassesPage />} />
           <Route path="training" element={<TrainingPage />} />
+          <Route path="training/new" element={<NewRunPage />} />
           <Route path="training/:runId" element={<RunPage />} />
           <Route path="settings" element={<ProjectSettingsPage />} />
         </Route>

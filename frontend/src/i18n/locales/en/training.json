@@ -83,5 +83,57 @@
     "file": "Model file: {{file}} · {{size}}",
     "usage": "Load it in Python with <code>{{code}}</code>.",
     "version": "Trained with Ultralytics {{version}}. Use the same or a newer version to load it."
+  },
+  "newRun": {
+    "title": "New training",
+    "back": "Training",
+    "name": {
+      "label": "Run name",
+      "hint": "Also the name of the resulting model."
+    },
+    "base": {
+      "label": "Base model",
+      "official": "Official Ultralytics models",
+      "size": {
+        "n": "Smallest and fastest",
+        "s": "Small",
+        "m": "Medium",
+        "l": "Large",
+        "x": "Largest and most accurate"
+      }
+    },
+    "epochs": {
+      "label": "Epochs",
+      "hint": "How many passes over the training images. 100 is the Ultralytics default."
+    },
+    "imgsz": {
+      "label": "Image size",
+      "hint": "Images are resized to this many pixels on the longer side. Must be a multiple of 32."
+    },
+    "batch": {
+      "label": "Batch size",
+      "auto": "Auto",
+      "custom": "Custom",
+      "hint": "Auto picks the largest batch that fits the GPU, and uses 16 on CPU."
+    },
+    "device": {
+      "label": "Device",
+      "auto": "Automatic (GPU if available, otherwise CPU)",
+      "cpu": "CPU",
+      "gpu": "GPU {{index}}: {{name}}",
+      "noGpu": "No GPU was detected, so training runs on the CPU.",
+      "cpuHint": "Training on a CPU is slow. For a first try, use a small model, few epochs and a small image size."
+    },
+    "validation": {
+      "name": {
+        "required": "Name is required.",
+        "tooLong": "Name must be at most 100 characters."
+      },
+      "epochs": "Epochs must be a whole number from 1 to 1000.",
+      "imgsz": "Image size must be a multiple of 32, from 32 to 2048.",
+      "batch": "Batch size must be a whole number from 1 to 512."
+    },
+    "submit": "Start training",
+    "cancel": "Cancel"
   }
 }

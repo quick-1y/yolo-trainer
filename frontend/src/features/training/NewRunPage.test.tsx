@@ -1,4 +1,4 @@
-import { screen, waitFor } from "@testing-library/react";
+import { screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { AppRoutes } from "../../app/routes";
@@ -22,6 +22,34 @@ async function openForm(
   return Object.assign(view, { api });
 }
 
+/** The Select's own input: its label is also the listbox's accessible name. */
+function selectInput(label: string): HTMLElement {
+  const input = screen.getAllByLabelText(label).find((element) => element.tagName === "INPUT");
+  if (input === undefined) {
+    throw new Error(`No select input labelled ${label}`);
+  }
+  return input;
+}
+
+/**
+ * The options of one Select. jsdom computes no popover position, so Mantine leaves the open
+ * dropdown at `display: none`; the options are queried (and clicked) as hidden elements.
+ */
+function optionsOf(label: string): HTMLElement[] {
+  const listbox = screen.getByRole("listbox", { name: label, hidden: true });
+  return within(listbox).getAllByRole("option", { hidden: true });
+}
+
+function optionNamed(label: string, name: string | RegExp): HTMLElement {
+  const found = optionsOf(label).find((option) =>
+    typeof name === "string" ? option.textContent === name : name.test(option.textContent ?? ""),
+  );
+  if (found === undefined) {
+    throw new Error(`No option ${String(name)} in ${label}`);
+  }
+  return found;
+}
+
 async function replaceValue(
   view: FormView,
   label: string,
@@ -41,10 +69,10 @@ describe("NewRunPage form", () => {
 
     expect(screen.getByLabelText("Run name")).toHaveValue("run-1");
     expect(screen.getByLabelText("Run name")).toHaveAttribute("maxlength", "100");
-    expect(screen.getByLabelText("Base model")).toHaveValue("yolo26n");
+    expect(selectInput("Base model")).toHaveValue("yolo26n");
     expect(screen.getByLabelText("Epochs")).toHaveValue("100");
     expect(screen.getByLabelText("Image size")).toHaveValue("640");
-    expect(screen.getByLabelText("Device")).toHaveValue(DEFAULT_DEVICE);
+    expect(selectInput("Device")).toHaveValue(DEFAULT_DEVICE);
     expect(screen.getByRole("radio", { name: "Auto" })).toBeChecked();
     expect(screen.queryByRole("textbox", { name: "Batch size" })).toBeNull();
   });
@@ -58,13 +86,14 @@ describe("NewRunPage form", () => {
   it("lists the official models with their size descriptions", async () => {
     const view = await openForm();
 
-    await view.user.click(screen.getByLabelText("Base model"));
+    await view.user.click(selectInput("Base model"));
 
     expect(await screen.findByText("Official Ultralytics models")).toBeInTheDocument();
-    expect(screen.getAllByRole("option")).toHaveLength(10);
-    expect(screen.getByText("Smallest and fastest")).toBeInTheDocument();
-    expect(screen.getByText("Largest and most accurate")).toBeInTheDocument();
-    expect(screen.getByRole("option", { name: /yolo11x/ })).toBeInTheDocument();
+    expect(optionsOf("Base model")).toHaveLength(10);
+    expect(optionNamed("Base model", /yolo26n/)).toHaveTextContent("Smallest and fastest");
+    expect(screen.getAllByText("Smallest and fastest")).toHaveLength(2);
+    expect(screen.getAllByText("Largest and most accurate")).toHaveLength(2);
+    expect(optionNamed("Base model", /yolo11x/)).toHaveTextContent("Largest and most accurate");
   });
 
   it("opens a segment project on the seg base", async () => {
@@ -77,7 +106,7 @@ describe("NewRunPage form", () => {
       }),
     });
 
-    expect(screen.getByLabelText("Base model")).toHaveValue("yolo26n-seg");
+    expect(selectInput("Base model")).toHaveValue("yolo26n-seg");
   });
 });
 
@@ -85,9 +114,11 @@ describe("NewRunPage devices", () => {
   it("offers Automatic and CPU only, with both hints, when no GPU was reported", async () => {
     const view = await openForm();
 
-    await view.user.click(screen.getByLabelText("Device"));
-    const options = await screen.findAllByRole("option");
-    expect(options.map((option) => option.textContent)).toEqual([DEFAULT_DEVICE, "CPU"]);
+    await view.user.click(selectInput("Device"));
+    expect(optionsOf("Device").map((option) => option.textContent)).toEqual([
+      DEFAULT_DEVICE,
+      "CPU",
+    ]);
     expect(screen.getByText("No GPU was detected, so training runs on the CPU.")).toBeInTheDocument();
     expect(screen.getByText(/Training on a CPU is slow/)).toBeInTheDocument();
   });
@@ -100,8 +131,8 @@ describe("NewRunPage devices", () => {
 
     expect(screen.queryByText("No GPU was detected, so training runs on the CPU.")).toBeNull();
     expect(screen.queryByText(/Training on a CPU is slow/)).toBeNull();
-    await view.user.click(screen.getByLabelText("Device"));
-    await view.user.click(await screen.findByRole("option", { name: "GPU 0: RTX 4090" }));
+    await view.user.click(selectInput("Device"));
+    await view.user.click(optionNamed("Device", "GPU 0: RTX 4090"));
     expect(screen.queryByText(/Training on a CPU is slow/)).toBeNull();
 
     await view.user.click(screen.getByRole("button", { name: "Start training" }));
@@ -115,8 +146,8 @@ describe("NewRunPage devices", () => {
     });
     const view = await openForm({ options });
 
-    await view.user.click(screen.getByLabelText("Device"));
-    await view.user.click(await screen.findByRole("option", { name: "CPU" }));
+    await view.user.click(selectInput("Device"));
+    await view.user.click(optionNamed("Device", "CPU"));
 
     expect(await screen.findByText(/Training on a CPU is slow/)).toBeInTheDocument();
   });
