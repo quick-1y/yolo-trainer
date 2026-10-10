@@ -118,11 +118,19 @@ export interface StubTrainingOptions {
   createResult?: Json;
   /** Status of the POST /runs response (default 201); anything else answers `createResult` as the error body. */
   createStatus?: number;
+  /** Status of DELETE /api/projects/1/runs/:id (default 204); anything else answers `removeDetail` as the error. */
+  removeStatus?: number;
+  /** `detail` of a failed DELETE (default: the API's 409 message). */
+  removeDetail?: string;
+  /** DELETE answers only after this promise settles, so a test can look at the pending state. */
+  removeGate?: Promise<void>;
 }
 
 export interface StubTrainingApi {
   /** Parsed JSON bodies of every POST /api/projects/1/runs, in order. */
   posts: Json[];
+  /** Paths of every DELETE /api/projects/1/runs/:id, in order. */
+  deletes: string[];
   /** "METHOD /path" of every request, in order. */
   requests: string[];
   /** How many requests matched exactly this "METHOD /path". */
@@ -136,6 +144,7 @@ export interface StubTrainingApi {
  */
 export function stubTrainingApi(stub: StubTrainingOptions = {}): StubTrainingApi {
   const posts: Json[] = [];
+  const deletes: string[] = [];
   const requests: string[] = [];
 
   const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
@@ -162,6 +171,24 @@ export function stubTrainingApi(stub: StubTrainingOptions = {}): StubTrainingApi
       return json(stub.createResult ?? makeRun({ id: 12, status: "preparing" }), status);
     }
     const runMatch = /^\/api\/projects\/1\/runs\/(\d+)$/.exec(path);
+    if (method === "DELETE" && runMatch !== null) {
+      deletes.push(path);
+      if (stub.removeGate !== undefined) {
+        await stub.removeGate;
+      }
+      const status = stub.removeStatus ?? 204;
+      if (status === 204) {
+        return new Response(null, { status: 204 });
+      }
+      return json(
+        {
+          detail:
+            stub.removeDetail ??
+            "This run has already started and can no longer be removed from the queue.",
+        },
+        status,
+      );
+    }
     if (method === "GET" && runMatch !== null) {
       const id = Number(runMatch[1]);
       const single = stub.run === undefined ? undefined : resolve(stub.run);
@@ -189,6 +216,7 @@ export function stubTrainingApi(stub: StubTrainingOptions = {}): StubTrainingApi
 
   return {
     posts,
+    deletes,
     requests,
     count: (request) => requests.filter((entry) => entry === request).length,
   };

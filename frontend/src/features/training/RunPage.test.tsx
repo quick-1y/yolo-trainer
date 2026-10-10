@@ -1,6 +1,12 @@
 import { act, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+vi.mock("@mantine/notifications", () => ({
+  notifications: { show: vi.fn() },
+}));
+
+import { notifications } from "@mantine/notifications";
+
 import { AppRoutes } from "../../app/routes";
 import { renderWithProviders } from "../../test/render";
 import { makeRun, stubTrainingApi } from "../../test/trainingApi";
@@ -53,6 +59,7 @@ function seconds(clock: string): number {
 
 afterEach(() => {
   vi.useRealTimers();
+  vi.mocked(notifications.show).mockClear();
 });
 
 describe("RunPage progress", () => {
@@ -293,5 +300,301 @@ describe("RunPage states", () => {
     const nav = await screen.findByRole("link", { name: "Training" });
     expect(nav).toHaveAttribute("data-active", "true");
     expect(within(nav).getByText("Training")).toBeInTheDocument();
+  });
+});
+
+function failed(overrides: Record<string, unknown> = {}) {
+  return makeRun({
+    id: 7,
+    name: "run-7",
+    status: "failed",
+    queue_position: null,
+    epoch: 3,
+    started_at: STARTED_AT,
+    finished_at: "2026-01-15T10:20:00Z",
+    error_message: "CUDA out of memory.",
+    log_tail: "epoch 1/3\nepoch 2/3\nCUDA out of memory.",
+    ...overrides,
+  });
+}
+
+function queued(overrides: Record<string, unknown> = {}) {
+  return makeRun({ id: 7, name: "run-7", status: "queued", queue_position: 2, ...overrides });
+}
+
+describe("RunPage failed run", () => {
+  it("shows the error message and keeps the log collapsed until Show log is clicked", async () => {
+    stubTrainingApi({ run: failed() });
+    const view = renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+
+    expect(await screen.findByText("Training failed")).toBeInTheDocument();
+    expect(screen.getByText("CUDA out of memory.", { selector: "div,p" })).toBeInTheDocument();
+    // Collapse may mount its hidden content a render pass later; either way it is not shown.
+    const hiddenTitle = screen.queryByText("Last log lines");
+    if (hiddenTitle !== null) {
+      expect(hiddenTitle).not.toBeVisible();
+    }
+    expect(screen.queryByRole("button", { name: "Copy log" })).toBeNull();
+
+    await view.user.click(screen.getByRole("button", { name: "Show log" }));
+
+    // Collapse reveals its content after a render pass.
+    await waitFor(() => expect(screen.getByText("Last log lines")).toBeVisible());
+    expect(screen.getByText(/epoch 1\/3/)).toBeVisible();
+    expect(await screen.findByRole("button", { name: "Copy log" })).toBeVisible();
+    expect(screen.getByRole("button", { name: "Hide log" })).toBeInTheDocument();
+  });
+
+  it("copies the log", async () => {
+    stubTrainingApi({ run: failed() });
+    const view = renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+
+    await view.user.click(await screen.findByRole("button", { name: "Show log" }));
+    await view.user.click(await screen.findByRole("button", { name: "Copy log" }));
+
+    expect(await screen.findByRole("button", { name: "Copied" })).toBeInTheDocument();
+    expect(await navigator.clipboard.readText()).toBe("epoch 1/3\nepoch 2/3\nCUDA out of memory.");
+  });
+
+  it("explains a missing error message and an empty log", async () => {
+    stubTrainingApi({ run: failed({ error_message: null, log_tail: null }) });
+    const view = renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+
+    expect(
+      await screen.findByText(
+        "The training process stopped without an error message. Check the log below.",
+      ),
+    ).toBeInTheDocument();
+    await view.user.click(screen.getByRole("button", { name: "Show log" }));
+    await waitFor(() => expect(screen.getByText("The log is empty.")).toBeVisible());
+    expect(screen.queryByRole("button", { name: "Copy log" })).toBeNull();
+  });
+
+  it("shows an empty-string log as empty too", async () => {
+    stubTrainingApi({ run: failed({ log_tail: "" }) });
+    const view = renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+
+    await view.user.click(await screen.findByRole("button", { name: "Show log" }));
+
+    await waitFor(() => expect(screen.getByText("The log is empty.")).toBeVisible());
+  });
+
+  it("renders log and message as text only, in a scrolling pre-wrap block", async () => {
+    const hostile = '<img src=x onerror="alert(1)">';
+    stubTrainingApi({ run: failed({ error_message: hostile, log_tail: `${hostile}\nline 2` }) });
+    const view = renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+
+    await view.user.click(await screen.findByRole("button", { name: "Show log" }));
+
+    expect(document.querySelector("img")).toBeNull();
+    const block = screen.getByText(/line 2/, { selector: "pre" });
+    expect(block).toHaveStyle({ maxHeight: "320px", overflow: "auto", whiteSpace: "pre-wrap" });
+    expect(block.textContent).toContain(hostile);
+  });
+});
+
+describe("RunPage interrupted and cancelled runs", () => {
+  it("explains a restart, the last epoch and offers a new run (no resume)", async () => {
+    stubTrainingApi({
+      run: makeRun({
+        id: 7,
+        name: "run-7",
+        status: "interrupted",
+        queue_position: null,
+        epoch: 7,
+        epochs: 50,
+        error_message: "The service was restarted while this run was training.",
+      }),
+    });
+    renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+
+    expect(await screen.findByText("Run interrupted")).toBeInTheDocument();
+    expect(
+      screen.getByText("The service was restarted while this run was training."),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Last completed epoch: 7 of 50.")).toBeInTheDocument();
+    expect(screen.getByText("Start a new run to train again.")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "New training" })).toHaveAttribute(
+      "href",
+      "/projects/1/training/new",
+    );
+    expect(screen.queryByRole("button", { name: /resume/i })).toBeNull();
+  });
+
+  it("omits the epoch line when the epoch is unknown", async () => {
+    stubTrainingApi({
+      run: makeRun({ id: 7, name: "run-7", status: "interrupted", queue_position: null, epoch: null }),
+    });
+    renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+
+    expect(await screen.findByText("Run interrupted")).toBeInTheDocument();
+    expect(screen.queryByText(/Last completed epoch/)).toBeNull();
+  });
+
+  it("shows a gray Run cancelled card", async () => {
+    stubTrainingApi({
+      run: makeRun({ id: 7, name: "run-7", status: "cancelled", queue_position: null }),
+    });
+    renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+
+    expect(await screen.findByText("Run cancelled")).toBeInTheDocument();
+    expect(screen.getByText("This run was cancelled before it finished.")).toBeInTheDocument();
+  });
+});
+
+function settingsRows(): Map<string, string> {
+  const card = screen.getByTestId("run-settings");
+  const rows = new Map<string, string>();
+  for (const term of card.querySelectorAll("dt")) {
+    rows.set(term.textContent ?? "", term.nextElementSibling?.textContent ?? "");
+  }
+  return rows;
+}
+
+describe("RunPage settings card", () => {
+  it("shows the frozen settings of a completed CPU run with the resolved values", async () => {
+    stubTrainingApi({
+      run: completed({
+        resolved: { device: "cpu", batch: 16, workers: 0 },
+        dataset_counts: { train: 120, valid: 30, test: 10 },
+        class_names: ["car", "plate"],
+      }),
+    });
+    renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+
+    expect(await screen.findByText("Settings used")).toBeInTheDocument();
+    const rows = settingsRows();
+    expect(rows.get("Base model")).toBe("yolo26n");
+    expect(rows.get("Epochs")).toBe("100");
+    expect(rows.get("Image size")).toBe("640");
+    expect(rows.get("Batch size")).toBe("Auto (16)");
+    expect(rows.get("Device")).toBe("Auto (CPU)");
+    expect(rows.get("Task type")).toBe("Detect");
+    expect(rows.get("Dataset")).toBe("Train 120 · Valid 30 · Test 10");
+    expect(rows.get("Classes")).toBe("car, plate");
+    expect(rows.has("Created")).toBe(true);
+    expect(rows.has("Started")).toBe(true);
+    expect(rows.has("Finished")).toBe(true);
+    expect(screen.getByText("car, plate")).toHaveAttribute("title", "car, plate");
+  });
+
+  it("shows a plain Auto before the worker resolved it and omits unknown times", async () => {
+    stubTrainingApi({
+      run: queued({ dataset_counts: { train: 5, valid: 2, test: 0 } }),
+    });
+    renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+
+    expect(await screen.findByText("Settings used")).toBeInTheDocument();
+    const rows = settingsRows();
+    expect(rows.get("Batch size")).toBe("Auto");
+    expect(rows.get("Device")).toBe("Auto");
+    expect(rows.has("Created")).toBe(true);
+    expect(rows.has("Started")).toBe(false);
+    expect(rows.has("Finished")).toBe(false);
+  });
+
+  it("shows explicit batch and GPU values as chosen", async () => {
+    stubTrainingApi({
+      run: completed({
+        settings: { epochs: 10, imgsz: 320, batch: 8, device: "0" },
+        resolved: { device: "0", batch: 8, workers: 2 },
+        dataset_counts: { train: 1, valid: 1, test: 0 },
+      }),
+    });
+    renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+
+    expect(await screen.findByText("Settings used")).toBeInTheDocument();
+    const rows = settingsRows();
+    expect(rows.get("Batch size")).toBe("8");
+    expect(rows.get("Device")).toBe("GPU 0");
+    expect(rows.get("Epochs")).toBe("10");
+  });
+
+  it("is also shown on failed runs and in Russian", async () => {
+    stubTrainingApi({ run: failed() });
+    renderWithProviders(<AppRoutes />, { route: RUN_PATH, language: "ru" });
+
+    expect(await screen.findByText("Использованные настройки")).toBeInTheDocument();
+    expect(await screen.findByText("Обучение не удалось")).toBeInTheDocument();
+  });
+});
+
+describe("RunPage remove from queue", () => {
+  it("opens a confirmation with Cancel focused, then removes the run and returns to the list", async () => {
+    const stub = stubTrainingApi({ run: queued(), runs: [] });
+    const view = renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+
+    await view.user.click(await screen.findByRole("button", { name: "Remove from queue" }));
+
+    const dialog = await screen.findByRole("dialog", { name: "Remove from queue" });
+    expect(
+      within(dialog).getByText(
+        'Run "run-7" will be removed from the queue and its prepared dataset will be deleted. This cannot be undone.',
+      ),
+    ).toBeInTheDocument();
+    await waitFor(() => expect(within(dialog).getByRole("button", { name: "Cancel" })).toHaveFocus());
+
+    await view.user.click(within(dialog).getByRole("button", { name: "Remove" }));
+
+    expect(await screen.findByText("No training runs yet")).toBeInTheDocument();
+    expect(stub.deletes).toEqual(["/api/projects/1/runs/7"]);
+    expect(notifications.show).toHaveBeenCalledWith(
+      expect.objectContaining({ color: "green", message: 'Run "run-7" was removed from the queue.' }),
+    );
+  });
+
+  it("disables both buttons while the request is pending", async () => {
+    let release: () => void = () => undefined;
+    const removeGate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    stubTrainingApi({ run: queued(), runs: [], removeGate });
+    const view = renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+
+    await view.user.click(await screen.findByRole("button", { name: "Remove from queue" }));
+    const dialog = await screen.findByRole("dialog", { name: "Remove from queue" });
+    await view.user.click(within(dialog).getByRole("button", { name: "Remove" }));
+
+    await waitFor(() => expect(within(dialog).getByRole("button", { name: "Cancel" })).toBeDisabled());
+    expect(within(dialog).getByRole("button", { name: /Remove/ })).toBeDisabled();
+
+    release();
+    expect(await screen.findByText("No training runs yet")).toBeInTheDocument();
+  });
+
+  it("keeps the modal open on a 409 with the API message and re-fetches the run on close", async () => {
+    const stub = stubTrainingApi({ run: queued(), removeStatus: 409 });
+    const view = renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+
+    await view.user.click(await screen.findByRole("button", { name: "Remove from queue" }));
+    const dialog = await screen.findByRole("dialog", { name: "Remove from queue" });
+    await view.user.click(within(dialog).getByRole("button", { name: "Remove" }));
+
+    expect(
+      await within(dialog).findByText(
+        "This run has already started and can no longer be removed from the queue.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "Remove from queue" })).toBeInTheDocument();
+    expect(notifications.show).not.toHaveBeenCalled();
+    const before = stub.count("GET /api/projects/1/runs/7");
+
+    await view.user.click(within(dialog).getByRole("button", { name: "Cancel" }));
+
+    await waitFor(() => expect(stub.count("GET /api/projects/1/runs/7")).toBe(before + 1));
+  });
+
+  it("offers no remove button for preparing, running or completed runs", async () => {
+    for (const run of [
+      makeRun({ id: 7, name: "run-7", status: "preparing", queue_position: null }),
+      running(),
+      completed(),
+    ]) {
+      stubTrainingApi({ run });
+      const view = renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+      await screen.findByText("Settings used");
+      expect(screen.queryByRole("button", { name: "Remove from queue" })).toBeNull();
+      view.unmount();
+    }
   });
 });

@@ -195,6 +195,20 @@ export function useCreateRun(projectId: number) {
   });
 }
 
+/** Take a queued run out of the queue (D-11); a 409 means the worker claimed it first. */
+export function useRemoveQueuedRun(projectId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (runId: number) =>
+      apiRequest<void>(`/projects/${projectId}/runs/${runId}`, { method: "DELETE" }),
+    onSuccess: (_data, runId) => {
+      queryClient.removeQueries({ queryKey: trainingKeys.run(projectId, runId) });
+      void queryClient.invalidateQueries({ queryKey: trainingKeys.runs(projectId) });
+      void queryClient.invalidateQueries({ queryKey: projectKeys.detail(projectId) });
+    },
+  });
+}
+
 /** A plain GET target for `<a href download>`; never fetched as a blob (MODL-04). */
 export function modelDownloadUrl(modelId: number): string {
   return `/api/models/${modelId}/download`;

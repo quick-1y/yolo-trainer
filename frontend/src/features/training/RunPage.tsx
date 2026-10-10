@@ -21,7 +21,10 @@ import { ApiError } from "../../api/client";
 import type { Project } from "../../api/projects";
 import { modelDownloadUrl, useRun } from "../../api/training";
 import type { RunDetail, RunStatus } from "../../api/training";
+import { RemoveFromQueueModal } from "./RemoveFromQueueModal";
+import { RunFailureLog } from "./RunFailureLog";
 import { RunMetrics } from "./RunMetrics";
+import { RunSettingsCard } from "./RunSettingsCard";
 import { RunStatusBadge } from "./RunStatusBadge";
 
 interface ProjectOutletContext {
@@ -67,6 +70,7 @@ export function RunPage() {
   const params = useParams<{ runId: string }>();
   const runId = parseRunId(params.runId);
   const query = useRun(project.id, runId);
+  const [removeOpened, setRemoveOpened] = useState(false);
   const listPath = `/projects/${project.id}/training`;
 
   const isNotFound =
@@ -138,9 +142,27 @@ export function RunPage() {
             {t("training:run.download")}
           </Button>
         ) : null}
+        {run.status === "queued" ? (
+          <Button variant="light" color="red" onClick={() => setRemoveOpened(true)}>
+            {t("training:run.remove.open")}
+          </Button>
+        ) : null}
       </Group>
       <StatusCard run={run} />
+      <RunSettingsCard run={run} />
       <StatusAnnouncer status={run.status} />
+      {run.status === "queued" ? (
+        <RemoveFromQueueModal
+          projectId={project.id}
+          run={run}
+          opened={removeOpened}
+          onClose={() => {
+            setRemoveOpened(false);
+            // The worker may have claimed the run while the modal was open.
+            void query.refetch();
+          }}
+        />
+      ) : null}
     </Stack>
   );
 }
@@ -171,16 +193,63 @@ function StatusAnnouncer({ status }: { status: RunStatus }) {
   );
 }
 
+function FailedAlert({ run }: { run: RunDetail }) {
+  const { t } = useTranslation("training");
+  return (
+    <Alert
+      color="red"
+      title={<Text fz={14} fw={600}>{t("run.failed.title")}</Text>}
+    >
+      <Stack gap={8}>
+        <Text size="sm" style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>
+          {run.error_message !== null && run.error_message !== ""
+            ? run.error_message
+            : t("run.failed.noMessage")}
+        </Text>
+        <RunFailureLog log={run.log_tail} />
+      </Stack>
+    </Alert>
+  );
+}
+
+function InterruptedAlert({ run }: { run: RunDetail }) {
+  const { t } = useTranslation("training");
+  return (
+    <Alert color="orange" title={t("run.interrupted.title")}>
+      <Stack gap={8} align="flex-start">
+        <Text size="sm">{t("run.interrupted.body")}</Text>
+        {run.epoch !== null ? (
+          <Text size="sm" style={TABULAR}>
+            {t("run.interrupted.reached", { epoch: run.epoch, epochs: run.epochs ?? run.settings.epochs })}
+          </Text>
+        ) : null}
+        <Text size="sm">{t("run.interrupted.action")}</Text>
+        <Button variant="default" component={Link} to="../new" relative="path">
+          {t("page.new")}
+        </Button>
+      </Stack>
+    </Alert>
+  );
+}
+
+function CancelledAlert() {
+  const { t } = useTranslation("training");
+  return (
+    <Alert color="gray" title={t("run.cancelled.title")}>
+      <Text size="sm">{t("run.cancelled.body")}</Text>
+    </Alert>
+  );
+}
+
 function StatusCard({ run }: { run: RunDetail }) {
-  // Failed, interrupted and cancelled runs get their own cards in Plan 04-07; the badge
-  // in the header already carries the status.
-  if (
-    run.status !== "preparing" &&
-    run.status !== "queued" &&
-    run.status !== "running" &&
-    run.status !== "completed"
-  ) {
-    return null;
+  if (run.status === "failed") {
+    return <FailedAlert run={run} />;
+  }
+  if (run.status === "interrupted") {
+    return <InterruptedAlert run={run} />;
+  }
+  if (run.status === "cancelled") {
+    return <CancelledAlert />;
   }
   return (
     <Paper p={16} radius={8} style={{ background: "var(--mantine-color-dark-6)" }}>

@@ -14,7 +14,7 @@ import re
 import unicodedata
 
 from fastapi import HTTPException
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -49,6 +49,7 @@ from yolo_trainer_common.progress import primary_metrics
 logger = logging.getLogger(__name__)
 
 RUN_NOT_FOUND_DETAIL = "Run not found."
+RUN_NOT_QUEUED_DETAIL = "This run has already started and can no longer be removed from the queue."
 NO_CLASSES_DETAIL = "Add at least one class before training."
 TRAIN_EMPTY_DETAIL = "No annotated images are assigned to Train."
 VALID_EMPTY_DETAIL = "No annotated images are assigned to Valid."
@@ -201,6 +202,37 @@ async def queue_positions(session: AsyncSession) -> dict[int, int]:
         )
     ).scalars()
     return {run_id: position for position, run_id in enumerate(ids, start=1)}
+
+
+async def remove_queued_run(
+    session: AsyncSession, settings: Settings, project_id: int, run_id: int
+) -> None:
+    """Take a `queued` run out of the queue (D-11); anything else is refused with 409.
+
+    One DELETE guarded by `status = 'queued'` races the worker's claim, which is one
+    UPDATE guarded by the same condition, so exactly one of the two can win. The row goes
+    first and the files after; a leftover folder is swept by the startup cleanup.
+    """
+    result = await session.execute(
+        delete(TrainingRun).where(
+            TrainingRun.id == run_id,
+            TrainingRun.project_id == project_id,
+            TrainingRun.status == "queued",
+        )
+    )
+    await session.commit()
+    if result.rowcount == 0:
+        exists = (
+            await session.execute(
+                select(TrainingRun.id).where(
+                    TrainingRun.id == run_id, TrainingRun.project_id == project_id
+                )
+            )
+        ).scalar_one_or_none()
+        if exists is None:
+            raise HTTPException(status_code=404, detail=RUN_NOT_FOUND_DETAIL)
+        raise HTTPException(status_code=409, detail=RUN_NOT_QUEUED_DETAIL)
+    await _remove_folder(settings, run_id)
 
 
 def model_download_name(project_name: str | None, model_name: str) -> str:

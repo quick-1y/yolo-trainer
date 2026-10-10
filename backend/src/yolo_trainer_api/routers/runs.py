@@ -6,7 +6,7 @@ The router has the `/api` prefix and absolute sub-paths so later plans can add
 
 from __future__ import annotations
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -63,6 +63,22 @@ async def list_runs(
 ) -> list[RunSummary]:
     await get_project_or_404(session, project_id)
     return await service.run_summaries(session, project_id)
+
+
+@router.delete(
+    "/projects/{project_id}/runs/{run_id}",
+    status_code=204,
+    dependencies=[Depends(require_xhr)],
+)
+async def remove_run(
+    project_id: int,
+    run_id: int,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+) -> Response:
+    await get_project_or_404(session, project_id)
+    await service.remove_queued_run(session, request.app.state.settings, project_id, run_id)
+    return Response(status_code=204)
 
 
 @router.get("/projects/{project_id}/runs/{run_id}", response_model=RunRead)
