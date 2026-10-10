@@ -1,0 +1,201 @@
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+
+import { ApiError, apiRequest } from "./client";
+import type { TaskType } from "./projects";
+import { projectKeys } from "./projects";
+
+export type RunStatus =
+  | "preparing"
+  | "queued"
+  | "running"
+  | "completed"
+  | "failed"
+  | "interrupted"
+  | "cancelled";
+
+/** Statuses in which a run still changes on its own, so the UI keeps polling (D-17). */
+export const ACTIVE_RUN_STATUSES: readonly RunStatus[] = ["preparing", "queued", "running"];
+
+export function isActiveRunStatus(status: RunStatus): boolean {
+  return ACTIVE_RUN_STATUSES.includes(status);
+}
+
+export type DeviceChoice = "auto" | "cpu" | "0";
+
+export type QualityLevel = "excellent" | "good" | "fair" | "poor";
+
+export interface RunSettings {
+  epochs: number;
+  imgsz: number;
+  /** -1 means "auto". */
+  batch: number;
+  device: DeviceChoice;
+}
+
+export interface RunResolved {
+  device: string;
+  batch: number;
+  workers: number;
+}
+
+export interface DatasetCounts {
+  train: number;
+  valid: number;
+  test: number;
+}
+
+export interface RunMetrics {
+  precision: number | null;
+  recall: number | null;
+  map50: number | null;
+  map50_95: number | null;
+}
+
+export interface RunModelRef {
+  id: number;
+  file_name: string;
+  size_bytes: number;
+  ultralytics_version: string | null;
+}
+
+export interface RunSummary {
+  id: number;
+  project_id: number;
+  name: string;
+  status: RunStatus;
+  queue_position: number | null;
+  task_type: TaskType;
+  base_kind: "official" | "model";
+  base_name: string;
+  epoch: number | null;
+  epochs: number | null;
+  last_map50: number | null;
+  map50: number | null;
+  created_at: string;
+  started_at: string | null;
+  finished_at: string | null;
+  model: RunModelRef | null;
+  /** Verdict on mAP50 computed by the server (null while there is no final mAP50). */
+  quality: QualityLevel | null;
+}
+
+export interface RunDetail extends RunSummary {
+  settings: RunSettings;
+  resolved: RunResolved | null;
+  dataset_counts: DatasetCounts | null;
+  class_names: string[] | null;
+  metrics: RunMetrics | null;
+  error_message: string | null;
+  log_tail: string | null;
+}
+
+export interface OfficialModelOption {
+  name: string;
+  /** "n" | "s" | "m" | "l" | "x" */
+  size: string;
+}
+
+export interface TrainingDefaults {
+  epochs: number;
+  imgsz: number;
+  batch: number;
+  device: DeviceChoice;
+}
+
+export interface GpuOption {
+  index: number;
+  name: string;
+}
+
+export interface TrainingDevices {
+  gpus: GpuOption[];
+  worker_fresh: boolean;
+}
+
+export interface TrainingOptions {
+  task_type: TaskType;
+  next_run_name: string;
+  official: OfficialModelOption[];
+  default_base: string;
+  defaults: TrainingDefaults;
+  devices: TrainingDevices;
+}
+
+export interface RunCreateInput {
+  name?: string;
+  base: { kind: "official"; name: string };
+  epochs: number;
+  imgsz: number;
+  /** -1 means "auto". */
+  batch: number;
+  device: DeviceChoice;
+}
+
+/** How often run lists and run pages refetch while a run is preparing, queued or running. */
+export const RUN_POLL_INTERVAL_MS = 3000;
+
+export const trainingKeys = {
+  runs: (projectId: number) => ["runs", projectId] as const,
+  run: (projectId: number, runId: number) => ["run", projectId, runId] as const,
+  options: (projectId: number) => ["trainingOptions", projectId] as const,
+};
+
+function isNotFound(error: unknown): boolean {
+  return error instanceof ApiError && error.status === 404;
+}
+
+export function useRuns(projectId: number) {
+  return useQuery({
+    queryKey: trainingKeys.runs(projectId),
+    queryFn: () => apiRequest<RunSummary[]>(`/projects/${projectId}/runs`),
+    refetchInterval: (query) =>
+      query.state.data?.some((run) => isActiveRunStatus(run.status)) ? RUN_POLL_INTERVAL_MS : false,
+  });
+}
+
+export function useRun(projectId: number, runId: number | null) {
+  return useQuery({
+    queryKey: trainingKeys.run(projectId, runId ?? 0),
+    queryFn: () => apiRequest<RunDetail>(`/projects/${projectId}/runs/${runId}`),
+    enabled: runId !== null,
+    // A missing run will not appear by retrying; show "Run not found" at once.
+    retry: (failureCount, error) => !isNotFound(error) && failureCount < 2,
+    refetchInterval: (query) => {
+      if (isNotFound(query.state.error)) {
+        return false;
+      }
+      const run = query.state.data;
+      return run !== undefined && isActiveRunStatus(run.status) ? RUN_POLL_INTERVAL_MS : false;
+    },
+  });
+}
+
+export function useTrainingOptions(projectId: number) {
+  return useQuery({
+    queryKey: trainingKeys.options(projectId),
+    queryFn: () => apiRequest<TrainingOptions>(`/projects/${projectId}/training/options`),
+    // The form reads a fresh worker heartbeat and run name on every visit.
+    staleTime: 0,
+    gcTime: 0,
+  });
+}
+
+export function useCreateRun(projectId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (input: RunCreateInput) =>
+      apiRequest<RunDetail>(`/projects/${projectId}/runs`, {
+        method: "POST",
+        body: JSON.stringify(input),
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: trainingKeys.runs(projectId) });
+      void queryClient.invalidateQueries({ queryKey: projectKeys.detail(projectId) });
+    },
+  });
+}
+
+/** A plain GET target for `<a href download>`; never fetched as a blob (MODL-04). */
+export function modelDownloadUrl(modelId: number): string {
+  return `/api/models/${modelId}/download`;
+}

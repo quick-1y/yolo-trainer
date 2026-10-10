@@ -17,6 +17,8 @@ from pydantic import (
     model_validator,
 )
 
+from yolo_trainer_common.quality import quality_level
+
 TaskType = Literal["detect", "segment"]
 
 # U+0000-U+001F (C0 controls) and U+007F (DEL). Rejected in names to keep
@@ -395,6 +397,7 @@ RunStatus = Literal[
 ACTIVE_RUN_STATUSES = ("preparing", "queued", "running")
 
 DeviceChoice = Literal["auto", "cpu", "0"]
+QualityLevel = Literal["excellent", "good", "fair", "poor"]
 
 
 def _utc_iso(value: datetime | None) -> str | None:
@@ -496,6 +499,14 @@ class RunSummary(BaseModel):
     finished_at: datetime | None = None
     model: RunModelRef | None = None
 
+    @computed_field  # type: ignore[prop-decorator]
+    @property
+    def quality(self) -> QualityLevel | None:
+        """Verdict on the task's primary metric, mAP50 (RESEARCH Open Question 4)."""
+        if self.map50 is None:
+            return None
+        return quality_level(self.map50)  # type: ignore[return-value]
+
     @field_serializer("created_at", "started_at", "finished_at")
     def _serialize_utc(self, value: datetime | None) -> str | None:
         return _utc_iso(value)
@@ -509,3 +520,39 @@ class RunRead(RunSummary):
     metrics: RunMetrics | None = None
     error_message: str | None = None
     log_tail: str | None = None
+
+
+# --------------------------------------------------------------------------
+# Training start form (options)
+# --------------------------------------------------------------------------
+
+
+class OfficialModelOption(BaseModel):
+    name: str
+    size: Literal["n", "s", "m", "l", "x"]
+
+
+class TrainingDefaults(BaseModel):
+    epochs: int
+    imgsz: int
+    batch: int
+    device: DeviceChoice
+
+
+class GpuOption(BaseModel):
+    index: int
+    name: str
+
+
+class TrainingDevices(BaseModel):
+    gpus: list[GpuOption]
+    worker_fresh: bool
+
+
+class TrainingOptions(BaseModel):
+    task_type: TaskType
+    next_run_name: str
+    official: list[OfficialModelOption]
+    default_base: str
+    defaults: TrainingDefaults
+    devices: TrainingDevices

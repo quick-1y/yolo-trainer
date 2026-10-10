@@ -13,9 +13,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from yolo_trainer_api.db import get_session
 from yolo_trainer_api.models import TrainingRun
 from yolo_trainer_api.routers.projects import get_project_or_404
-from yolo_trainer_api.schemas import RunCreate, RunRead, RunSummary
+from yolo_trainer_api.schemas import RunCreate, RunRead, RunSummary, TrainingOptions
 from yolo_trainer_api.security import require_xhr
 from yolo_trainer_api.training import service
+from yolo_trainer_api.training.options import build_options, ensure_device_available
 
 router = APIRouter(prefix="/api", tags=["training"])
 
@@ -34,6 +35,7 @@ async def start_run(
     session: AsyncSession = Depends(get_session),
 ) -> RunRead:
     project = await get_project_or_404(session, project_id)
+    ensure_device_available(request.app.state.settings, payload.device)
     run, snapshot = await service.create_run(session, project, payload)
     # Hard links and label files cost milliseconds per image on a bind mount, so the
     # dataset is built after the response; the run is `preparing` until then (Pitfall 4).
@@ -45,6 +47,14 @@ async def start_run(
     )
     await session.refresh(run)
     return await service.run_read(session, run)
+
+
+@router.get("/projects/{project_id}/training/options", response_model=TrainingOptions)
+async def get_training_options(
+    project_id: int, request: Request, session: AsyncSession = Depends(get_session)
+) -> TrainingOptions:
+    project = await get_project_or_404(session, project_id)
+    return await build_options(session, request.app.state.settings, project)
 
 
 @router.get("/projects/{project_id}/runs", response_model=list[RunSummary])
