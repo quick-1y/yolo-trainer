@@ -51,6 +51,10 @@ Everything the app stores (the SQLite database today; images, models, and traini
 - Can be **backed up** by stopping the stack (`docker compose down`) and copying the folder.
 - On Linux, files inside it are owned by `root`, because the containers run as root.
 - Holds uploaded images in `data/projects/<project id>/images/`, with thumbnails in `data/projects/<project id>/thumbs/`. Originals are stored exactly as uploaded.
+- Holds each training run in `data/runs/<run id>/`: the dataset snapshot (hard-linked images, labels, `data.yaml`, `manifest.json`), the progress and log files, and the run's weights.
+- Holds every model you can download in `data/models/<model id>.pt`.
+- Holds the official base weights the service downloaded (for example `yolo26n.pt`) in `data/weights/`.
+- Deletes a project's runs and models together with the project.
 - Has **no disk quota**: uploading many large images can fill the disk, so keep an eye on free space.
 
 ## Annotating images
@@ -63,6 +67,47 @@ Open an image by clicking its tile on the project's **Images** page; the grid's 
 - **Image statuses:** *unannotated* (no boxes), *annotated* (at least one box, or marked as background), *reviewed* (you marked it as checked) and *background*. Only images you explicitly mark as **background** (`G`) count as "no objects" for training; an unannotated image is **not** background, and a later training export will not treat it as one.
 - An image can have at most 2000 boxes.
 - If the editor reports an **orientation mismatch** for an image, your browser shows it rotated differently from how it was stored (for example a WebP with EXIF rotation), so boxes would land in the wrong place and that image cannot be annotated in that browser.
+
+## Training a model
+
+### Assigning splits
+
+Every image belongs to one split: **Train**, **Valid**, **Test**, or none. Training needs annotated images in both Train and Valid.
+
+- **By hand:** select images on the Images grid and use **Set split**, or change a single image's split from the menu in the editor's top bar (this does not touch its save indicator or status).
+- **Automatically:** **Split dataset** shows a ratio preview and asks for confirmation before it assigns anything.
+- Only images with at least one box, or explicitly marked as background, are used for training. Unannotated images are left out even if they have a split, and images without a split are left out too.
+
+### Starting a run
+
+Open the project's **Training** section and click **New training**. The defaults are: base model `yolo26n` (`yolo26n-seg` for a `segment` project), 100 epochs, image size 640, batch size **Auto** (16 on a CPU) and device **Automatic**. A model you trained earlier in this service can be the base instead of an official one. **Start training** stays disabled, with the reasons shown, until Train and Valid both have annotated images.
+
+- **One run at a time.** Other runs wait in the queue, in order, and can be removed while they are queued.
+- **Closing the browser does not affect a run.** Reopen the run page to see the progress.
+- **Restarts:** restarting the worker (or the whole stack) marks a running run **interrupted** and keeps the queued runs. Restarting only the `api` does not interrupt a running run.
+- **First use of an official model downloads it** into `data/weights/`. On a host without internet access, place the file there yourself first, for example `data/weights/yolo26n.pt`.
+- **Training on a CPU is slow.** For a first try use a small model, few epochs and a small image size.
+- Ultralytics usage analytics are switched off for training runs.
+
+### Downloading the model
+
+When a run completes, download its model from the run page or from the run list as `<project>_<run>_best.pt`. Load it the same way the downstream project loads `trained_models/best.pt`:
+
+```python
+from ultralytics import YOLO
+
+YOLO("plates_run-3_best.pt").predict("image.jpg")
+```
+
+Check a downloaded file with the same plain `YOLO(path)` load and one prediction:
+```bash
+uv run python scripts/verify_model_download.py plates_run-3_best.pt --image image.jpg
+```
+It prints the model's task and class names and ends with `OK`. Without `--image` it predicts on a blank frame.
+
+- The downstream project needs an Ultralytics version that supports the base model family. The file records the Ultralytics version that trained it (8.4.159); YOLO26 needs Ultralytics 8.4 or newer.
+- The `.pt` embeds the server's internal file paths (dataset, project and model locations) in its training arguments. This is harmless for loading and only informational.
+- A `.pt` file is a pickle and can execute code when loaded — see the [security notice](#security-notice--read-before-you-run-this).
 
 ## Configuration
 
@@ -129,10 +174,14 @@ bash scripts/fresh_clone_check.sh
 Individual checks:
 ```bash
 uv run pytest backend/tests                    # backend unit/API tests
+uv run pytest -m training backend/tests         # real CPU training tests (need yolo26n.pt in the repo root, or internet)
 uv run ruff check backend                       # backend lint
 uv run ruff format --check backend              # backend format check
 uv run ruff check scripts/seed_images.py        # seed script lint
 uv run ruff format --check scripts/seed_images.py  # seed script format check
+uv run ruff check scripts/verify_model_download.py        # model check script lint
+uv run ruff format --check scripts/verify_model_download.py  # model check script format check
+uv run python scripts/verify_model_download.py <file.pt> --image <image>  # load a downloaded model with YOLO(path) and predict once
 npm --prefix frontend run test -- --run         # frontend unit tests
 npm --prefix frontend run build                 # frontend type-check + production build
 bash scripts/compose_smoke_test.sh              # full Docker stack end-to-end check (its own data dir, port 18080)
@@ -172,6 +221,12 @@ Known limitations:
 3. Add `SQLITE_JOURNAL_MODE=DELETE` to `.env` (trades some concurrent-read throughput for removing the cross-VM WAL coherency dependency)
 4. Restart: `docker compose up`
 
+`SQLITE_JOURNAL_MODE` in `.env` applies to both the `api` and the `worker`, so both always use the same mode. On macOS hosts, if the database reports corruption, set it to `DELETE`.
+
+**"The training worker is not responding"** — A run is queued but nothing picks it up. Check that the worker is up with `docker compose ps`, then read its output with `docker compose logs worker`. Restarting it with `docker compose restart worker` is safe: queued runs are kept.
+
+**A run failed with "Could not download …"** — The worker could not fetch the official base weights. Either give the host internet access, or place the file in `data/weights/` yourself (for example `data/weights/yolo26n.pt`) and start the run again.
+
 **Port 8080 already in use** — Set a different `PORT` in `.env` and restart.
 
 **"Invalid host header" (HTTP 400)** — Add the host/IP you're connecting from to `ALLOWED_HOSTS` in `.env`.
@@ -182,7 +237,7 @@ Known limitations:
 backend/     FastAPI app, worker entrypoint, shared helper module, tests, pyproject.toml
 frontend/    React + Vite + Mantine single-page app
 docker/      Dockerfiles and nginx config
-scripts/     Full-suite, compose smoke-test, fresh-clone, legacy CLI git-clean check, and large-project seed scripts
+scripts/     Full-suite, compose smoke-test, fresh-clone, legacy CLI git-clean check, large-project seed, and downloaded-model check (`verify_model_download.py`) scripts
 config/      config.ini for the legacy CLI scripts
 docs/        Background/reference documentation
 spikes/      Phase 0 architecture-validation spike scripts (results in docs/phase-0-decisions.md)
