@@ -6,18 +6,29 @@ import asyncio
 import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Request
-from sqlalchemy import select
+from sqlalchemy import delete, exists, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from yolo_trainer_api.db import get_session
-from yolo_trainer_api.models import Project
-from yolo_trainer_api.schemas import ProjectCreate, ProjectRead, ProjectUpdate
-from yolo_trainer_api.storage import remove_project_dir
+from yolo_trainer_api.models import Project, TrainedModel, TrainingRun
+from yolo_trainer_api.schemas import (
+    ACTIVE_RUN_STATUSES,
+    ProjectCreate,
+    ProjectRead,
+    ProjectUpdate,
+)
+from yolo_trainer_api.settings import Settings
+from yolo_trainer_api.storage import remove_model_file, remove_project_dir, remove_run_dir
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/projects", tags=["projects"])
+
+PROJECT_HAS_ACTIVE_RUN_DETAIL = (
+    "A training run is active or queued for this project. "
+    "Wait for it to finish or remove it from the queue."
+)
 
 
 @router.get("", response_model=list[ProjectRead])
@@ -105,17 +116,75 @@ async def update_project(
     return project
 
 
+def _remove_project_files(
+    settings: Settings, project_id: int, run_ids: list[int], model_ids: list[int]
+) -> None:
+    """Delete the folders and files of a project that is already gone from the database.
+
+    Every failure is logged and skipped: the next startup cleanup removes leftovers.
+    """
+    try:
+        remove_project_dir(settings, project_id)
+    except Exception:
+        logger.exception("Could not remove the folder of deleted project %s", project_id)
+    for run_id in run_ids:
+        try:
+            remove_run_dir(settings, run_id)
+        except Exception:
+            logger.exception(
+                "Could not remove the folder of run %s of deleted project %s", run_id, project_id
+            )
+    for model_id in model_ids:
+        try:
+            remove_model_file(settings, model_id)
+        except Exception:
+            logger.exception(
+                "Could not remove the file of model %s of deleted project %s", model_id, project_id
+            )
+
+
 @router.delete("/{project_id}", status_code=204)
 async def delete_project(
     project_id: int, request: Request, session: AsyncSession = Depends(get_session)
 ) -> None:
-    project = await get_project_or_404(session, project_id)
-    await session.delete(project)
-    # D-19: the database is the source of truth - rows first (FK cascade takes
-    # the images and classes rows with them), then the files.
+    await get_project_or_404(session, project_id)
+    # The ids are collected BEFORE the delete: the cascade takes the rows with it, and
+    # the files are removed by id afterwards.
+    run_ids = list(
+        (await session.execute(select(TrainingRun.id).where(TrainingRun.project_id == project_id)))
+        .scalars()
+        .all()
+    )
+    model_ids = list(
+        (
+            await session.execute(
+                select(TrainedModel.id).where(TrainedModel.project_id == project_id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    # D-21: ONE guarded statement closes the race with a run being queued or claimed
+    # between the lookup and the delete - the check and the delete cannot be separated.
+    active_run = exists().where(
+        TrainingRun.project_id == project_id,
+        TrainingRun.status.in_(ACTIVE_RUN_STATUSES),
+    )
+    result = await session.execute(
+        delete(Project)
+        .where(Project.id == project_id, ~active_run)
+        .execution_options(synchronize_session=False)
+    )
+    if result.rowcount == 0:
+        await session.rollback()
+        still_there = await session.execute(select(Project.id).where(Project.id == project_id))
+        if still_there.scalar_one_or_none() is None:
+            raise HTTPException(status_code=404, detail="Project not found.")
+        raise HTTPException(status_code=409, detail=PROJECT_HAS_ACTIVE_RUN_DETAIL)
+    # D-19: the database is the source of truth - rows first (FK cascade takes the images,
+    # classes, annotations, runs and models rows with them and clears other projects' base
+    # model references), then the files.
     await session.commit()
-    try:
-        await asyncio.to_thread(remove_project_dir, request.app.state.settings, project_id)
-    except Exception:
-        # The project is already gone; the next startup cleanup removes leftovers.
-        logger.exception("Could not remove the folder of deleted project %s", project_id)
+    await asyncio.to_thread(
+        _remove_project_files, request.app.state.settings, project_id, run_ids, model_ids
+    )
