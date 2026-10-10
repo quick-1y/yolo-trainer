@@ -94,6 +94,8 @@ interface EditorApiOptions {
   split?: "train" | "valid" | "test" | null;
   /** POST /images/split answers 500 with this message (until `setSplitError(null)`). */
   splitError?: string;
+  /** GET /api/training/active (an `ActiveRun` or null = nothing is training); default null. */
+  activeRun?: unknown;
 }
 
 function json(body: unknown, status = 200): Response {
@@ -288,6 +290,9 @@ export function stubEditorApi(options: EditorApiOptions = {}) {
         currentSplit = body.split;
       }
       return json({ updated: body.ids.length });
+    }
+    if (method === "GET" && path === "/api/training/active") {
+      return json(options.activeRun ?? null);
     }
     throw new Error(`Unexpected request: ${method} ${path}`);
   });
