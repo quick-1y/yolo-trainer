@@ -1,4 +1,4 @@
-import { Group, Text } from "@mantine/core";
+import { Group, Stack, Text } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 
 import { useStatusCounts } from "../../api/images";
@@ -6,8 +6,9 @@ import { useStatusCounts } from "../../api/images";
 /**
  * How far the whole project is annotated, whatever the grid's search shows (D-17).
  * `done` counts annotated, reviewed and background images alike: everything but unannotated.
- * Nothing renders while the counts load, when they fail, or for a project without images;
- * "Annotate next" does not depend on this row, the server resolves it.
+ * A second line under it gives the per-split counts. Nothing renders while the counts
+ * load, when they fail, or for a project without images; "Annotate next" does not depend
+ * on this row, the server resolves it.
  */
 export function StatusSummary({ projectId }: { projectId: number }) {
   const { t, i18n } = useTranslation("images");
@@ -15,38 +16,44 @@ export function StatusSummary({ projectId }: { projectId: number }) {
   if (counts.data === undefined || counts.data.total === 0) {
     return null;
   }
-  const { total, unannotated, reviewed } = counts.data;
+  const { total, unannotated, reviewed, splits } = counts.data;
   const format = new Intl.NumberFormat(i18n.language);
   return (
-    <Group
-      data-testid="status-summary"
-      wrap="wrap"
-      gap={4}
-      mt={8}
-      style={{ fontVariantNumeric: "tabular-nums" }}
-    >
-      <Text size="sm" c="dark.1">
-        {t("summary.progress", {
-          done: format.format(total - unannotated),
-          total: format.format(total),
-        })}
-      </Text>
-      <Text size="sm" c="dark.1" aria-hidden>
-        {" · "}
-      </Text>
-      <Text size="sm" c="dark.1">
-        {t("summary.reviewed", { count: format.format(reviewed) })}
-      </Text>
-      {unannotated === 0 && (
-        <>
-          <Text size="sm" c="dark.1" aria-hidden>
-            {" · "}
-          </Text>
-          <Text size="sm" c="dark.1">
-            {t("summary.allDone")}
-          </Text>
-        </>
-      )}
-    </Group>
+    <Stack gap={4} mt={8}>
+      <Group data-testid="status-summary" wrap="wrap" gap={4} style={{ fontVariantNumeric: "tabular-nums" }}>
+        <Text size="sm" c="dark.1">
+          {t("summary.progress", {
+            done: format.format(total - unannotated),
+            total: format.format(total),
+          })}
+        </Text>
+        <Text size="sm" c="dark.1" aria-hidden>
+          {" · "}
+        </Text>
+        <Text size="sm" c="dark.1">
+          {t("summary.reviewed", { count: format.format(reviewed) })}
+        </Text>
+        {unannotated === 0 && (
+          <>
+            <Text size="sm" c="dark.1" aria-hidden>
+              {" · "}
+            </Text>
+            <Text size="sm" c="dark.1">
+              {t("summary.allDone")}
+            </Text>
+          </>
+        )}
+      </Group>
+      <Group data-testid="split-summary" wrap="wrap" gap={4} style={{ fontVariantNumeric: "tabular-nums" }}>
+        <Text size="sm" c="dark.1">
+          {t("summary.splits", {
+            train: format.format(splits.train),
+            valid: format.format(splits.valid),
+            test: format.format(splits.test),
+            none: format.format(splits.none),
+          })}
+        </Text>
+      </Group>
+    </Stack>
   );
 }
