@@ -59,11 +59,51 @@
       "duration": "Duration: {{time}}"
     },
     "failed": {
-      "title": "Training failed"
+      "title": "Training failed",
+      "noMessage": "The training process stopped without an error message. Check the log below."
+    },
+    "log": {
+      "show": "Show log",
+      "hide": "Hide log",
+      "title": "Last log lines",
+      "copy": "Copy log",
+      "copied": "Copied",
+      "empty": "The log is empty."
     },
     "interrupted": {
-      "title": "Run interrupted"
+      "title": "Run interrupted",
+      "body": "The service was restarted while this run was training.",
+      "reached": "Last completed epoch: {{epoch}} of {{epochs}}.",
+      "action": "Start a new run to train again."
+    },
+    "cancelled": {
+      "title": "Run cancelled",
+      "body": "This run was cancelled before it finished."
+    },
+    "remove": {
+      "open": "Remove from queue",
+      "title": "Remove from queue",
+      "body": "Run \"{{name}}\" will be removed from the queue and its prepared dataset will be deleted. This cannot be undone.",
+      "confirm": "Remove",
+      "done": "Run \"{{name}}\" was removed from the queue."
     }
+  },
+  "settings": {
+    "title": "Settings used",
+    "base": "Base model",
+    "epochs": "Epochs",
+    "imgsz": "Image size",
+    "batch": "Batch size",
+    "device": "Device",
+    "task": "Task type",
+    "dataset": "Dataset",
+    "classes": "Classes",
+    "created": "Created",
+    "started": "Started",
+    "finished": "Finished",
+    "auto": "Auto ({{value}})",
+    "autoPending": "Auto",
+    "dataset_counts": "Train {{train}} · Valid {{valid}} · Test {{test}}"
   },
   "metrics": {
     "precision": "Precision",

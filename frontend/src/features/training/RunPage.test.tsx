@@ -329,13 +329,19 @@ describe("RunPage failed run", () => {
 
     expect(await screen.findByText("Training failed")).toBeInTheDocument();
     expect(screen.getByText("CUDA out of memory.", { selector: "div,p" })).toBeInTheDocument();
-    expect(screen.getByText("Last log lines")).not.toBeVisible();
+    // Collapse may mount its hidden content a render pass later; either way it is not shown.
+    const hiddenTitle = screen.queryByText("Last log lines");
+    if (hiddenTitle !== null) {
+      expect(hiddenTitle).not.toBeVisible();
+    }
+    expect(screen.queryByRole("button", { name: "Copy log" })).toBeNull();
 
     await view.user.click(screen.getByRole("button", { name: "Show log" }));
 
-    expect(screen.getByText("Last log lines")).toBeVisible();
+    // Collapse reveals its content after a render pass.
+    await waitFor(() => expect(screen.getByText("Last log lines")).toBeVisible());
     expect(screen.getByText(/epoch 1\/3/)).toBeVisible();
-    expect(screen.getByRole("button", { name: "Copy log" })).toBeVisible();
+    expect(await screen.findByRole("button", { name: "Copy log" })).toBeVisible();
     expect(screen.getByRole("button", { name: "Hide log" })).toBeInTheDocument();
   });
 
@@ -344,7 +350,7 @@ describe("RunPage failed run", () => {
     const view = renderWithProviders(<AppRoutes />, { route: RUN_PATH });
 
     await view.user.click(await screen.findByRole("button", { name: "Show log" }));
-    await view.user.click(screen.getByRole("button", { name: "Copy log" }));
+    await view.user.click(await screen.findByRole("button", { name: "Copy log" }));
 
     expect(await screen.findByRole("button", { name: "Copied" })).toBeInTheDocument();
     expect(await navigator.clipboard.readText()).toBe("epoch 1/3\nepoch 2/3\nCUDA out of memory.");
@@ -360,7 +366,7 @@ describe("RunPage failed run", () => {
       ),
     ).toBeInTheDocument();
     await view.user.click(screen.getByRole("button", { name: "Show log" }));
-    expect(screen.getByText("The log is empty.")).toBeVisible();
+    await waitFor(() => expect(screen.getByText("The log is empty.")).toBeVisible());
     expect(screen.queryByRole("button", { name: "Copy log" })).toBeNull();
   });
 
@@ -370,7 +376,7 @@ describe("RunPage failed run", () => {
 
     await view.user.click(await screen.findByRole("button", { name: "Show log" }));
 
-    expect(screen.getByText("The log is empty.")).toBeVisible();
+    await waitFor(() => expect(screen.getByText("The log is empty.")).toBeVisible());
   });
 
   it("renders log and message as text only, in a scrolling pre-wrap block", async () => {
