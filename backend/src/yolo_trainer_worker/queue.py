@@ -103,6 +103,14 @@ def load_run(engine: Engine, run_id: int) -> dict | None:
         }
 
 
+def run_status(engine: Engine, run_id: int) -> str | None:
+    """The status of a run, or None when its row is gone: one tiny SELECT."""
+    with engine.connect() as connection:
+        return connection.execute(
+            select(TrainingRun.status).where(TrainingRun.id == run_id)
+        ).scalar_one_or_none()
+
+
 def _update_running(engine: Engine, run_id: int, **values: object) -> int:
     """One UPDATE scoped to a `running` run; returns the number of rows changed."""
     with engine.begin() as connection:
@@ -207,8 +215,8 @@ def register_model(
             session.flush()
             target = layout.model_file(data_dir, model.id)
             target.parent.mkdir(parents=True, exist_ok=True)
+            created = target  # set first: a failed copy may leave a partial file to remove
             link_or_copy(best, target)
-            created = target
             changed = session.execute(
                 update(TrainingRun)
                 .where(TrainingRun.id == run_id, TrainingRun.status == "running")
