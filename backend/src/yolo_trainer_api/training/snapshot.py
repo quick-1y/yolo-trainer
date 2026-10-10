@@ -64,6 +64,14 @@ class Snapshot:
         return counts
 
 
+def _after_image_select() -> None:
+    """Test seam: called between the image and the annotation selects, does nothing.
+
+    The consistency test replaces it with a second connection's write attempt to prove
+    the run INSERT's write lock is still held between the two reads (Pitfall 8).
+    """
+
+
 async def capture_snapshot(
     session: AsyncSession, project_id: int, run_id: int, task_type: str, settings: dict
 ) -> Snapshot:
@@ -99,6 +107,7 @@ async def capture_snapshot(
             .order_by(Image.id)
         )
     ).all()
+    _after_image_select()
 
     boxes_by_image: dict[int, list[labels.Box]] = {}
     annotation_rows = await session.execute(
