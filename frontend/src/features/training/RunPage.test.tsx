@@ -214,14 +214,14 @@ describe("RunPage polling and announcements", () => {
     const region = screen.getByTestId("run-live-region");
     expect(region).toHaveAttribute("role", "status");
     expect(region).toHaveAttribute("aria-live", "polite");
-    expect(region).toHaveTextContent("");
+    expect(region.textContent).toBe("");
 
     current = running({ epoch: 13 });
     await act(async () => {
       await vi.advanceTimersByTimeAsync(3100);
     });
     expect((await screen.findAllByText("Epoch 13 of 100")).length).toBeGreaterThan(0);
-    expect(region).toHaveTextContent("");
+    expect(region.textContent).toBe("");
 
     current = completed();
     await act(async () => {

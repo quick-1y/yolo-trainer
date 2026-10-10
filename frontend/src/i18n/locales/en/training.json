@@ -28,5 +28,60 @@
     "cancelled": "Cancelled",
     "queuedPosition": "In queue: {{position}}",
     "runningEpoch": "Epoch {{epoch}} of {{epochs}}"
+  },
+  "run": {
+    "back": "Training",
+    "download": "Download .pt",
+    "notFound": {
+      "title": "Run not found",
+      "body": "This run does not exist in this project or was removed.",
+      "back": "Back to training"
+    },
+    "preparing": {
+      "title": "Preparing the dataset…",
+      "body": "Linking images and writing labels. Large datasets can take a few minutes."
+    },
+    "queued": {
+      "title": "In queue: position {{position}}",
+      "body": "The run starts automatically when the worker is free. You can close this page."
+    },
+    "running": {
+      "starting": "Starting…",
+      "startingHint": "The first use of an official model downloads its weights.",
+      "epoch": "Epoch {{epoch}} of {{epochs}}",
+      "elapsed": "Elapsed: {{time}}",
+      "map50": "Latest mAP50: {{value}}",
+      "finishing": "Finishing: validating the best model and registering it.",
+      "closeHint": "You can close this page. Training continues in the background."
+    },
+    "completed": {
+      "title": "Training complete",
+      "duration": "Duration: {{time}}"
+    },
+    "failed": {
+      "title": "Training failed"
+    },
+    "interrupted": {
+      "title": "Run interrupted"
+    }
+  },
+  "metrics": {
+    "precision": "Precision",
+    "recall": "Recall",
+    "map50": "mAP50",
+    "map5095": "mAP50-95",
+    "maskNote": "Metrics are measured on masks."
+  },
+  "quality": {
+    "excellent": "Excellent model",
+    "good": "Good result",
+    "fair": "Average quality, can be improved",
+    "poor": "Needs more training",
+    "basis": "Verdict is based on mAP50."
+  },
+  "model": {
+    "file": "Model file: {{file}} · {{size}}",
+    "usage": "Load it in Python with <code>{{code}}</code>.",
+    "version": "Trained with Ultralytics {{version}}. Use the same or a newer version to load it."
   }
 }
