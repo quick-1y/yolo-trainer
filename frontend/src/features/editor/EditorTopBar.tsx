@@ -1,11 +1,14 @@
 import { ActionIcon, Badge, Button, Divider, Loader, Text, Tooltip } from "@mantine/core";
 import { useMediaQuery } from "@mantine/hooks";
+import { notifications } from "@mantine/notifications";
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
 import { useStore } from "zustand";
 
-import { useNeighbors } from "../../api/images";
+import { type ImageSplit, useNeighbors } from "../../api/images";
+import { useSetSplit } from "../../api/splits";
+import { SplitMenu } from "../images/SplitMenu";
 import { BackgroundIcon, NextUnannotatedIcon } from "./icons";
 import { primaryCaps } from "./lib/shortcuts";
 import { editorPath, imagesPath, readGridParams } from "./lib/urls";
@@ -235,6 +238,8 @@ interface EditorTopBarProps {
   projectId: number;
   imageId: number;
   filename: string;
+  /** The image's dataset split (null: none, also while the detail is missing). */
+  split: ImageSplit | null;
   store: EditorStore;
   /** Every move out of the image, through the saver flush. */
   navigation: EditorNavigation;
@@ -250,11 +255,15 @@ interface EditorTopBarProps {
   documentLoaded?: boolean;
 }
 
-/** The 48 px bar: Back, the filename, the save indicator, the previous / next arrows and the shortcuts button. */
+/**
+ * The 48 px bar: Back, the filename, the save indicator, the split menu, the toggles, the
+ * previous / next arrows and the shortcuts button.
+ */
 export function EditorTopBar({
   projectId,
   imageId,
   filename,
+  split,
   store,
   navigation,
   onNextUnannotated,
@@ -275,6 +284,11 @@ export function EditorTopBar({
   const grid = readGridParams(searchParams);
   // The same query as the editor page's: one request, shared through the cache.
   const neighbors = useNeighbors(projectId, imageId, grid.sort, grid.q).data;
+  // The split lives in the image-detail query the page owns, not in the annotation store,
+  // because changing it is not an annotation edit (D-02). It is read by the page and passed
+  // in: a second observer of that query here would refetch it on mount, and for a failed
+  // detail load that restarts the query (error -> pending) in a loop with the page.
+  const setSplit = useSetSplit(projectId);
   const { goTo, pending } = navigation;
   const prevId = neighbors?.prev_id ?? null;
   const nextId = neighbors?.next_id ?? null;
@@ -316,6 +330,23 @@ export function EditorTopBar({
       {documentLoaded ? <StatusBadge status={status} /> : null}
       {documentLoaded ? <SaveIndicator state={saveState} /> : <div style={{ width: INDICATOR_WIDTH }} />}
       <div style={{ flex: 1 }} />
+      {/* Not tied to `readOnly`: a split is not an annotation edit, so it works in the conflict
+          and orientation-mismatch states; only a move waiting for the save flush disables it. */}
+      <SplitMenu
+        variant="editor"
+        value={split}
+        wide={wide}
+        loading={setSplit.isPending}
+        disabled={pending !== null}
+        onSelect={(split) =>
+          setSplit.mutate(
+            { ids: [imageId], split },
+            {
+              onError: (error) => notifications.show({ color: "red", message: error.message }),
+            },
+          )
+        }
+      />
       <ToggleControl
         label={t("topBar.background.label")}
         hint={t("topBar.background.hint")}
