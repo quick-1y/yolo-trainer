@@ -134,6 +134,9 @@
     "base": {
       "label": "Base model",
       "official": "Official Ultralytics models",
+      "trained": "Models trained here",
+      "trainedMeta": "mAP50 {{map50}} · classes: {{classes}}",
+      "classesDiffer": "This model's classes differ from this project's classes. Training adapts it to this project's classes, but what it learned about its own classes may be lost.",
       "size": {
         "n": "Smallest and fastest",
         "s": "Small",
@@ -164,6 +167,9 @@
       "noGpu": "No GPU was detected, so training runs on the CPU.",
       "cpuHint": "Training on a CPU is slow. For a first try, use a small model, few epochs and a small image size."
     },
+    "worker": {
+      "stale": "The training worker is not responding. The run will wait in the queue until it starts."
+    },
     "validation": {
       "name": {
         "required": "Name is required.",
@@ -173,7 +179,38 @@
       "imgsz": "Image size must be a multiple of 32, from 32 to 2048.",
       "batch": "Batch size must be a whole number from 1 to 512."
     },
+    "cannotStart": {
+      "title": "Cannot start yet"
+    },
     "submit": "Start training",
     "cancel": "Cancel"
+  },
+  "notes": {
+    "blocker": {
+      "noClasses": "This project has no classes. Add at least one class first.",
+      "noClassesLink": "Go to Classes",
+      "trainEmpty": "No annotated images are assigned to Train. Assign images to it or split the dataset automatically.",
+      "validEmpty": "No annotated images are assigned to Valid. Assign images to it or split the dataset automatically."
+    },
+    "warning": {
+      "unannotated": "Unannotated images that will not be used: {{count}}.",
+      "unassigned": "Images without a split that will not be used: {{count}}.",
+      "classesMissingTrain": "No examples in Train for these classes: {{names}}.",
+      "classesMissingValid": "No examples in Valid for these classes: {{names}}."
+    },
+    "more": "…and {{count}} more"
+  },
+  "summary": {
+    "title": "Dataset",
+    "columns": {
+      "split": "Split",
+      "used": "Used",
+      "unannotated": "Not annotated"
+    },
+    "noSplit": "Images without a split (not used): {{count}}",
+    "classes": "Classes: {{count}}",
+    "testOptional": "Test is optional.",
+    "autoSplit": "Split dataset",
+    "manualHint": "Or assign images by hand on the <pagelink>Images page</pagelink>."
   }
 }
