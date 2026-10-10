@@ -4,7 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { peekEditor } from "./store/storeRegistry";
 
 /** The control that started a navigation; it shows the loading state while the save is awaited. */
-export type NavControl = "prev" | "next" | "back" | "nextUnannotated";
+export type NavControl = "prev" | "next" | "back" | "nextUnannotated" | "training";
 
 /** State and actions of the "Changes could not be saved" dialog (D-11). */
 export interface LeaveDialogState {
