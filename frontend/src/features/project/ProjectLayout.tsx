@@ -14,11 +14,13 @@ interface SectionLink {
 }
 
 // Later plans append entries to this array as their sections land
-// (D-11: no links to sections that do not exist yet).
+// (D-11: no links to sections that do not exist yet). Training (Phase 4, P1 D-11) sits
+// between Classes and Settings and is active on every /projects/:id/training* path.
 const SECTIONS: SectionLink[] = [
   { key: "overview", to: ".", labelKey: "project:nav.overview" },
   { key: "images", to: "images", labelKey: "project:nav.images" },
   { key: "classes", to: "classes", labelKey: "project:nav.classes" },
+  { key: "training", to: "training", labelKey: "project:nav.training" },
   { key: "settings", to: "settings", labelKey: "project:nav.settings" },
 ];
 

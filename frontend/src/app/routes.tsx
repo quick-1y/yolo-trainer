@@ -9,6 +9,7 @@ import { ProjectLayout } from "../features/project/ProjectLayout";
 import { ProjectOverviewPage } from "../features/project/ProjectOverviewPage";
 import { ProjectSettingsPage } from "../features/project/ProjectSettingsPage";
 import { ProjectsPage } from "../features/projects/ProjectsPage";
+import { TrainingPage } from "../features/training/TrainingPage";
 import { AppLayout } from "./AppLayout";
 
 // The editor pulls in konva; loading it lazily keeps it out of the main bundle.
@@ -52,6 +53,7 @@ export function AppRoutes() {
           <Route index element={<ProjectOverviewPage />} />
           <Route path="images" element={<ImagesPage />} />
           <Route path="classes" element={<ClassesPage />} />
+          <Route path="training" element={<TrainingPage />} />
           <Route path="settings" element={<ProjectSettingsPage />} />
         </Route>
         <Route path="*" element={<NotFoundPage />} />

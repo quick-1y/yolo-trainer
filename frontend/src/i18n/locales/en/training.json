@@ -1,0 +1,32 @@
+{
+  "page": {
+    "title": "Training",
+    "count": "Runs: {{count}}",
+    "new": "New training"
+  },
+  "list": {
+    "columns": {
+      "name": "Name",
+      "status": "Status",
+      "base": "Base model",
+      "created": "Created",
+      "map50": "mAP50"
+    },
+    "downloadAria": "Download {{file}}",
+    "empty": {
+      "title": "No training runs yet",
+      "body": "Train a model on your annotated images. First assign images to the Train and Valid splits, then start a run."
+    }
+  },
+  "status": {
+    "preparing": "Preparing",
+    "queued": "In queue",
+    "running": "Running",
+    "completed": "Completed",
+    "failed": "Failed",
+    "interrupted": "Interrupted",
+    "cancelled": "Cancelled",
+    "queuedPosition": "In queue: {{position}}",
+    "runningEpoch": "Epoch {{epoch}} of {{epochs}}"
+  }
+}

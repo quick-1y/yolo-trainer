@@ -90,9 +90,9 @@ describe("TrainingPage", () => {
     stubTrainingApi({ runs: [COMPLETED, RUNNING, QUEUED] });
     renderWithProviders(<AppRoutes />, { route: TRAINING });
 
-    const create = await screen.findByRole("link", { name: "New training" });
+    expect(await screen.findByText("Runs: 3")).toBeInTheDocument();
+    const create = screen.getByRole("link", { name: "New training" });
     expect(create).toHaveAttribute("href", "/projects/1/training/new");
-    expect(screen.getByText("Runs: 3")).toBeInTheDocument();
   });
 
   it("renders one run like many", async () => {
