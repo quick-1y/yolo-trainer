@@ -25,6 +25,8 @@ RUN_TIMEOUT_SECONDS = 300
 
 
 def run_script(args: list[str], config_dir: Path) -> subprocess.CompletedProcess[str]:
+    # Ultralytics needs the directory to exist; otherwise it falls back to ./Ultralytics in the cwd.
+    config_dir.mkdir(parents=True, exist_ok=True)
     env = {**os.environ, "YOLO_CONFIG_DIR": str(config_dir)}
     return subprocess.run(
         [sys.executable, "scripts/verify_model_download.py", *args],
