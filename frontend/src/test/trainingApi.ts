@@ -160,6 +160,10 @@ export interface StubTrainingOptions {
   splitPreview?: Json;
   /** Called when POST /splits/auto is applied, so a test can change what the options answer next. */
   onSplitApply?: () => void;
+  /** GET /api/training/active (`ActiveRun` or null = nothing is training); default null. */
+  activeRun?: Lazy<Json | null>;
+  /** HTTP status of GET /api/training/active (500 -> `{"detail": "Database is unavailable."}`). */
+  activeStatus?: number;
 }
 
 export interface StubTrainingApi {
@@ -262,6 +266,12 @@ export function stubTrainingApi(stub: StubTrainingOptions = {}): StubTrainingApi
         return json({ detail: "Database is unavailable." }, stub.optionsStatus);
       }
       return json(resolve(stub.options ?? makeOptions()));
+    }
+    if (method === "GET" && path === "/api/training/active") {
+      if (stub.activeStatus !== undefined && stub.activeStatus !== 200) {
+        return json({ detail: "Database is unavailable." }, stub.activeStatus);
+      }
+      return json(resolve(stub.activeRun ?? null));
     }
     throw new Error(`Unexpected request: ${method} ${path}`);
   });
