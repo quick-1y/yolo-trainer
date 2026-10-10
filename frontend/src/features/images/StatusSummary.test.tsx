@@ -28,7 +28,14 @@ const CONFIG = {
   accepted_extensions: ["jpg", "jpeg", "png", "webp", "bmp"],
 };
 
-const COUNTS: StatusCounts = { total: 10, unannotated: 4, annotated: 4, reviewed: 2, background: 1 };
+const COUNTS: StatusCounts = {
+  total: 10,
+  unannotated: 4,
+  annotated: 4,
+  reviewed: 2,
+  background: 1,
+  splits: { train: 6, valid: 2, test: 1, none: 1 },
+};
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -146,6 +153,7 @@ describe("StatusSummary", () => {
     await waitFor(() => expect(countsCalls(fetchMock)).toHaveLength(1));
     await settle();
     expect(screen.queryByTestId("status-summary")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("split-summary")).not.toBeInTheDocument();
   });
 
   it("renders nothing while the counts are still loading", async () => {
@@ -155,6 +163,7 @@ describe("StatusSummary", () => {
     await waitFor(() => expect(countsCalls(fetchMock)).toHaveLength(1));
     await settle();
     expect(screen.queryByTestId("status-summary")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("split-summary")).not.toBeInTheDocument();
   });
 
   it("renders nothing, and no error text, when the counts request fails", async () => {
@@ -164,8 +173,53 @@ describe("StatusSummary", () => {
     await waitFor(() => expect(countsCalls(fetchMock)).toHaveLength(1));
     await settle();
     expect(screen.queryByTestId("status-summary")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("split-summary")).not.toBeInTheDocument();
     expect(screen.queryByText("Counts are unavailable.")).not.toBeInTheDocument();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+});
+
+describe("StatusSummary split line", () => {
+  it("reads the per-split counts under the progress line", async () => {
+    stubFetch();
+    renderWithProviders(<StatusSummary projectId={7} />);
+
+    const line = await screen.findByTestId("split-summary");
+    expect(line).toHaveTextContent(/^Split — Train: 6 · Valid: 2 · Test: 1 · No split: 1$/);
+    const progress = screen.getByTestId("status-summary");
+    expect(progress.compareDocumentPosition(line) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(progress).toHaveTextContent(/^Annotated: 6 of 10 · Reviewed: 2$/);
+  });
+
+  it("formats the counts for the active language", async () => {
+    stubFetch({
+      total: 12345,
+      unannotated: 0,
+      splits: { train: 9876, valid: 1234, test: 1000, none: 235 },
+    });
+    renderWithProviders(<StatusSummary projectId={7} />);
+
+    expect(await screen.findByTestId("split-summary")).toHaveTextContent(
+      "Split — Train: 9,876 · Valid: 1,234 · Test: 1,000 · No split: 235",
+    );
+  });
+
+  it("speaks Russian", async () => {
+    stubFetch();
+    renderWithProviders(<StatusSummary projectId={7} />, { language: "ru" });
+
+    expect(await screen.findByTestId("split-summary")).toHaveTextContent(
+      /^Выборки — Обучение: 6 · Валидация: 2 · Тест: 1 · Не назначена: 1$/,
+    );
+  });
+
+  it("uses tabular figures and wraps instead of truncating", async () => {
+    stubFetch();
+    renderWithProviders(<StatusSummary projectId={7} />);
+
+    const line = await screen.findByTestId("split-summary");
+    expect(line.style.fontVariantNumeric).toBe("tabular-nums");
+    expect(line.style.getPropertyValue("--group-wrap")).toBe("wrap");
   });
 });
 
