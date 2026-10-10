@@ -220,7 +220,7 @@ Plans:
   4. When the run finishes, its model is registered automatically with metrics, classes, task type, and source run; the user downloads the `.pt`, and it loads and predicts via `YOLO(path)` in a plain Python script, the same way the downstream project uses `trained_models/best.pt`
   5. Each run stores a snapshot of its settings and the exact dataset (images, labels, splits, classes) it trained on; later annotation edits do not change what the run records it was trained with
 
-**Plans:** 8/11 plans executed
+**Plans:** 9/11 plans executed
 
 Plans:
 **Wave 1**
@@ -242,7 +242,7 @@ Plans:
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 04-08-PLAN.md — Start form complete: dataset summary, blockers with fixes, warnings, models trained here as a base (task-type protected), run-name rules (wave 4)
+- [x] 04-08-PLAN.md — Start form complete: dataset summary, blockers with fixes, warnings, models trained here as a base (task-type protected), run-name rules (wave 4)
 
 **Wave 5** *(blocked on Wave 4 completion)*
 
@@ -449,7 +449,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 1. Runnable Skeleton & Projects | 10/10 | Complete    | 2026-09-29 |
 | 2. Image Upload & Classes | 13/13 | Complete    | 2026-10-03 |
 | 3. Box Annotation Editor | 13/13 | Complete    | 2026-10-04 |
-| 4. Train & Download | 8/11 | In Progress | - |
+| 4. Train & Download | 9/11 | In Progress | - |
 | 5. Live Training Monitoring & Control | 0/TBD | Not started | - |
 | 6. Polygons & Segmentation Projects | 0/TBD | Not started | - |
 | 7. Model Library | 0/TBD | Not started | - |
