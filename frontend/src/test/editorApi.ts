@@ -24,6 +24,7 @@ export const IMAGE = {
   is_background: false,
   is_reviewed: false,
   status: "unannotated",
+  split: null,
 };
 
 export const CAR_CLASS = {
@@ -89,6 +90,10 @@ interface EditorApiOptions {
   imageError?: string;
   /** GET /images/next-unannotated (default: no other unannotated image). */
   nextUnannotated?: NextUnannotatedMode;
+  /** The split image 5 starts in (default: unassigned). A successful split POST changes it. */
+  split?: "train" | "valid" | "test" | null;
+  /** POST /images/split answers 500 with this message (until `setSplitError(null)`). */
+  splitError?: string;
 }
 
 function json(body: unknown, status = 200): Response {
@@ -117,6 +122,8 @@ export function stubEditorApi(options: EditorApiOptions = {}) {
   const putQueue: PutMode[] = [...(options.putQueue ?? [])];
   let annotationsError: string | null = options.annotationsError ?? null;
   let imageError: string | null = options.imageError ?? null;
+  let currentSplit: "train" | "valid" | "test" | null = options.split ?? null;
+  let splitError: string | null = options.splitError ?? null;
   // A "gone" PUT deletes the image: later GETs of it answer 404 like the real server.
   let deleted = false;
   // What GET annotations answers once a test replaced the stored set: a refetch after a 409
@@ -146,6 +153,7 @@ export function stubEditorApi(options: EditorApiOptions = {}) {
   const annotationGets: number[] = [];
   const classGets: number[] = [];
   const posts: Array<Record<string, unknown>> = [];
+  const splitPosts: Array<{ ids: number[]; split: "train" | "valid" | "test" | null }> = [];
 
   const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
     const url = new URL(typeof input === "string" ? input : input.toString(), "http://localhost");
@@ -208,7 +216,9 @@ export function stubEditorApi(options: EditorApiOptions = {}) {
       if (deleted) {
         return json({ detail: "Image not found." }, 404);
       }
-      return imageStatus === 200 ? json(IMAGE) : json({ detail: "Image not found." }, imageStatus);
+      return imageStatus === 200
+        ? json({ ...IMAGE, split: currentSplit })
+        : json({ detail: "Image not found." }, imageStatus);
     }
     if (method === "GET" && path === "/api/projects/1/images/5/annotations") {
       annotationGets.push(1);
@@ -268,6 +278,17 @@ export function stubEditorApi(options: EditorApiOptions = {}) {
         is_reviewed: body.is_reviewed,
       });
     }
+    if (method === "POST" && path === "/api/projects/1/images/split") {
+      const body = JSON.parse(String(init?.body)) as (typeof splitPosts)[number];
+      splitPosts.push(body);
+      if (splitError !== null) {
+        return json({ detail: splitError }, 500);
+      }
+      if (body.ids.includes(IMAGE.id)) {
+        currentSplit = body.split;
+      }
+      return json({ updated: body.ids.length });
+    }
     throw new Error(`Unexpected request: ${method} ${path}`);
   });
 
@@ -275,6 +296,12 @@ export function stubEditorApi(options: EditorApiOptions = {}) {
   return {
     puts,
     posts,
+    /** Every parsed POST /images/split body so far. */
+    splitPosts,
+    /** Make POST /images/split fail with 500 and this message (`null`: answer again). */
+    setSplitError: (message: string | null) => {
+      splitError = message;
+    },
     /** One entry per GET /images/5/annotations and per GET /classes so far. */
     annotationGets,
     classGets,
