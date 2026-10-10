@@ -187,10 +187,24 @@ export interface RunCreateInput {
 /** How often run lists and run pages refetch while a run is preparing, queued or running. */
 export const RUN_POLL_INTERVAL_MS = 3000;
 
+/** The run that is training right now (`GET /training/active`, D-14). */
+export interface ActiveRun {
+  run_id: number;
+  project_id: number;
+  project_name: string;
+  run_name: string;
+  /** Null until the first epoch finishes. */
+  epoch: number | null;
+  epochs: number | null;
+  started_at: string | null;
+}
+
 export const trainingKeys = {
   runs: (projectId: number) => ["runs", projectId] as const,
   run: (projectId: number, runId: number) => ["run", projectId, runId] as const,
   options: (projectId: number) => ["trainingOptions", projectId] as const,
+  // Its own root, so no invalidation of another training key matches it.
+  active: () => ["trainingActive"] as const,
 };
 
 function isNotFound(error: unknown): boolean {
@@ -221,6 +235,26 @@ export function useRun(projectId: number, runId: number | null) {
       return run !== undefined && isActiveRunStatus(run.status) ? RUN_POLL_INTERVAL_MS : false;
     },
   });
+}
+
+/**
+ * The running run, polled on every page through one shared query (D-14). Deliberately sets no
+ * `enabled`, so the test harness can switch the poller off with `setQueryDefaults`.
+ */
+export function useActiveRun() {
+  return useQuery({
+    queryKey: trainingKeys.active(),
+    queryFn: () => apiRequest<ActiveRun | null>("/training/active"),
+    refetchInterval: RUN_POLL_INTERVAL_MS,
+    // The header and the project sidebar both observe this query; a second observer that mounts
+    // right after the first must reuse its answer instead of asking again (one request per page).
+    staleTime: RUN_POLL_INTERVAL_MS / 2,
+    retry: false,
+  });
+}
+
+export function activeRunPath(run: ActiveRun): string {
+  return `/projects/${run.project_id}/training/${run.run_id}`;
 }
 
 export function useTrainingOptions(projectId: number) {

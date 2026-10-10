@@ -9,6 +9,7 @@ import { useStore } from "zustand";
 import { type ImageSplit, useNeighbors } from "../../api/images";
 import { useSetSplit } from "../../api/splits";
 import { SplitMenu } from "../images/SplitMenu";
+import { ActiveRunIndicator } from "../training/ActiveRunIndicator";
 import { BackgroundIcon, NextUnannotatedIcon } from "./icons";
 import { primaryCaps } from "./lib/shortcuts";
 import { editorPath, imagesPath, readGridParams } from "./lib/urls";
@@ -330,6 +331,12 @@ export function EditorTopBar({
       {documentLoaded ? <StatusBadge status={status} /> : null}
       {documentLoaded ? <SaveIndicator state={saveState} /> : <div style={{ width: INDICATOR_WIDTH }} />}
       <div style={{ flex: 1 }} />
+      {/* A running training (D-14): a fixed 32 or 72 px box, nothing when no run is running.
+          A plain click goes through `goTo`, so unsaved boxes are flushed first. */}
+      <ActiveRunIndicator
+        variant="editor"
+        onNavigate={(path) => void goTo(path, "training")}
+      />
       {/* Not tied to `readOnly`: a split is not an annotation edit, so it works in the conflict
           and orientation-mismatch states; only a move waiting for the save flush disables it. */}
       <SplitMenu

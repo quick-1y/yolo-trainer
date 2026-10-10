@@ -573,6 +573,22 @@ class RunSummary(BaseModel):
         return _utc_iso(value)
 
 
+class ActiveRun(BaseModel):
+    """The run that is training right now, with the names the global indicator shows (D-14)."""
+
+    run_id: int
+    project_id: int
+    project_name: str
+    run_name: str
+    epoch: int | None = None
+    epochs: int | None = None
+    started_at: datetime | None = None
+
+    @field_serializer("started_at")
+    def _serialize_utc(self, value: datetime | None) -> str | None:
+        return _utc_iso(value)
+
+
 class RunRead(RunSummary):
     settings: RunSettings
     resolved: RunResolved | None = None

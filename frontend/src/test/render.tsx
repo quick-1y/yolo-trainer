@@ -6,12 +6,15 @@ import userEvent from "@testing-library/user-event";
 import type { ReactElement } from "react";
 import { MemoryRouter } from "react-router-dom";
 
+import { trainingKeys } from "../api/training";
 import i18n from "../i18n";
 import { theme } from "../theme";
 
 interface RenderWithProvidersOptions {
   route?: string;
   language?: string;
+  /** Let the app-wide active-run poller (`GET /training/active`) run; off by default. */
+  pollActiveRun?: boolean;
 }
 
 interface RenderWithProvidersResult extends RenderResult {
@@ -25,13 +28,18 @@ interface RenderWithProvidersResult extends RenderResult {
  */
 export function renderWithProviders(
   ui: ReactElement,
-  { route = "/", language = "en" }: RenderWithProvidersOptions = {},
+  { route = "/", language = "en", pollActiveRun = false }: RenderWithProvidersOptions = {},
 ): RenderWithProvidersResult {
   void i18n.changeLanguage(language);
 
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
+  if (!pollActiveRun) {
+    // Every page now polls the active run (RESEARCH Pitfall 16); the existing route tests use
+    // strict or one-shot fetch stubs, so the poller is opt-in in tests.
+    queryClient.setQueryDefaults(trainingKeys.active(), { enabled: false });
+  }
 
   const result = render(
     <MantineProvider theme={theme} forceColorScheme="dark">

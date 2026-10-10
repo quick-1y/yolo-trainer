@@ -1,7 +1,6 @@
 """Training runs: start one, list a project's runs, read one (TRAN-01, TRAN-04).
 
-The router has the `/api` prefix and absolute sub-paths so later plans can add
-`/training/active` to the same router.
+The router has the `/api` prefix and absolute sub-paths; `/training/active` (D-14) lives here too.
 """
 
 from __future__ import annotations
@@ -11,9 +10,9 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from yolo_trainer_api.db import get_session
-from yolo_trainer_api.models import TrainingRun
+from yolo_trainer_api.models import Project, TrainingRun
 from yolo_trainer_api.routers.projects import get_project_or_404
-from yolo_trainer_api.schemas import RunCreate, RunRead, RunSummary, TrainingOptions
+from yolo_trainer_api.schemas import ActiveRun, RunCreate, RunRead, RunSummary, TrainingOptions
 from yolo_trainer_api.security import require_xhr
 from yolo_trainer_api.training import service
 from yolo_trainer_api.training.options import build_options, ensure_device_available
@@ -47,6 +46,32 @@ async def start_run(
     )
     await session.refresh(run)
     return await service.run_read(session, run)
+
+
+@router.get("/training/active", response_model=ActiveRun | None)
+async def get_active_run(session: AsyncSession = Depends(get_session)) -> ActiveRun | None:
+    """The run in status `running`, or null; at most one exists (D-11)."""
+    row = (
+        await session.execute(
+            select(TrainingRun, Project.name)
+            .join(Project, Project.id == TrainingRun.project_id)
+            .where(TrainingRun.status == "running")
+            .order_by(TrainingRun.id)
+            .limit(1)
+        )
+    ).first()
+    if row is None:
+        return None
+    run, project_name = row
+    return ActiveRun(
+        run_id=run.id,
+        project_id=run.project_id,
+        project_name=project_name,
+        run_name=run.name,
+        epoch=run.epoch,
+        epochs=run.epochs,
+        started_at=run.started_at,
+    )
 
 
 @router.get("/projects/{project_id}/training/options", response_model=TrainingOptions)

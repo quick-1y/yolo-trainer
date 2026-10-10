@@ -212,5 +212,10 @@
     "testOptional": "Test is optional.",
     "autoSplit": "Split dataset",
     "manualHint": "Or assign images by hand on the <pagelink>Images page</pagelink>."
+  },
+  "indicator": {
+    "full": "Training: {{project}} / {{run}}, epoch {{epoch}}/{{epochs}}",
+    "starting": "Training: {{project}} / {{run}}, starting",
+    "short": "{{epoch}}/{{epochs}}"
   }
 }

@@ -212,5 +212,10 @@
     "testOptional": "Выборка «Тест» необязательна.",
     "autoSplit": "Разбить набор данных",
     "manualHint": "Или назначьте изображения вручную на странице <pagelink>«Изображения»</pagelink>."
+  },
+  "indicator": {
+    "full": "Обучение: {{project}} / {{run}}, эпоха {{epoch}}/{{epochs}}",
+    "starting": "Обучение: {{project}} / {{run}}, запуск",
+    "short": "{{epoch}}/{{epochs}}"
   }
 }
