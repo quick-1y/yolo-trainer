@@ -11,12 +11,17 @@ import itertools
 import sys
 import time
 import uuid
+from datetime import datetime
 from pathlib import Path
 
 from fastapi.testclient import TestClient
 from PIL import Image, ImageDraw
+from sqlalchemy.orm import Session
 
+from yolo_trainer_api.models import TrainedModel, utcnow
 from yolo_trainer_api.settings import Settings
+from yolo_trainer_common import layout
+from yolo_trainer_worker import queue
 from yolo_trainer_worker.main import WorkerSettings
 from yolo_trainer_worker.supervisor import CommandBuilder, Resolved
 
@@ -197,3 +202,42 @@ def fake_command(mode: str) -> CommandBuilder:
         return [sys.executable, str(script), "--run-dir", str(run_dir), "--mode", mode]
 
     return build
+
+
+def seed_model(
+    settings: Settings,
+    project_id: int | None,
+    name: str,
+    *,
+    task_type: str = "detect",
+    class_names: tuple[str, ...] = ("box",),
+    map50: float | None = 0.5,
+    created_at: datetime | None = None,
+    with_file: bool = True,
+) -> int:
+    """Register a model straight in the database (and its file); returns the model id."""
+    engine = queue.create_worker_engine(worker_settings(settings))
+    try:
+        with Session(engine) as session:
+            model = TrainedModel(
+                project_id=project_id,
+                name=name,
+                task_type=task_type,
+                source="trained",
+                class_names=list(class_names),
+                map50=map50,
+                size_bytes=7,
+                sha256="0" * 64,
+                created_at=created_at or utcnow(),
+            )
+            session.add(model)
+            session.flush()
+            model_id = model.id
+            session.commit()
+    finally:
+        engine.dispose()
+    if with_file:
+        path = layout.model_file(settings.data_dir, model_id)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"weights")
+    return model_id

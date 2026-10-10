@@ -112,6 +112,53 @@ export interface TrainingDevices {
   worker_fresh: boolean;
 }
 
+/** One split: images a run would use and assigned images it would leave out (D-04). */
+export interface SplitUsage {
+  used: number;
+  unannotated: number;
+}
+
+/** What a run started now would train on (D-06). */
+export interface DatasetSummary {
+  train: SplitUsage;
+  valid: SplitUsage;
+  test: SplitUsage;
+  /** Images without a split; they are never used. */
+  unassigned: number;
+  class_count: number;
+}
+
+export type TrainingNoteCode =
+  | "noClasses"
+  | "trainEmpty"
+  | "validEmpty"
+  | "unannotated"
+  | "unassigned"
+  | "classesMissingTrain"
+  | "classesMissingValid"
+  | "workerStale";
+
+/** A blocker or a warning as a code with parameters; the UI words it (D-05). */
+export interface TrainingNote {
+  code: TrainingNoteCode;
+  count: number;
+  names: string[];
+}
+
+/** A model trained in this service that can be the base of a new run (D-08). */
+export interface TrainedModelOption {
+  id: number;
+  name: string;
+  project_id: number | null;
+  project_name: string | null;
+  map50: number | null;
+  class_count: number;
+  class_names: string[];
+  /** True only when the class names equal the project's, in the same order. */
+  classes_match: boolean;
+  created_at: string;
+}
+
 export interface TrainingOptions {
   task_type: TaskType;
   next_run_name: string;
@@ -119,11 +166,17 @@ export interface TrainingOptions {
   default_base: string;
   defaults: TrainingDefaults;
   devices: TrainingDevices;
+  models: TrainedModelOption[];
+  summary: DatasetSummary;
+  blockers: TrainingNote[];
+  warnings: TrainingNote[];
 }
+
+export type RunBaseInput = { kind: "official"; name: string } | { kind: "model"; model_id: number };
 
 export interface RunCreateInput {
   name?: string;
-  base: { kind: "official"; name: string };
+  base: RunBaseInput;
   epochs: number;
   imgsz: number;
   /** -1 means "auto". */

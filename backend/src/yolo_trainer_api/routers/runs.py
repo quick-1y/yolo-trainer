@@ -36,7 +36,7 @@ async def start_run(
 ) -> RunRead:
     project = await get_project_or_404(session, project_id)
     ensure_device_available(request.app.state.settings, payload.device)
-    run, snapshot = await service.create_run(session, project, payload)
+    run, snapshot = await service.create_run(session, project, payload, request.app.state.settings)
     # Hard links and label files cost milliseconds per image on a bind mount, so the
     # dataset is built after the response; the run is `preparing` until then (Pitfall 4).
     background_tasks.add_task(

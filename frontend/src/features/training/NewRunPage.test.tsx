@@ -1,9 +1,15 @@
 import { screen, waitFor, within } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { AppRoutes } from "../../app/routes";
 import { renderWithProviders } from "../../test/render";
-import { makeOptions, makeRun, stubTrainingApi } from "../../test/trainingApi";
+import {
+  makeOptions,
+  makeRun,
+  makeSummary,
+  makeTrainedModel,
+  stubTrainingApi,
+} from "../../test/trainingApi";
 import type { StubTrainingApi } from "../../test/trainingApi";
 
 const NEW_PATH = "/projects/1/training/new";
@@ -334,5 +340,397 @@ describe("NewRunPage loading", () => {
 
     expect(screen.getByLabelText("Название запуска")).toHaveValue("run-1");
     expect(screen.getByRole("button", { name: "Начать обучение" })).toBeInTheDocument();
+  });
+});
+
+const realMatchMedia = window.matchMedia;
+
+/** The viewport is at least 1200px wide (form and summary side by side) or narrower. */
+function setWideViewport(wide: boolean): void {
+  window.matchMedia = (query: string) => ({
+    matches: wide && query.includes("(min-width: 1200px)"),
+    media: query,
+    onchange: null,
+    addListener: () => undefined,
+    removeListener: () => undefined,
+    addEventListener: () => undefined,
+    removeEventListener: () => undefined,
+    dispatchEvent: () => false,
+  });
+}
+
+afterEach(() => {
+  window.matchMedia = realMatchMedia;
+});
+
+const BLOCKED_TRAIN = makeOptions({
+  summary: makeSummary({
+    train: { used: 0, unannotated: 2 },
+    unassigned: 4,
+  }),
+  blockers: [{ code: "trainEmpty", count: 0, names: [] }],
+});
+
+function startButton(): HTMLElement {
+  return screen.getByRole("button", { name: "Start training" });
+}
+
+describe("NewRunPage layout", () => {
+  it("puts the form and a 320 px summary side by side at 1200 px and wider", async () => {
+    setWideViewport(true);
+    await openForm();
+
+    const layout = screen.getByTestId("newrun-layout");
+    await waitFor(() => expect(layout.style.gridTemplateColumns).toBe("minmax(0, 1fr) 320px"));
+    const form = screen.getByTestId("newrun-form");
+    const summary = screen.getByTestId("dataset-summary");
+    expect(form.compareDocumentPosition(summary) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("shows the summary before the form in a single column below 1200 px", async () => {
+    setWideViewport(false);
+    await openForm();
+
+    const layout = screen.getByTestId("newrun-layout");
+    expect(layout.style.gridTemplateColumns).toBe("minmax(0, 1fr)");
+    const form = screen.getByTestId("newrun-form");
+    const summary = screen.getByTestId("dataset-summary");
+    expect(summary.compareDocumentPosition(form) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+});
+
+describe("NewRunPage dataset summary", () => {
+  const EXAMPLE = makeOptions({
+    summary: makeSummary({
+      train: { used: 4, unannotated: 2 },
+      valid: { used: 1, unannotated: 0 },
+      test: { used: 0, unannotated: 0 },
+      unassigned: 4,
+      class_count: 2,
+    }),
+  });
+
+  function rowCells(split: string): string[] {
+    const row = screen.getByTestId(`summary-row-${split}`);
+    return within(row)
+      .getAllByRole("cell")
+      .map((cell) => cell.textContent ?? "");
+  }
+
+  it("shows used and not annotated images per split, the unassigned line and the class count", async () => {
+    await openForm({ options: EXAMPLE });
+
+    const summary = screen.getByTestId("dataset-summary");
+    expect(within(summary).getByText("Dataset")).toBeInTheDocument();
+    expect(rowCells("train")).toEqual(["4", "2"]);
+    expect(rowCells("valid")).toEqual(["1", "—"]);
+    expect(rowCells("test")).toEqual(["0", "—"]);
+    expect(within(screen.getByTestId("summary-row-train")).getByRole("rowheader")).toHaveTextContent(
+      "Train",
+    );
+    expect(within(summary).getByText("Images without a split (not used): 4")).toBeInTheDocument();
+    expect(within(summary).getByText("Classes: 2")).toBeInTheDocument();
+    expect(within(summary).getByText("Test is optional.")).toBeInTheDocument();
+    expect(within(summary).getByRole("link", { name: "Images page" })).toHaveAttribute(
+      "href",
+      "/projects/1/images",
+    );
+  });
+
+  it("hides the Test hint once Test has images and formats big numbers", async () => {
+    await openForm({
+      options: makeOptions({
+        summary: makeSummary({
+          train: { used: 12345, unannotated: 0 },
+          test: { used: 3, unannotated: 1 },
+        }),
+      }),
+    });
+
+    expect(rowCells("train")).toEqual(["12,345", "—"]);
+    expect(rowCells("test")).toEqual(["3", "1"]);
+    expect(screen.queryByText("Test is optional.")).toBeNull();
+  });
+
+  it("shows zeros everywhere for a project with no assigned images", async () => {
+    await openForm({
+      options: makeOptions({
+        summary: makeSummary({
+          train: { used: 0, unannotated: 0 },
+          valid: { used: 0, unannotated: 0 },
+          unassigned: 9,
+        }),
+        blockers: [
+          { code: "trainEmpty", count: 0, names: [] },
+          { code: "validEmpty", count: 0, names: [] },
+        ],
+      }),
+    });
+
+    expect(rowCells("train")).toEqual(["0", "—"]);
+    expect(rowCells("valid")).toEqual(["0", "—"]);
+    expect(screen.getByText("Images without a split (not used): 9")).toBeInTheDocument();
+    const blockers = screen.getByTestId("notes-blockers");
+    expect(within(blockers).getAllByText(/No annotated images are assigned to/)).toHaveLength(2);
+  });
+
+  it("disables the summary's Split dataset button when every image has a split", async () => {
+    await openForm();
+
+    const summary = screen.getByTestId("dataset-summary");
+    expect(within(summary).getByRole("button", { name: "Split dataset" })).toBeDisabled();
+    expect(within(summary).getByText("All images already have a split.")).toBeInTheDocument();
+  });
+
+  it("renders the summary in Russian", async () => {
+    await openForm({ options: EXAMPLE }, "ru");
+
+    const summary = screen.getByTestId("dataset-summary");
+    expect(within(summary).getByText("Набор данных")).toBeInTheDocument();
+    expect(within(summary).getByText("Классов: 2")).toBeInTheDocument();
+    expect(
+      within(summary).getByText("Изображений без выборки (не используются): 4"),
+    ).toBeInTheDocument();
+  });
+
+  it("shows five skeleton rows while the options load", async () => {
+    stubTrainingApi({});
+    const original = globalThis.fetch;
+    let release: (() => void) | undefined;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+        const url = typeof input === "string" ? input : input.toString();
+        if (url.endsWith("/training/options")) {
+          await new Promise<void>((resolve) => {
+            release = resolve;
+          });
+        }
+        return original(input, init);
+      }),
+    );
+    renderWithProviders(<AppRoutes />, { route: NEW_PATH });
+
+    const loading = await screen.findByTestId("summary-loading");
+    expect(loading.children).toHaveLength(5);
+    expect(startButton()).toBeDisabled();
+    release?.();
+    await waitFor(() => expect(screen.queryByTestId("summary-loading")).toBeNull());
+  });
+
+  it("shows a failed load in the summary with Try again and keeps Start disabled", async () => {
+    stubTrainingApi({ optionsStatus: 500 });
+    renderWithProviders(<AppRoutes />, { route: NEW_PATH });
+
+    const summary = await screen.findByTestId("dataset-summary");
+    expect(await within(summary).findByText("Database is unavailable.")).toBeInTheDocument();
+    expect(within(summary).getByRole("button", { name: "Try again" })).toBeInTheDocument();
+    expect(startButton()).toBeDisabled();
+  });
+});
+
+describe("NewRunPage blockers and warnings", () => {
+  it("lists a blocker with a Split dataset link, disables Start and refreshes after Apply", async () => {
+    let applied = false;
+    const view = await openForm({
+      options: () => (applied ? makeOptions() : BLOCKED_TRAIN),
+      onSplitApply: () => {
+        applied = true;
+      },
+    });
+
+    const blockers = screen.getByTestId("notes-blockers");
+    expect(within(blockers).getByText("Cannot start yet")).toBeInTheDocument();
+    expect(
+      within(blockers).getByText(
+        /No annotated images are assigned to Train\. Assign images to it or split the dataset automatically\./,
+      ),
+    ).toBeInTheDocument();
+    expect(startButton()).toBeDisabled();
+
+    await view.user.click(within(blockers).getByRole("button", { name: "Split dataset" }));
+    const dialog = await screen.findByRole("dialog", { name: "Split dataset automatically" });
+    const apply = within(dialog).getByRole("button", { name: "Apply split" });
+    await waitFor(() => expect(apply).toBeEnabled());
+    await view.user.click(apply);
+
+    await waitFor(() => expect(startButton()).toBeEnabled());
+    expect(view.api.splitApplies).toHaveLength(1);
+    expect(view.api.count("GET /api/projects/1/training/options")).toBe(2);
+    expect(screen.queryByTestId("notes-blockers")).toBeNull();
+  });
+
+  it("opens the same dialog from the summary button", async () => {
+    const view = await openForm({ options: BLOCKED_TRAIN });
+
+    await view.user.click(
+      within(screen.getByTestId("dataset-summary")).getByRole("button", { name: "Split dataset" }),
+    );
+
+    expect(
+      await screen.findByRole("dialog", { name: "Split dataset automatically" }),
+    ).toBeInTheDocument();
+  });
+
+  it("offers no split link when no image is unassigned", async () => {
+    await openForm({
+      options: makeOptions({
+        summary: makeSummary({ train: { used: 0, unannotated: 3 } }),
+        blockers: [{ code: "trainEmpty", count: 0, names: [] }],
+      }),
+    });
+
+    const blockers = screen.getByTestId("notes-blockers");
+    expect(within(blockers).queryByRole("button", { name: "Split dataset" })).toBeNull();
+    expect(startButton()).toBeDisabled();
+  });
+
+  it("links the no-classes blocker to the Classes page", async () => {
+    await openForm({
+      options: makeOptions({
+        summary: makeSummary({ class_count: 0 }),
+        blockers: [{ code: "noClasses", count: 0, names: [] }],
+      }),
+    });
+
+    const blockers = screen.getByTestId("notes-blockers");
+    expect(
+      within(blockers).getByText(/This project has no classes\. Add at least one class first\./),
+    ).toBeInTheDocument();
+    expect(within(blockers).getByRole("link", { name: "Go to Classes" })).toHaveAttribute(
+      "href",
+      "/projects/1/classes",
+    );
+    expect(startButton()).toBeDisabled();
+  });
+
+  it("shows warnings in a second alert and never disables Start", async () => {
+    await openForm({
+      options: makeOptions({
+        warnings: [
+          { code: "unannotated", count: 2, names: [] },
+          { code: "unassigned", count: 4, names: [] },
+          { code: "classesMissingValid", count: 5, names: ["a", "b", "c", "d", "e"] },
+          { code: "classesMissingTrain", count: 1, names: ["only"] },
+          { code: "workerStale", count: 0, names: [] },
+        ],
+      }),
+    });
+
+    const warnings = screen.getByTestId("notes-warnings");
+    expect(screen.queryByTestId("notes-blockers")).toBeNull();
+    expect(
+      within(warnings).getByText("Unannotated images that will not be used: 2."),
+    ).toBeInTheDocument();
+    expect(
+      within(warnings).getByText("Images without a split that will not be used: 4."),
+    ).toBeInTheDocument();
+    expect(warnings).toHaveTextContent(
+      "No examples in Valid for these classes: a, b, c …and 2 more.",
+    );
+    expect(warnings).toHaveTextContent("No examples in Train for these classes: only.");
+    expect(
+      within(warnings).getByText(
+        "The training worker is not responding. The run will wait in the queue until it starts.",
+      ),
+    ).toBeInTheDocument();
+    expect(startButton()).toBeEnabled();
+  });
+
+  it("hides both alerts when there is nothing to say", async () => {
+    await openForm();
+
+    expect(screen.queryByTestId("notes-blockers")).toBeNull();
+    expect(screen.queryByTestId("notes-warnings")).toBeNull();
+  });
+
+  it("words a blocker in Russian", async () => {
+    await openForm({ options: BLOCKED_TRAIN }, "ru");
+
+    const blockers = screen.getByTestId("notes-blockers");
+    expect(within(blockers).getByText("Пока нельзя начать")).toBeInTheDocument();
+    expect(
+      within(blockers).getByText(/В выборке «Обучение» нет размеченных изображений\./),
+    ).toBeInTheDocument();
+  });
+});
+
+describe("NewRunPage models trained here", () => {
+  const WITH_MODELS = makeOptions({
+    models: [
+      makeTrainedModel(),
+      makeTrainedModel({
+        id: 9,
+        name: "older",
+        project_id: 1,
+        project_name: "Plates",
+        map50: null,
+        classes_match: false,
+      }),
+    ],
+  });
+
+  it("groups models trained here under the official ones with their metrics", async () => {
+    const view = await openForm({ options: WITH_MODELS });
+
+    await view.user.click(selectInput("Base model"));
+
+    expect(await screen.findByText("Models trained here")).toBeInTheDocument();
+    expect(optionsOf("Base model")).toHaveLength(12);
+    const trained = optionNamed("Base model", /best-cars · Plates/);
+    expect(trained).toHaveTextContent("mAP50 0.812 · classes: 2");
+    expect(optionNamed("Base model", /older · Plates/)).toHaveTextContent("mAP50 — · classes: 2");
+    expect(within(trained).getByTitle("best-cars · Plates")).toBeInTheDocument();
+  });
+
+  it("omits the group when no model was trained here", async () => {
+    const view = await openForm();
+
+    await view.user.click(selectInput("Base model"));
+
+    expect(await screen.findByText("Official Ultralytics models")).toBeInTheDocument();
+    expect(screen.queryByText("Models trained here")).toBeNull();
+  });
+
+  it("uses the same grouped rendering for a single model", async () => {
+    const view = await openForm({ options: makeOptions({ models: [makeTrainedModel()] }) });
+
+    await view.user.click(selectInput("Base model"));
+
+    expect(await screen.findByText("Models trained here")).toBeInTheDocument();
+    expect(optionsOf("Base model")).toHaveLength(11);
+  });
+
+  it("sends the chosen model's id as the base", async () => {
+    const view = await openForm({ options: WITH_MODELS, createResult: makeRun({ id: 12 }) });
+
+    await view.user.click(selectInput("Base model"));
+    await view.user.click(optionNamed("Base model", /best-cars · Plates/));
+    await view.user.click(startButton());
+
+    await waitFor(() => expect(view.api.posts).toHaveLength(1));
+    expect(view.api.posts[0].base).toEqual({ kind: "model", model_id: 4 });
+  });
+
+  it("warns when the model's classes differ and still lets the user start", async () => {
+    const view = await openForm({ options: WITH_MODELS });
+    const note = /This model's classes differ from this project's classes\./;
+
+    await view.user.click(selectInput("Base model"));
+    await view.user.click(optionNamed("Base model", /best-cars · Plates/));
+    expect(screen.queryByText(note)).toBeNull();
+
+    await view.user.click(selectInput("Base model"));
+    await view.user.click(optionNamed("Base model", /older · Plates/));
+    expect(await screen.findByText(note)).toBeInTheDocument();
+    expect(startButton()).toBeEnabled();
+  });
+
+  it("has no base select until the options load", async () => {
+    stubTrainingApi({});
+    renderWithProviders(<AppRoutes />, { route: NEW_PATH });
+
+    expect(await screen.findByTestId("newrun-loading")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Base model")).toBeNull();
   });
 });

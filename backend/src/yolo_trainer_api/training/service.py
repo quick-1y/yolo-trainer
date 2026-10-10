@@ -28,6 +28,8 @@ from yolo_trainer_api.models import (
 )
 from yolo_trainer_api.schemas import (
     DatasetCounts,
+    OfficialBase,
+    RunBase,
     RunCreate,
     RunMetrics,
     RunModelRef,
@@ -44,6 +46,7 @@ from yolo_trainer_api.training.snapshot import (
     capture_snapshot,
     materialize,
 )
+from yolo_trainer_common import layout
 from yolo_trainer_common.progress import primary_metrics
 
 logger = logging.getLogger(__name__)
@@ -54,6 +57,9 @@ NO_CLASSES_DETAIL = "Add at least one class before training."
 TRAIN_EMPTY_DETAIL = "No annotated images are assigned to Train."
 VALID_EMPTY_DETAIL = "No annotated images are assigned to Valid."
 BASE_TASK_MISMATCH_DETAIL = "This model does not match the project's task type."
+UNKNOWN_MODEL_DETAIL = "Unknown model."
+MODEL_TASK_MISMATCH_DETAIL = "This model was trained for a different task type."
+MODEL_FILE_MISSING_DETAIL = "The model file is missing."
 PREPARE_SOURCE_MISSING_DETAIL = (
     "An image was deleted while the dataset was being prepared. Start the run again."
 )
@@ -78,8 +84,56 @@ async def next_run_name(session: AsyncSession, project_id: int) -> str:
     return f"run-{number}"
 
 
+BLOCKER_DETAILS = {
+    "noClasses": NO_CLASSES_DETAIL,
+    "trainEmpty": TRAIN_EMPTY_DETAIL,
+    "validEmpty": VALID_EMPTY_DETAIL,
+}
+
+
+def blocker_codes(class_count: int, train_used: int, valid_used: int) -> list[str]:
+    """The reasons a run cannot start, in the order they are reported (D-05).
+
+    One rule for the form (`GET .../training/options`) and for the refusal of
+    `POST .../runs`, so the UI and the API never disagree. Test may stay empty.
+    """
+    codes = []
+    if class_count == 0:
+        codes.append("noClasses")
+    if train_used == 0:
+        codes.append("trainEmpty")
+    if valid_used == 0:
+        codes.append("validEmpty")
+    return codes
+
+
+async def _resolve_base(
+    session: AsyncSession, settings: Settings, task_type: str, base: RunBase
+) -> tuple[str, str, int | None]:
+    """`(base_kind, base_name, base_model_id)` of an accepted base, else a 422.
+
+    A model base is a row of the `models` table whose file lives at an id-derived path
+    below `data/models`; no client-supplied path is ever read (T4-01, T4-08-01).
+    """
+    if isinstance(base, OfficialBase):
+        if not is_official(base.name, task_type):
+            raise HTTPException(status_code=422, detail=BASE_TASK_MISMATCH_DETAIL)
+        return "official", base.name, None
+    model = (
+        await session.execute(select(TrainedModel).where(TrainedModel.id == base.model_id))
+    ).scalar_one_or_none()
+    if model is None:
+        raise HTTPException(status_code=422, detail=UNKNOWN_MODEL_DETAIL)
+    if model.task_type != task_type:
+        raise HTTPException(status_code=422, detail=MODEL_TASK_MISMATCH_DETAIL)
+    model_id, model_name = model.id, model.name
+    if not await asyncio.to_thread(layout.model_file(settings.data_dir, model_id).is_file):
+        raise HTTPException(status_code=422, detail=MODEL_FILE_MISSING_DETAIL)
+    return "model", model_name, model_id
+
+
 async def create_run(
-    session: AsyncSession, project: Project, payload: RunCreate
+    session: AsyncSession, project: Project, payload: RunCreate, settings: Settings
 ) -> tuple[TrainingRun, Snapshot]:
     """Insert a `preparing` run and capture its dataset in the same transaction.
 
@@ -88,10 +142,12 @@ async def create_run(
     rolls the whole transaction back, which leaves no run row behind.
     """
     project_id, task_type = project.id, project.task_type
-    if payload.base.kind != "official" or not is_official(payload.base.name, task_type):
-        raise HTTPException(status_code=422, detail=BASE_TASK_MISMATCH_DETAIL)
+    base_kind, base_name, base_model_id = await _resolve_base(
+        session, settings, task_type, payload.base
+    )
 
     name = payload.name or await next_run_name(session, project_id)
+    normalized_name = normalize_project_name(name)
     run_settings = {
         "epochs": payload.epochs,
         "imgsz": payload.imgsz,
@@ -101,11 +157,12 @@ async def create_run(
     run = TrainingRun(
         project_id=project_id,
         name=name,
-        normalized_name=normalize_project_name(name),
+        normalized_name=normalized_name,
         status="preparing",
         task_type=task_type,
-        base_kind="official",
-        base_name=payload.base.name,
+        base_kind=base_kind,
+        base_name=base_name,
+        base_model_id=base_model_id,
         settings=run_settings,
         epochs=payload.epochs,
         created_at=utcnow(),
@@ -115,26 +172,32 @@ async def create_run(
         await session.flush()
     except IntegrityError:
         await session.rollback()
+        # Quote the ALREADY-STORED name: the attempt may differ only by case (D-10).
+        stored_name = (
+            await session.execute(
+                select(TrainingRun.name).where(
+                    TrainingRun.project_id == project_id,
+                    TrainingRun.normalized_name == normalized_name,
+                )
+            )
+        ).scalar_one_or_none()
+        if stored_name is None:
+            # Not a name clash: the chosen model was deleted after it was checked.
+            raise HTTPException(status_code=422, detail=UNKNOWN_MODEL_DETAIL) from None
         raise HTTPException(
-            status_code=409, detail=f'A run named "{name}" already exists in this project.'
+            status_code=409, detail=f'A run named "{stored_name}" already exists in this project.'
         ) from None
 
     snapshot_settings = {
-        "base": {"kind": "official", "name": payload.base.name, "model_id": None},
+        "base": {"kind": base_kind, "name": base_name, "model_id": base_model_id},
         **run_settings,
     }
     snapshot = await capture_snapshot(session, project_id, run.id, task_type, snapshot_settings)
     counts = snapshot.usable_counts()
-    refusal = None
-    if not snapshot.classes:
-        refusal = NO_CLASSES_DETAIL
-    elif counts["train"] == 0:
-        refusal = TRAIN_EMPTY_DETAIL
-    elif counts["valid"] == 0:
-        refusal = VALID_EMPTY_DETAIL
-    if refusal is not None:
+    blockers = blocker_codes(len(snapshot.classes), counts["train"], counts["valid"])
+    if blockers:
         await session.rollback()
-        raise HTTPException(status_code=422, detail=refusal)
+        raise HTTPException(status_code=422, detail=BLOCKER_DETAILS[blockers[0]])
 
     run.dataset_counts = counts
     run.class_names = [item.name for item in snapshot.classes]

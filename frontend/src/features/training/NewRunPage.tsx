@@ -11,6 +11,7 @@ import {
   TextInput,
   Title,
 } from "@mantine/core";
+import { useMediaQuery } from "@mantine/hooks";
 import { useId, useRef, useState } from "react";
 import type { FormEvent } from "react";
 import { useTranslation } from "react-i18next";
@@ -19,10 +20,39 @@ import { Link, useNavigate, useOutletContext } from "react-router-dom";
 import { ApiError } from "../../api/client";
 import type { Project } from "../../api/projects";
 import { useCreateRun, useTrainingOptions } from "../../api/training";
-import type { DeviceChoice, TrainingOptions } from "../../api/training";
+import type {
+  DeviceChoice,
+  RunBaseInput,
+  TrainedModelOption,
+  TrainingOptions,
+} from "../../api/training";
+import { AutoSplitDialog } from "../images/AutoSplitDialog";
+import { DatasetNotes } from "./DatasetNotes";
+import { DatasetSummary } from "./DatasetSummary";
 
 interface ProjectOutletContext {
   project: Project;
+}
+
+/** The viewport width from which the form and the dataset summary sit side by side. */
+const WIDE_LAYOUT_QUERY = "(min-width: 1200px)";
+const SUMMARY_WIDTH = 320;
+const LAYOUT_GAP = 24;
+/** Option values of models trained here are `model:<id>`; official ones are the model name. */
+const TRAINED_PREFIX = "model:";
+
+function trainedValue(model: TrainedModelOption): string {
+  return `${TRAINED_PREFIX}${model.id}`;
+}
+
+function trainedLabel(model: TrainedModelOption): string {
+  return model.project_name ? `${model.name} · ${model.project_name}` : model.name;
+}
+
+function baseInput(value: string): RunBaseInput {
+  return value.startsWith(TRAINED_PREFIX)
+    ? { kind: "model", model_id: Number(value.slice(TRAINED_PREFIX.length)) }
+    : { kind: "official", name: value };
 }
 
 // Mirror the server's RunCreate bounds (schemas.RunCreate). Client rules are UX only; the
@@ -50,8 +80,53 @@ export function NewRunPage() {
   const { t } = useTranslation(["training", "common"]);
   const { project } = useOutletContext<ProjectOutletContext>();
   const options = useTrainingOptions(project.id);
+  const wide = useMediaQuery(WIDE_LAYOUT_QUERY);
+  const [splitOpened, setSplitOpened] = useState(false);
   const listPath = `/projects/${project.id}/training`;
+  const openSplit = () => setSplitOpened(true);
 
+  const loadError =
+    options.data === undefined && options.isError
+      ? options.error instanceof ApiError
+        ? options.error.message
+        : String(options.error)
+      : null;
+
+  const formColumn =
+    options.data !== undefined ? (
+      <NewRunForm
+        key="form"
+        projectId={project.id}
+        options={options.data}
+        listPath={listPath}
+        onAutoSplit={openSplit}
+      />
+    ) : loadError !== null ? (
+      <Stack key="form" gap={16} maw={560}>
+        <ButtonRow listPath={listPath} startDisabled />
+      </Stack>
+    ) : (
+      <Stack key="form" gap={16} maw={560} data-testid="newrun-loading">
+        {[0, 1, 2, 3, 4, 5].map((key) => (
+          <Skeleton key={key} height={56} radius={8} />
+        ))}
+        <ButtonRow listPath={listPath} startDisabled />
+      </Stack>
+    );
+
+  const summaryColumn = (
+    <DatasetSummary
+      key="summary"
+      projectId={project.id}
+      summary={options.data?.summary}
+      error={loadError}
+      onRetry={() => void options.refetch()}
+      onAutoSplit={openSplit}
+    />
+  );
+
+  // Keyed siblings keep their state when the order flips at the breakpoint. Below it the
+  // summary comes first, so blockers are seen before the form is filled in.
   return (
     <Stack gap={24} maw={960}>
       <div>
@@ -60,35 +135,22 @@ export function NewRunPage() {
         </Button>
       </div>
       <Title order={2}>{t("training:newRun.title")}</Title>
-      {options.data !== undefined ? (
-        <NewRunForm projectId={project.id} options={options.data} listPath={listPath} />
-      ) : options.isError ? (
-        <Stack gap={16} maw={560}>
-          <Alert color="red" title={t("common:error.title")}>
-            <Stack gap={8} align="flex-start">
-              <Text size="sm">
-                {options.error instanceof ApiError ? options.error.message : String(options.error)}
-              </Text>
-              <Button
-                variant="light"
-                color="red"
-                size="compact-sm"
-                onClick={() => void options.refetch()}
-              >
-                {t("common:retry")}
-              </Button>
-            </Stack>
-          </Alert>
-          <ButtonRow listPath={listPath} startDisabled />
-        </Stack>
-      ) : (
-        <Stack gap={16} maw={560} data-testid="newrun-loading">
-          {[0, 1, 2, 3, 4, 5].map((key) => (
-            <Skeleton key={key} height={56} radius={8} />
-          ))}
-          <ButtonRow listPath={listPath} startDisabled />
-        </Stack>
-      )}
+      <div
+        data-testid="newrun-layout"
+        style={{
+          display: "grid",
+          gridTemplateColumns: wide ? `minmax(0, 1fr) ${SUMMARY_WIDTH}px` : "minmax(0, 1fr)",
+          gap: LAYOUT_GAP,
+          alignItems: "start",
+        }}
+      >
+        {wide ? [formColumn, summaryColumn] : [summaryColumn, formColumn]}
+      </div>
+      <AutoSplitDialog
+        projectId={project.id}
+        opened={splitOpened}
+        onClose={() => setSplitOpened(false)}
+      />
     </Stack>
   );
 }
@@ -117,10 +179,11 @@ interface NewRunFormProps {
   projectId: number;
   options: TrainingOptions;
   listPath: string;
+  onAutoSplit: () => void;
 }
 
-function NewRunForm({ projectId, options, listPath }: NewRunFormProps) {
-  const { t } = useTranslation(["training", "common"]);
+function NewRunForm({ projectId, options, listPath, onAutoSplit }: NewRunFormProps) {
+  const { t, i18n } = useTranslation(["training", "common"]);
   const navigate = useNavigate();
   const createRun = useCreateRun(projectId);
   const batchLabelId = useId();
@@ -146,6 +209,29 @@ function NewRunForm({ projectId, options, listPath }: NewRunFormProps) {
 
   const gpus = options.devices.gpus;
   const sizeByModel = new Map(options.official.map((model) => [model.name, model.size]));
+  const trainedByValue = new Map(options.models.map((model) => [trainedValue(model), model]));
+  const selectedModel = trainedByValue.get(base);
+  const map50Format = new Intl.NumberFormat(i18n.language, {
+    minimumFractionDigits: 3,
+    maximumFractionDigits: 3,
+  });
+  const baseData = [
+    {
+      group: t("training:newRun.base.official"),
+      items: options.official.map((model) => ({ value: model.name, label: model.name })),
+    },
+    ...(options.models.length > 0
+      ? [
+          {
+            group: t("training:newRun.base.trained"),
+            items: options.models.map((model) => ({
+              value: trainedValue(model),
+              label: trainedLabel(model),
+            })),
+          },
+        ]
+      : []),
+  ];
   const resolvedCpu = device === "cpu" || (device === "auto" && gpus.length === 0);
 
   function validateField(field: FieldKey): string | undefined {
@@ -215,7 +301,7 @@ function NewRunForm({ projectId, options, listPath }: NewRunFormProps) {
     createRun.mutate(
       {
         name: name.trim(),
-        base: { kind: "official", name: base },
+        base: baseInput(base),
         epochs: epochs as number,
         imgsz: imgsz as number,
         batch: batchMode === "auto" ? AUTO_BATCH : (customBatch as number),
@@ -247,7 +333,7 @@ function NewRunForm({ projectId, options, listPath }: NewRunFormProps) {
   ];
 
   return (
-    <form onSubmit={handleSubmit} noValidate>
+    <form onSubmit={handleSubmit} noValidate data-testid="newrun-form">
       <Stack gap={16} maw={560}>
         <TextInput
           label={t("training:newRun.name.label")}
@@ -267,26 +353,45 @@ function NewRunForm({ projectId, options, listPath }: NewRunFormProps) {
         />
         <Select
           label={t("training:newRun.base.label")}
-          data={[
-            {
-              group: t("training:newRun.base.official"),
-              items: options.official.map((model) => ({ value: model.name, label: model.name })),
-            },
-          ]}
+          data={baseData}
           value={base}
           onChange={(value) => value !== null && setBase(value)}
           allowDeselect={false}
           searchable={false}
           comboboxProps={{ withinPortal: true }}
-          renderOption={({ option }) => (
-            <Stack gap={0}>
-              <Text size="sm">{option.label}</Text>
-              <Text size="xs" c="dark.1">
-                {t(`training:newRun.base.size.${sizeByModel.get(option.value) ?? "n"}`)}
-              </Text>
-            </Stack>
-          )}
+          renderOption={({ option }) => {
+            const trained = trainedByValue.get(option.value);
+            if (trained !== undefined) {
+              // Long names truncate; the full label stays available as the option title.
+              return (
+                <Stack gap={0} miw={0} title={option.label}>
+                  <Text size="sm" truncate="end">
+                    {option.label}
+                  </Text>
+                  <Text size="xs" c="dark.1" truncate="end">
+                    {t("training:newRun.base.trainedMeta", {
+                      map50: trained.map50 === null ? "—" : map50Format.format(trained.map50),
+                      classes: trained.class_count,
+                    })}
+                  </Text>
+                </Stack>
+              );
+            }
+            return (
+              <Stack gap={0}>
+                <Text size="sm">{option.label}</Text>
+                <Text size="xs" c="dark.1">
+                  {t(`training:newRun.base.size.${sizeByModel.get(option.value) ?? "n"}`)}
+                </Text>
+              </Stack>
+            );
+          }}
         />
+        {selectedModel !== undefined && !selectedModel.classes_match ? (
+          <Alert color="yellow" variant="light" data-testid="classes-differ">
+            <Text size="sm">{t("training:newRun.base.classesDiffer")}</Text>
+          </Alert>
+        ) : null}
         <NumberInput
           label={t("training:newRun.epochs.label")}
           description={t("training:newRun.epochs.hint")}
@@ -391,12 +496,23 @@ function NewRunForm({ projectId, options, listPath }: NewRunFormProps) {
           searchable={false}
           comboboxProps={{ withinPortal: true }}
         />
+        <DatasetNotes
+          projectId={projectId}
+          blockers={options.blockers}
+          warnings={options.warnings}
+          unassigned={options.summary.unassigned}
+          onAutoSplit={onAutoSplit}
+        />
         {submitError !== null ? (
           <Alert color="red" title={t("common:error.title")}>
             {submitError}
           </Alert>
         ) : null}
-        <ButtonRow listPath={listPath} startDisabled={false} pending={createRun.isPending} />
+        <ButtonRow
+          listPath={listPath}
+          startDisabled={options.blockers.length > 0}
+          pending={createRun.isPending}
+        />
       </Stack>
     </form>
   );
