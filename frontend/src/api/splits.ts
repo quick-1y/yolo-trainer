@@ -1,7 +1,8 @@
-import { type InfiniteData, useMutation, useQueryClient } from "@tanstack/react-query";
+import { type InfiniteData, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { apiRequest } from "./client";
 import { type ImageDetail, type ImagePage, type ImageSplit, imageKeys } from "./images";
+import { type DatasetCounts, trainingKeys } from "./training";
 
 // Must equal SplitRequest.ids max_length in backend/src/yolo_trainer_api/schemas.py:
 // the backend keeps that bound on request size and the client splits the ids instead.
@@ -115,6 +116,72 @@ export function useSetSplit(projectId: number) {
     },
     onSuccess: (_result, { ids, split }) => {
       syncSplit(ids, split);
+    },
+  });
+}
+
+/** Whole percentages that add up to 100 (Test may be 0, Train and Valid may not). */
+export interface AutoSplitRatios {
+  train: number;
+  valid: number;
+  test: number;
+}
+
+/** What an automatic split of the unassigned images would give; nothing was written. */
+export interface AutoSplitPreview {
+  /** The seed that reproduces this preview; sent back when the split is applied. */
+  seed: number;
+  unassigned_total: number;
+  counts: DatasetCounts;
+}
+
+export interface AutoSplitApplyVariables extends AutoSplitRatios {
+  seed: number;
+  /** The `unassigned_total` of the preview the user confirmed. */
+  expected_unassigned: number;
+}
+
+export interface AutoSplitResult {
+  counts: DatasetCounts;
+}
+
+/**
+ * The preview of an automatic split. `ratios` is null while they are invalid or still
+ * being typed, which keeps the query idle. Never cached: each fetch picks a new seed and
+ * reads the current unassigned set.
+ */
+export function useAutoSplitPreview(projectId: number, ratios: AutoSplitRatios | null) {
+  return useQuery({
+    queryKey: ["autoSplitPreview", projectId, ratios?.train, ratios?.valid, ratios?.test],
+    queryFn: () =>
+      apiRequest<AutoSplitPreview>(`/projects/${projectId}/splits/auto/preview`, {
+        method: "POST",
+        body: JSON.stringify(ratios),
+      }),
+    enabled: ratios !== null,
+    staleTime: 0,
+    gcTime: 0,
+  });
+}
+
+/**
+ * Apply the previewed split. The server answers 409 when the unassigned set changed since
+ * the preview, and writes nothing. Many rows change, so one invalidation of the grid, the
+ * counts, the open details and the training options is cheaper than patching them.
+ */
+export function useApplyAutoSplit(projectId: number) {
+  const queryClient = useQueryClient();
+  return useMutation<AutoSplitResult, Error, AutoSplitApplyVariables>({
+    mutationFn: (variables) =>
+      apiRequest<AutoSplitResult>(`/projects/${projectId}/splits/auto`, {
+        method: "POST",
+        body: JSON.stringify(variables),
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: imageKeys.project(projectId) });
+      void queryClient.invalidateQueries({ queryKey: imageKeys.summary(projectId) });
+      void queryClient.invalidateQueries({ queryKey: ["image", projectId] });
+      void queryClient.invalidateQueries({ queryKey: trainingKeys.options(projectId) });
     },
   });
 }

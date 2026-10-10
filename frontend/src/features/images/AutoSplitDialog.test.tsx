@@ -124,7 +124,10 @@ function stubFetch({ total = 10, none = 7, onPreview, onApply }: StubOptions = {
 }
 
 function callsTo(fetchMock: ReturnType<typeof stubFetch>["fetchMock"], suffix: string) {
-  return fetchMock.mock.calls.filter((call) => String(call[0]).endsWith(suffix));
+  // By pathname: the image list request carries a query string (sort, limit).
+  return fetchMock.mock.calls.filter((call) =>
+    new URL(String(call[0]), "http://localhost").pathname.endsWith(suffix),
+  );
 }
 
 async function renderPage(language = "en") {

@@ -1,4 +1,15 @@
-import { Alert, Box, Button, EmptyState, Group, Skeleton, Stack, Text, Title } from "@mantine/core";
+import {
+  Alert,
+  Box,
+  Button,
+  EmptyState,
+  Group,
+  Skeleton,
+  Stack,
+  Text,
+  Title,
+  Tooltip,
+} from "@mantine/core";
 import { notifications } from "@mantine/notifications";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -16,6 +27,7 @@ import type { Project } from "../../api/projects";
 import { SplitBatchError, useSetSplit } from "../../api/splits";
 import { editorPath, readGridParams } from "../editor/lib/urls";
 import { AnnotateNextButton } from "./AnnotateNextButton";
+import { AutoSplitDialog } from "./AutoSplitDialog";
 import { DeleteImagesModal } from "./DeleteImagesModal";
 import { ImageGrid } from "./ImageGrid";
 import { ImagesToolbar } from "./ImagesToolbar";
@@ -74,6 +86,7 @@ export function ImagesPage() {
   const [deleteOpen, setDeleteOpen] = useState(false);
   // Snapshot taken when the dialog opens, so its text survives the clearing of the selection.
   const [deleteIds, setDeleteIds] = useState<number[]>([]);
+  const [autoSplitOpen, setAutoSplitOpen] = useState(false);
   const images = useImagesInfinite(project.id, sort, query);
   const config = useAppConfig();
   const { state, cancel, dismiss } = useUpload();
@@ -248,6 +261,9 @@ export function ImagesPage() {
     counts.data !== undefined
       ? counts.data.total > 0
       : images.data !== undefined && !nothingLeft;
+  // Nothing to split once every image has a split. While the counts load or fail the opener
+  // stays usable: the dialog shows the real number and never applies an empty split.
+  const nothingToSplit = counts.data?.splits.none === 0;
 
   return (
     <Box
@@ -270,6 +286,24 @@ export function ImagesPage() {
           </Group>
           <Group gap={8}>
             {hasImages && <AnnotateNextButton projectId={project.id} sort={sort} query={query} />}
+            {hasImages && (
+              <Tooltip label={t("images:autoSplit.openDisabled")} disabled={!nothingToSplit}>
+                {/* data-disabled instead of disabled: a disabled button gets no hover or
+                    focus, so the tooltip would never show. */}
+                <Button
+                  variant="default"
+                  data-disabled={nothingToSplit || undefined}
+                  aria-disabled={nothingToSplit || undefined}
+                  onClick={() => {
+                    if (!nothingToSplit) {
+                      setAutoSplitOpen(true);
+                    }
+                  }}
+                >
+                  {t("images:autoSplit.open")}
+                </Button>
+              </Tooltip>
+            )}
             <UploadButtons primary={!hasImages} />
           </Group>
         </Group>
@@ -359,6 +393,11 @@ export function ImagesPage() {
           />
         )}
       </Box>
+      <AutoSplitDialog
+        projectId={project.id}
+        opened={autoSplitOpen}
+        onClose={() => setAutoSplitOpen(false)}
+      />
       <DeleteImagesModal
         projectId={project.id}
         ids={deleteIds}
