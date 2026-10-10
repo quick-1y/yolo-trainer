@@ -93,7 +93,14 @@ describe("useSetSplit", () => {
 
   it("sends a selection over the batch size in sequential chunks", async () => {
     const ids = Array.from({ length: SPLIT_BATCH_SIZE + 1 }, (_, i) => i + 1);
-    const { bodies, hook } = setup((_call, slice) => jsonResponse({ updated: slice.length }));
+    const { bodies, hook } = setup((_call, slice) => {
+      // a second request starting before the first answered would see bodies.length ahead
+      inFlight.push(bodies.length - answered);
+      answered += 1;
+      return jsonResponse({ updated: slice.length });
+    });
+    const inFlight: number[] = [];
+    let answered = 0;
 
     let result = { updated: 0 };
     await act(async () => {
@@ -101,6 +108,8 @@ describe("useSetSplit", () => {
     });
 
     expect(bodies.map((body) => body.ids.length)).toEqual([SPLIT_BATCH_SIZE, 1]);
+    // each request was the only one outstanding when it was answered
+    expect(inFlight).toEqual([1, 1]);
     expect(bodies[0].split).toBeNull();
     expect(result).toEqual({ updated: SPLIT_BATCH_SIZE + 1 });
   });

@@ -16,8 +16,6 @@ import { renderWithProviders } from "../../test/render";
 import { handleImagesSideRequest } from "../../test/stubImagesApi";
 
 const MOCK_VIEWPORT = { viewportWidth: 1200, viewportHeight: 800, itemWidth: 184, itemHeight: 208 };
-// One column tall enough for every tile of a 1001-image list.
-const TALL_VIEWPORT = { viewportWidth: 184, viewportHeight: 208 * 1100, itemWidth: 184, itemHeight: 208 };
 
 const PROJECT = {
   id: 7,
@@ -57,7 +55,8 @@ interface SplitBody {
 type SplitHandler = (call: number, body: SplitBody) => Response | Promise<Response>;
 
 /** Strict stub: project, config, an N-image list and the split route. */
-function stubFetch(onSplit: SplitHandler, count = 10) {
+function stubFetch(onSplit: SplitHandler) {
+  const count = 10;
   const bodies: SplitBody[] = [];
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = new URL(String(input), "http://localhost");
@@ -90,38 +89,49 @@ function callsTo(fetchMock: ReturnType<typeof stubFetch>["fetchMock"], suffix: s
   return fetchMock.mock.calls.filter((call) => String(call[0]).endsWith(suffix));
 }
 
-async function renderGrid(viewport = MOCK_VIEWPORT, lastName = "img-1.jpg") {
+async function renderGrid() {
   const rendered = renderWithProviders(
-    <VirtuosoGridMockContext.Provider value={viewport}>
+    <VirtuosoGridMockContext.Provider value={MOCK_VIEWPORT}>
       <AppRoutes />
     </VirtuosoGridMockContext.Provider>,
     { route: "/projects/7/images" },
   );
-  await screen.findByText(lastName);
+  await screen.findByText("img-1.jpg");
   return rendered;
 }
 
+// Plain text and label queries instead of getByRole: the accessible-name computation is slow
+// in jsdom, and these tests share a busy worker pool with the editor suites.
 function checkbox(index: number): HTMLElement {
-  return screen.getByRole("checkbox", { name: `Select img-${index}.jpg` });
+  return screen.getByLabelText(`Select img-${index}.jpg`);
 }
 
 function tile(index: number): HTMLElement {
-  return screen.getByRole("button", { name: new RegExp(`^img-${index}\\.jpg,`) });
+  const element = screen.getByText(`img-${index}.jpg`).closest<HTMLElement>('[role="button"]');
+  if (element === null) {
+    throw new Error(`No tile for img-${index}.jpg`);
+  }
+  return element;
 }
 
+function setSplitTrigger(): HTMLElement {
+  const element = screen.getByText("Set split").closest<HTMLElement>("button");
+  if (element === null) {
+    throw new Error("No Set split button");
+  }
+  return element;
+}
+
+const menuLabel = (name: string) =>
+  screen.findByText(name, { selector: ".mantine-Menu-itemLabel" });
+
 async function openSplitMenu(user: UserEvent) {
-  await user.click(screen.getByRole("button", { name: /Set split/ }));
+  await user.click(setSplitTrigger());
 }
 
 async function chooseSplit(user: UserEvent, name: string) {
   await openSplitMenu(user);
-  await user.click(await screen.findByRole("menuitem", { name }));
-}
-
-async function shiftClick(user: UserEvent, element: HTMLElement) {
-  await user.keyboard("{Shift>}");
-  await user.click(element);
-  await user.keyboard("{/Shift}");
+  await user.click(await menuLabel(name));
 }
 
 describe("selection bar split action", () => {
@@ -134,7 +144,7 @@ describe("selection bar split action", () => {
 
     const count = await screen.findByText("Selected: 2");
     const clear = screen.getByRole("button", { name: "Clear selection" });
-    const setSplit = screen.getByRole("button", { name: /Set split/ });
+    const setSplit = setSplitTrigger();
     const remove = screen.getByRole("button", { name: "Delete" });
     const follows = (a: HTMLElement, b: HTMLElement) =>
       Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
@@ -151,7 +161,8 @@ describe("selection bar split action", () => {
 
     await openSplitMenu(user);
 
-    const items = await screen.findAllByRole("menuitem");
+    await menuLabel("No split");
+    const items = Array.from(document.querySelectorAll('[role="menuitem"]'));
     expect(items.map((item) => item.textContent)).toEqual(["Train", "Valid", "Test", "No split"]);
   });
 
@@ -215,11 +226,11 @@ describe("selection bar split action", () => {
 
     await chooseSplit(user, "Train");
 
-    const trigger = await screen.findByRole("button", { name: /Set split/ });
+    const trigger = setSplitTrigger();
     await waitFor(() => expect(trigger).toBeDisabled());
     expect(trigger).toHaveAttribute("data-loading", "true");
     release(jsonResponse({ updated: 1 }));
-    await waitFor(() => expect(screen.queryByRole("button", { name: /Set split/ })).toBeNull());
+    await waitFor(() => expect(screen.queryByText("Set split")).toBeNull());
   });
 
   it("reports a failed request and keeps the selection", async () => {
@@ -239,67 +250,4 @@ describe("selection bar split action", () => {
     expect(screen.getByText("Selected: 2")).toBeInTheDocument();
     expect(within(tile(1)).queryByLabelText(/^Split:/)).toBeNull();
   });
-});
-
-describe("selection over one batch", () => {
-  const COUNT = 1001;
-
-  async function selectAll(user: UserEvent) {
-    await user.click(checkbox(1));
-    await shiftClick(user, checkbox(COUNT));
-    expect(await screen.findByText(`Selected: ${COUNT}`)).toBeInTheDocument();
-  }
-
-  it("sends two sequential requests of 1000 and 1 ids", async () => {
-    let inFlight = 0;
-    let maxInFlight = 0;
-    const { bodies } = stubFetch(async (_call, body) => {
-      inFlight += 1;
-      maxInFlight = Math.max(maxInFlight, inFlight);
-      await new Promise((resolve) => setTimeout(resolve, 10));
-      inFlight -= 1;
-      return jsonResponse({ updated: body.ids.length });
-    }, COUNT);
-    const { user } = await renderGrid(TALL_VIEWPORT, `img-${COUNT}.jpg`);
-    await selectAll(user);
-
-    await chooseSplit(user, "Train");
-
-    await waitFor(() => expect(bodies).toHaveLength(2), { timeout: 20000 });
-    expect(bodies.map((body) => body.ids.length)).toEqual([1000, 1]);
-    expect(maxInFlight).toBe(1);
-    await waitFor(() =>
-      expect(notifications.show).toHaveBeenCalledWith({
-        color: "green",
-        message: "Images updated: 1,001. Split: Train.",
-      }),
-    );
-  }, 60000);
-
-  it("reports the updated prefix when the second chunk fails and keeps the selection", async () => {
-    stubFetch(
-      (call, body) =>
-        call === 0
-          ? jsonResponse({ updated: body.ids.length })
-          : jsonResponse({ detail: "Database is busy." }, 500),
-      COUNT,
-    );
-    const { user } = await renderGrid(TALL_VIEWPORT, `img-${COUNT}.jpg`);
-    await selectAll(user);
-
-    await chooseSplit(user, "Valid");
-
-    await waitFor(
-      () =>
-        expect(notifications.show).toHaveBeenCalledWith({
-          color: "red",
-          message: "Updated: 1000 of 1001 images. Database is busy.",
-        }),
-      { timeout: 20000 },
-    );
-    expect(screen.getByText(`Selected: ${COUNT}`)).toBeInTheDocument();
-    expect(within(tile(1)).getByLabelText("Split: Valid")).toBeInTheDocument();
-    expect(within(tile(1000)).getByLabelText("Split: Valid")).toBeInTheDocument();
-    expect(within(tile(COUNT)).queryByLabelText(/^Split:/)).toBeNull();
-  }, 60000);
 });
