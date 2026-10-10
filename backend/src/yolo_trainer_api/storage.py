@@ -11,6 +11,7 @@ import logging
 import os
 import re
 import shutil
+from collections.abc import Collection, Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import BinaryIO
@@ -300,15 +301,98 @@ def _remove_orphan(projects_root: Path, relative: Path) -> bool:
     return True
 
 
-def reconcile_orphans(
-    settings: Settings, project_ids: set[int], image_keys: set[tuple[int, int, str]]
-) -> int:
-    """Remove files under data/projects/ that no database row refers to (D-19).
+_MODEL_FILE = re.compile(r"^([0-9]+)\.pt$")
 
-    Safety valve: with an empty `projects` table but numbered project folders
-    on disk the database is far more likely wrong or restored than the files
-    orphaned, so nothing is deleted. Returns the number of entries removed.
+
+def find_orphan_runs(names: Iterable[str], run_ids: Collection[int]) -> list[str]:
+    """Names of run folders that belong to no `training_runs` row.
+
+    PURE: no I/O. Only canonical decimal names ("7", never "007") are ever reported;
+    everything else under `data/runs` is not ours and is ignored (T4-09-02).
     """
+    orphans: list[str] = []
+    for name in names:
+        run_id = _project_id_of(name)
+        if run_id is not None and run_id not in run_ids:
+            orphans.append(name)
+    return orphans
+
+
+def find_orphan_models(names: Iterable[str], model_ids: Collection[int]) -> list[str]:
+    """Names of `<id>.pt` files that belong to no `models` row.
+
+    PURE: no I/O. Only canonical `<id>.pt` names are reported, so a half-written
+    `.x.tmp-1` or any foreign file is left alone (T4-09-02).
+    """
+    orphans: list[str] = []
+    for name in names:
+        match = _MODEL_FILE.match(name)
+        if match is None:
+            continue
+        model_id = _project_id_of(match.group(1))
+        if model_id is not None and model_id not in model_ids:
+            orphans.append(name)
+    return orphans
+
+
+def _list_children(root: Path, *, directories: bool) -> list[str]:
+    """Names of the real directories (or regular files) directly inside `root`.
+
+    Links and junctions are never listed, so they are never followed or removed.
+    A missing root yields `[]`.
+    """
+    try:
+        with os.scandir(root) as entries:
+            return [
+                entry.name
+                for entry in entries
+                if not entry.is_symlink()
+                and not entry.is_junction()
+                and (
+                    entry.is_dir(follow_symlinks=False)
+                    if directories
+                    else entry.is_file(follow_symlinks=False)
+                )
+            ]
+    except FileNotFoundError:
+        return []
+    except OSError:
+        logger.warning("Could not list %s during orphan cleanup", root, exc_info=True)
+        return []
+
+
+def _remove_child(root: Path, name: str, *, is_dir: bool) -> bool:
+    """Delete `root/name` only when it is a direct child that is not a link."""
+    if not name or Path(name).name != name:
+        return False
+    target = root / name
+    if _is_link(target) or not target.exists():
+        return False
+    if is_dir:
+        if not target.is_dir():
+            return False
+        shutil.rmtree(target)
+    else:
+        if not target.is_file():
+            return False
+        target.unlink()
+    return True
+
+
+def _sweep(root: Path, orphans: list[str], *, is_dir: bool) -> int:
+    removed = 0
+    for name in orphans:
+        try:
+            if _remove_child(root, name, is_dir=is_dir):
+                removed += 1
+        except OSError:
+            logger.warning("Could not remove orphan %s", root / name, exc_info=True)
+    return removed
+
+
+def _reconcile_projects(
+    settings: Settings, project_ids: Collection[int], image_keys: set[tuple[int, int, str]]
+) -> int:
     root = settings.projects_dir
     listing = scan_projects_root(root)
     numbered = [name for name in listing if _project_id_of(name) is not None]
@@ -321,11 +405,62 @@ def reconcile_orphans(
         )
         return 0
     removed = 0
-    for relative in find_orphans(listing, project_ids, image_keys):
+    for relative in find_orphans(listing, set(project_ids), image_keys):
         try:
             if _remove_orphan(root, relative):
                 removed += 1
         except OSError:
             logger.warning("Could not remove orphan %s", root / relative, exc_info=True)
     logger.info("Orphan cleanup removed %d entries under %s", removed, root)
+    return removed
+
+
+def _reconcile_children(
+    root: Path, ids: Collection[int], *, is_dir: bool, what: str, table: str
+) -> int:
+    """Sweep run folders (`is_dir`) or model files below `root`, with an empty-table valve."""
+    names = _list_children(root, directories=is_dir)
+    if is_dir:
+        numbered = [name for name in names if _project_id_of(name) is not None]
+        orphans = find_orphan_runs(names, ids)
+    else:
+        numbered = [name for name in names if _MODEL_FILE.match(name)]
+        orphans = find_orphan_models(names, ids)
+    if not ids and numbered:
+        logger.error(
+            "Skipping orphan cleanup: the %s table is empty but %d %s exist under %s. "
+            "The database may be wrong or restored; no files were deleted.",
+            table,
+            len(numbered),
+            what,
+            root,
+        )
+        return 0
+    removed = _sweep(root, orphans, is_dir=is_dir)
+    logger.info("Orphan cleanup removed %d entries under %s", removed, root)
+    return removed
+
+
+def reconcile_orphans(
+    settings: Settings,
+    project_ids: Collection[int],
+    image_keys: set[tuple[int, int, str]],
+    run_ids: Collection[int] = frozenset(),
+    model_ids: Collection[int] = frozenset(),
+) -> int:
+    """Remove files that no database row refers to (D-19, D-21).
+
+    Covers `data/projects/`, `data/runs/<id>` and `data/models/<id>.pt`; never
+    `data/weights` or anything else. Each tree has its own safety valve: with an
+    empty table but numbered folders (files) on disk the database is far more
+    likely wrong or restored than the files orphaned, so that tree is left
+    alone. Returns the number of entries removed.
+    """
+    removed = _reconcile_projects(settings, project_ids, image_keys)
+    removed += _reconcile_children(
+        settings.runs_dir, run_ids, is_dir=True, what="run folder(s)", table="training_runs"
+    )
+    removed += _reconcile_children(
+        settings.models_dir, model_ids, is_dir=False, what="model file(s)", table="models"
+    )
     return removed

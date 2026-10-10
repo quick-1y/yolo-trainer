@@ -13,7 +13,7 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from yolo_trainer_api.db import checkpoint_wal, create_engine_for, create_sessionmaker
 from yolo_trainer_api.errors import register_error_handlers
 from yolo_trainer_api.migrate import run_migrations
-from yolo_trainer_api.models import Image, Project
+from yolo_trainer_api.models import Image, Project, TrainedModel, TrainingRun
 from yolo_trainer_api.routers.annotations import router as annotations_router
 from yolo_trainer_api.routers.classes import router as classes_router
 from yolo_trainer_api.routers.config import router as config_router
@@ -36,7 +36,11 @@ async def _cleanup_orphans(app: FastAPI, settings: Settings) -> None:
             project_ids = set((await session.execute(select(Project.id))).scalars().all())
             image_rows = await session.execute(select(Image.project_id, Image.id, Image.ext))
             image_keys = {(row.project_id, row.id, row.ext) for row in image_rows.all()}
-        await asyncio.to_thread(reconcile_orphans, settings, project_ids, image_keys)
+            run_ids = set((await session.execute(select(TrainingRun.id))).scalars().all())
+            model_ids = set((await session.execute(select(TrainedModel.id))).scalars().all())
+        await asyncio.to_thread(
+            reconcile_orphans, settings, project_ids, image_keys, run_ids, model_ids
+        )
     except Exception:
         logger.exception("Orphan file cleanup failed; continuing startup")
 
