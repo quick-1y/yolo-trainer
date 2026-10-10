@@ -99,12 +99,14 @@ def setup_project(
     unannotated: int = 0,
     unassigned: int = 0,
     classes: tuple[str, ...] = ("box",),
+    size: tuple[int, int] = (96, 96),
 ) -> dict:
     """Create a project with classes and images; returns the ids by role.
 
     `train`, `valid` and `test` count annotated (one box) images of that split;
     `background` images and `unannotated` images are assigned to Train; `unassigned`
-    images have no split and no annotation.
+    images have no split and no annotation. Every image is `size` pixels with one filled
+    rectangle that the annotated box (x/y 0.25, w/h 0.5) matches.
     """
     response = client.post("/api/projects", json={"name": name, "task_type": task_type})
     assert response.status_code == 201, response.text
@@ -129,7 +131,8 @@ def setup_project(
     for role, count in wanted.items():
         for index in range(count):
             color = (40 + 30 * index, 200 - 20 * index, 90 + 10 * len(roles[role]))
-            image = _upload(client, project_id, box_png(color, (24, 24, 72, 72)))
+            rect = (size[0] // 4, size[1] // 4, size[0] * 3 // 4, size[1] * 3 // 4)
+            image = _upload(client, project_id, box_png(color, rect, size))
             roles[role].append(image["id"])
             if role in {"train", "valid", "test"}:
                 _put_boxes(client, project_id, image["id"], class_ids[0], background=False)
