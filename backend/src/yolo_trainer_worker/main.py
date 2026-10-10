@@ -95,6 +95,7 @@ def build_heartbeat(
     now: datetime,
     device: ComputeDevice,
     versions: dict[str, str],
+    active_run_id: int | None = None,
 ) -> dict[str, object]:
     """Build the heartbeat payload with exactly the documented key set."""
     return {
@@ -106,6 +107,7 @@ def build_heartbeat(
         "cuda_available": device.cuda_available,
         "device": device.device,
         "device_name": device.device_name,
+        "active_run_id": active_run_id,
     }
 
 
@@ -127,8 +129,12 @@ def run(
     stop_event: threading.Event,
     device_probe: Callable[[], ComputeDevice] = detect_compute_device,
     versions: dict[str, str] | None = None,
+    active_run: Callable[[], int | None] = lambda: None,
 ) -> None:
-    """Write a heartbeat immediately, then every `heartbeat_interval_seconds` until stopped."""
+    """Write a heartbeat immediately, then every `heartbeat_interval_seconds` until stopped.
+
+    `active_run` is read on every beat: the id of the run being trained, or None when idle.
+    """
     pid = os.getpid()
     started_at = datetime.now(UTC)
     device = device_probe()
@@ -138,7 +144,9 @@ def run(
 
     while True:
         now = datetime.now(UTC)
-        payload = build_heartbeat(pid, started_at, now, device, resolved_versions)
+        payload = build_heartbeat(
+            pid, started_at, now, device, resolved_versions, active_run_id=active_run()
+        )
         write_heartbeat(settings.heartbeat_path, payload)
         if stop_event.wait(settings.heartbeat_interval_seconds):
             return
@@ -187,19 +195,26 @@ def main(argv: list[str] | None = None) -> int:
     stop_event = threading.Event()
     _install_signal_handlers(stop_event)
 
-    # The heartbeat keeps ticking in the background while the main thread trains.
+    engine = create_worker_engine(settings)
+    supervisor = Supervisor(engine, settings, device)
+
+    # The heartbeat keeps ticking in the background while the main thread trains; it
+    # reports the run being trained so the api can tell a live worker from a dead one.
     heartbeat = threading.Thread(
         target=run,
         args=(settings, stop_event),
-        kwargs={"device_probe": lambda: device, "versions": versions},
+        kwargs={
+            "device_probe": lambda: device,
+            "versions": versions,
+            "active_run": lambda: supervisor.active_run_id,
+        },
         name="heartbeat",
         daemon=True,
     )
     heartbeat.start()
 
-    engine = create_worker_engine(settings)
     try:
-        Supervisor(engine, settings, device).serve(stop_event)
+        supervisor.serve(stop_event)
     finally:
         stop_event.set()
         heartbeat.join(timeout=5)

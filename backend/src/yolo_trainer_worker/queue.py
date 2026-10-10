@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session, aliased
 
 from yolo_trainer_api.db import apply_sqlite_pragmas
 from yolo_trainer_api.models import TrainedModel, TrainingRun, utcnow
+from yolo_trainer_api.training.reconcile import RUNNING_INTERRUPTED_DETAIL
 from yolo_trainer_api.training.snapshot import link_or_copy
 from yolo_trainer_common import layout
 from yolo_trainer_common.progress import jsonable, primary_metrics
@@ -28,7 +29,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-INTERRUPTED_ON_RESTART_MESSAGE = "The service was restarted while this run was training."
+INTERRUPTED_ON_RESTART_MESSAGE = RUNNING_INTERRUPTED_DETAIL
 _HASH_CHUNK = 1024 * 1024
 
 
@@ -68,7 +69,11 @@ def claim_next(engine: Engine, now: datetime | None = None) -> int | None:
 
 
 def reconcile_on_start(engine: Engine, now: datetime | None = None) -> int:
-    """Every `running` run becomes `interrupted`; `queued` runs stay queued (D-13)."""
+    """Every `running` run becomes `interrupted`; `queued` runs stay queued (D-13).
+
+    Deliberately never signals the PID recorded on a run: after a container restart the PID
+    namespace is new and that number may belong to an unrelated process.
+    """
     stamp = now or utcnow()
     with engine.begin() as connection:
         result = connection.execute(
