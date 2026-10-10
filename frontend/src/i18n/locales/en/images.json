@@ -64,7 +64,10 @@
   "selection": {
     "count": "Selected: {{count}}",
     "clear": "Clear selection",
-    "delete": "Delete"
+    "delete": "Delete",
+    "setSplit": "Set split",
+    "splitDone": "Images updated: {{count}}. Split: {{value}}.",
+    "splitPartial": "Updated: {{done}} of {{total}} images. {{message}}"
   },
   "delete": {
     "title": "Delete images",

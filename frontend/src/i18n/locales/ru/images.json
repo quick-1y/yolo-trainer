@@ -64,7 +64,10 @@
   "selection": {
     "count": "Выбрано: {{count}}",
     "clear": "Снять выделение",
-    "delete": "Удалить"
+    "delete": "Удалить",
+    "setSplit": "Назначить выборку",
+    "splitDone": "Изображений обновлено: {{count}}. Выборка: {{value}}.",
+    "splitPartial": "Обновлено: {{done}} из {{total}} изображений. {{message}}"
   },
   "delete": {
     "title": "Удалить изображения",
