@@ -465,6 +465,55 @@ class DatasetCounts(BaseModel):
     test: int
 
 
+# --------------------------------------------------------------------------
+# Auto-split (D-03)
+# --------------------------------------------------------------------------
+
+Percent = Annotated[int, Field(strict=True, ge=0, le=100)]
+SeedValue = Annotated[int, Field(strict=True, ge=0, le=2**31 - 1)]
+
+
+class _SplitRatios(BaseModel):
+    """Whole percentages that add up to 100; Test may be 0, Train and Valid may not."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    train: Percent
+    valid: Percent
+    test: Percent
+
+    @model_validator(mode="after")
+    def _ratios_make_sense(self) -> _SplitRatios:
+        if self.train + self.valid + self.test != 100:
+            raise ValueError("Ratios must add up to 100.")
+        if self.train == 0 or self.valid == 0:
+            raise ValueError("Train and Valid must be above 0.")
+        return self
+
+
+class AutoSplitRatios(_SplitRatios):
+    """Preview request: the server picks the seed when none is given."""
+
+    seed: SeedValue | None = None
+
+
+class AutoSplitPreview(BaseModel):
+    seed: int
+    unassigned_total: int
+    counts: DatasetCounts
+
+
+class AutoSplitApply(_SplitRatios):
+    """Apply request: the previewed seed and the number of unassigned images it was shown for."""
+
+    seed: SeedValue
+    expected_unassigned: Annotated[int, Field(strict=True, ge=0)]
+
+
+class AutoSplitResult(BaseModel):
+    counts: DatasetCounts
+
+
 class RunMetrics(BaseModel):
     precision: float | None = None
     recall: float | None = None

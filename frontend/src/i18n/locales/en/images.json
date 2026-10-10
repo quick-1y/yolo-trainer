@@ -90,6 +90,29 @@
     },
     "aria": "Split: {{value}}"
   },
+  "autoSplit": {
+    "open": "Split dataset",
+    "openDisabled": "All images already have a split.",
+    "title": "Split dataset automatically",
+    "body": "Only images without a split are assigned. Images you already assigned stay where they are.",
+    "unannotatedNote": "Images that are not annotated yet are included. They are not used for training until you annotate them.",
+    "field": {
+      "train": "Train, %",
+      "valid": "Valid, %",
+      "test": "Test, %"
+    },
+    "total": "Total: {{sum}}%",
+    "error": {
+      "sum": "Ratios must add up to 100.",
+      "required": "Train and Valid must be above 0."
+    },
+    "preview": {
+      "unassigned": "Images without a split: {{count}}",
+      "result": "Result — Train: {{train}} · Valid: {{valid}} · Test: {{test}}"
+    },
+    "apply": "Apply split",
+    "done": "Split applied. Train: {{train}} · Valid: {{valid}} · Test: {{test}}."
+  },
   "annotateNext": "Annotate next",
   "status": {
     "unannotated": "Unannotated",
