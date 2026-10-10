@@ -175,16 +175,20 @@ def test_a_real_two_epoch_cpu_run_registers_a_model_a_plain_script_can_load(
         f"m.predict({str(sample_image)!r}, imgsz=64, verbose=False); "
         "print('PREDICT_OK')"
     )
+    probe_config = tmp_path / "probe-config"
+    probe_config.mkdir()  # Ultralytics needs it to exist, else it warns and creates ./Ultralytics
     loaded = subprocess.run(
         [sys.executable, "-c", probe],
-        env={**_clean_env(), "YOLO_CONFIG_DIR": str(tmp_path / "probe-config")},
+        env={**_clean_env(), "YOLO_CONFIG_DIR": str(probe_config)},
         capture_output=True,
         text=True,
         timeout=300,
     )
 
     assert loaded.returncode == 0, loaded.stderr
-    assert loaded.stdout.split() == ["detect", "['box']", "PREDICT_OK"]
+    # Ultralytics prints a one-time "Creating new Ultralytics Settings" notice first;
+    # the probe's own three lines are always the last ones.
+    assert loaded.stdout.split()[-3:] == ["detect", "['box']", "PREDICT_OK"]
 
 
 def _clean_env() -> dict[str, str]:
