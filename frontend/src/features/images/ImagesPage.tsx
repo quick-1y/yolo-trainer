@@ -1,12 +1,19 @@
 import { Alert, Box, Button, EmptyState, Group, Skeleton, Stack, Text, Title } from "@mantine/core";
+import { notifications } from "@mantine/notifications";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate, useOutletContext, useSearchParams } from "react-router-dom";
 
 import { ApiError } from "../../api/client";
 import { useAppConfig } from "../../api/config";
-import { type ImageSort, useImagesInfinite, useStatusCounts } from "../../api/images";
+import {
+  type ImageSort,
+  type ImageSplit,
+  useImagesInfinite,
+  useStatusCounts,
+} from "../../api/images";
 import type { Project } from "../../api/projects";
+import { SplitBatchError, useSetSplit } from "../../api/splits";
 import { editorPath, readGridParams } from "../editor/lib/urls";
 import { AnnotateNextButton } from "./AnnotateNextButton";
 import { DeleteImagesModal } from "./DeleteImagesModal";
@@ -52,7 +59,7 @@ function GridSkeleton() {
 }
 
 export function ImagesPage() {
-  const { t } = useTranslation(["images", "common"]);
+  const { t, i18n } = useTranslation(["images", "common"]);
   const { project } = useOutletContext<ProjectOutletContext>();
   // Sort and filename search live in the URL (D-03): reloadable, and the editor carries them
   // to its own URL so "← Images" returns to the same view. Writes use `replace`, so typing
@@ -153,6 +160,40 @@ export function ImagesPage() {
   }, []);
   const selecting = selected.size > 0;
 
+  // Manual split assignment (D-02): chunked by useSetSplit; on success the selection clears,
+  // on a failed chunk it stays so the user can retry.
+  const setSplit = useSetSplit(project.id);
+  const handleSplit = (split: ImageSplit | null) => {
+    const ids = Array.from(selected);
+    setSplit.mutate(
+      { ids, split },
+      {
+        onSuccess: (result) => {
+          notifications.show({
+            color: "green",
+            message: t("images:selection.splitDone", {
+              count: new Intl.NumberFormat(i18n.language).format(result.updated),
+              value: t(`images:split.value.${split ?? "none"}`),
+            }),
+          });
+          clearSelection();
+        },
+        onError: (error) => {
+          const partial = error instanceof SplitBatchError;
+          notifications.show({
+            color: "red",
+            message: t("images:selection.splitPartial", {
+              done: partial ? error.done : 0,
+              total: partial ? error.total : ids.length,
+              message: error.message,
+              interpolation: { escapeValue: false },
+            }),
+          });
+        },
+      },
+    );
+  };
+
   // A new search or sort starts from an empty selection.
   useEffect(() => {
     clearSelection();
@@ -245,6 +286,8 @@ export function ImagesPage() {
             setDeleteIds(Array.from(selected));
             setDeleteOpen(true);
           }}
+          onSplit={handleSplit}
+          splitPending={setSplit.isPending}
         />
       )}
       {/* Kept mounted (hidden) while selecting, so a pending debounced search still commits. */}

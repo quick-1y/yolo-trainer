@@ -36,7 +36,8 @@
     "dismiss": "Dismiss",
     "progress": "Annotated: {{done}} of {{total}}",
     "reviewed": "Reviewed: {{count}}",
-    "allDone": "All images are annotated."
+    "allDone": "All images are annotated.",
+    "splits": "Split — Train: {{train}} · Valid: {{valid}} · Test: {{test}} · No split: {{none}}"
   },
   "reject": {
     "unsupported": "Not a supported image (JPG, PNG, WEBP, BMP).",
@@ -63,7 +64,10 @@
   "selection": {
     "count": "Selected: {{count}}",
     "clear": "Clear selection",
-    "delete": "Delete"
+    "delete": "Delete",
+    "setSplit": "Set split",
+    "splitDone": "Images updated: {{count}}. Split: {{value}}.",
+    "splitPartial": "Updated: {{done}} of {{total}} images. {{message}}"
   },
   "delete": {
     "title": "Delete images",
@@ -75,6 +79,16 @@
     "title": "No matching images",
     "body": "No filenames contain \"{{query}}\". Try a different search.",
     "clear": "Clear search"
+  },
+  "split": {
+    "label": "Split",
+    "value": {
+      "train": "Train",
+      "valid": "Valid",
+      "test": "Test",
+      "none": "No split"
+    },
+    "aria": "Split: {{value}}"
   },
   "annotateNext": "Annotate next",
   "status": {
