@@ -342,6 +342,20 @@ def test_new_project_reports_zero_counts_on_create_get_and_list(client: TestClie
     assert (listed["image_count"], listed["class_count"]) == (0, 0)
 
 
+def test_new_project_reports_zero_run_model_and_active_run_counts(client: TestClient) -> None:
+    created = client.post("/api/projects", json={"name": "No runs", "task_type": "detect"})
+    project_id = created.json()["id"]
+    keys = ("run_count", "model_count", "active_run_count")
+
+    assert tuple(created.json()[key] for key in keys) == (0, 0, 0)
+    fetched = client.get(f"/api/projects/{project_id}").json()
+    assert tuple(fetched[key] for key in keys) == (0, 0, 0)
+    [listed] = [p for p in client.get("/api/projects").json() if p["id"] == project_id]
+    assert tuple(listed[key] for key in keys) == (0, 0, 0)
+    patched = client.patch(f"/api/projects/{project_id}", json={"description": "x"}).json()
+    assert tuple(patched[key] for key in keys) == (0, 0, 0)
+
+
 def test_counts_follow_uploads_and_classes_and_get_matches_list(client: TestClient) -> None:
     project_id = client.post(
         "/api/projects", json={"name": "Counted", "task_type": "detect"}
