@@ -90,6 +90,7 @@ def manifest_dict(snapshot: Snapshot, created_at: datetime) -> dict:
                 "sha256": item.sha256,
                 "ext": item.ext,
                 "background": item.background,
+                "box_count": len(item.boxes),
                 "boxes": [
                     {"class_index": index, "x": x, "y": y, "w": w, "h": h}
                     for index, x, y, w, h in item.boxes
