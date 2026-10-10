@@ -33,7 +33,7 @@ const ELLIPSIS = { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "no
 /**
  * The split menu shared by the grid's selection bar and the editor top bar (D-02a, D-02b):
  * Train, Valid, Test, a divider, then No split. A glyph that is part of a label sits in a
- * 4px-spaced aria-hidden span, never in leftSection/rightSection (UI-SPEC "Spacing Scale").
+ * 4px-spaced aria-hidden span, never in a Mantine button section (UI-SPEC "Spacing Scale").
  */
 export function SplitMenu({
   value,
