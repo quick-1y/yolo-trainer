@@ -125,7 +125,8 @@ def test_unknown_and_foreign_runs_answer_404(client: TestClient) -> None:
     assert unknown.json()["detail"] == service.RUN_NOT_FOUND_DETAIL
     assert foreign.status_code == 404
     assert no_project.status_code == 404
-    assert run_status(client, project_id, run["id"]) == "queued"  # the foreign delete changed nothing
+    # the foreign delete changed nothing
+    assert run_status(client, project_id, run["id"]) == "queued"
 
 
 def test_removing_a_run_needs_the_xhr_header(client: TestClient) -> None:
