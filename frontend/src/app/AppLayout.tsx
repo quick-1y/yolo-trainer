@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import { Outlet } from "react-router-dom";
 
 import { LanguageSwitcher } from "../components/LanguageSwitcher";
+import { ActiveRunIndicator } from "../features/training/ActiveRunIndicator";
 
 export function AppLayout() {
   const { t } = useTranslation("common");
@@ -12,7 +13,10 @@ export function AppLayout() {
       <AppShell.Header>
         <Group h="100%" px="md" justify="space-between">
           <Title order={3}>{t("app.title")}</Title>
-          <LanguageSwitcher />
+          <Group gap={16} wrap="nowrap" style={{ minWidth: 0 }}>
+            <ActiveRunIndicator variant="header" />
+            <LanguageSwitcher />
+          </Group>
         </Group>
       </AppShell.Header>
       <AppShell.Main>

@@ -4,6 +4,7 @@ import { Link, Outlet, useLocation, useParams } from "react-router-dom";
 
 import { ApiError } from "../../api/client";
 import { useProject } from "../../api/projects";
+import { useActiveRun } from "../../api/training";
 import { UploadProvider, useUpload } from "../images/UploadContext";
 import { ProjectNotFound } from "./ProjectNotFound";
 
@@ -64,7 +65,7 @@ export function ProjectLayout() {
   return (
     <UploadProvider key={parsedId} projectId={parsedId}>
       <Group align="flex-start" gap="xl" wrap="nowrap">
-        <ProjectSidebar projectBase={projectBase} isActive={isActive} />
+        <ProjectSidebar projectId={parsedId} projectBase={projectBase} isActive={isActive} />
         <Box style={{ flex: 1, minWidth: 0 }}>
           <Outlet context={{ project: query.data }} />
         </Box>
@@ -74,14 +75,18 @@ export function ProjectLayout() {
 }
 
 interface ProjectSidebarProps {
+  projectId: number;
   projectBase: string;
   isActive: (section: SectionLink) => boolean;
 }
 
-function ProjectSidebar({ projectBase, isActive }: ProjectSidebarProps) {
+function ProjectSidebar({ projectId, projectBase, isActive }: ProjectSidebarProps) {
   const { t } = useTranslation("project");
   const { state } = useUpload();
   const uploading = state.status === "running";
+  // The same shared query the header indicator reads (D-14): one request per page.
+  const { data: activeRun } = useActiveRun();
+  const training = activeRun?.project_id === projectId;
 
   return (
     <Stack w={200} gap={4}>
@@ -97,6 +102,8 @@ function ProjectSidebar({ projectBase, isActive }: ProjectSidebarProps) {
           rightSection={
             section.key === "images" && uploading ? (
               <Loader size={16} data-testid="images-nav-loader" />
+            ) : section.key === "training" && training ? (
+              <Loader size={16} aria-label={t("nav.trainingRunning")} />
             ) : undefined
           }
         />

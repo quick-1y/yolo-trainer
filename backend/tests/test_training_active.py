@@ -42,7 +42,9 @@ def test_no_runs_at_all_answers_null(client: TestClient) -> None:
     assert response.json() is None
 
 
-def test_a_queued_and_a_completed_run_are_not_active(client: TestClient, settings: Settings) -> None:
+def test_a_queued_and_a_completed_run_are_not_active(
+    client: TestClient, settings: Settings
+) -> None:
     project_id, completed = _queued_run(client)
     _set_run(settings, completed["id"], status="completed")
     queued = start_run(client, project_id)
@@ -87,4 +89,4 @@ def test_a_running_run_before_its_first_epoch_has_a_null_epoch(
 
     assert body["run_id"] == run["id"]
     assert body["epoch"] is None
-    assert body["epochs"] is None
+    assert body["epochs"] == 2  # known from the start; only the epoch counter is missing
