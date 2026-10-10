@@ -4,8 +4,8 @@ It imports no training library and does no training: it writes the same files th
 real job writes (`progress.jsonl`, `out/train/weights/{best,last}.pt`, `result.json` /
 `error.json`) so the supervisor, registration and download can be tested fast.
 
-Modes: `success`, `fail` (exit 1 with error.json), `crash` (exit 3, no error.json),
-`sleep` (one real epoch, then sleeps for a minute so a test can stop the worker).
+Modes: `success`, `fail` (exit 1 with error.json after 80 noisy lines), `crash` (exit 3, no
+error.json), `sleep` (one real epoch, then sleeps for a minute so a test can stop the worker).
 """
 
 from __future__ import annotations
@@ -51,6 +51,8 @@ def main() -> int:
         return 3
 
     if args.mode == "fail":
+        for number in range(80):  # more noise than the stored log tail may keep
+            print(f"\x1b[33mnoise {number}\x1b[0m\r", flush=True)
         for number in range(1, 4):
             print(f"\x1b[31mline {number}\x1b[0m", flush=True)
         print("progress 50%\r", end="", flush=True)

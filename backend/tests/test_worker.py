@@ -45,7 +45,17 @@ class TestBuildHeartbeat:
             "cuda_available",
             "device",
             "device_name",
+            "active_run_id",
         }
+
+    def test_active_run_id_defaults_to_null_and_carries_the_given_run(self):
+        started = datetime(2026, 1, 1, tzinfo=UTC)
+
+        idle = build_heartbeat(42, started, started, FIXED_DEVICE, FIXED_VERSIONS)
+        busy = build_heartbeat(42, started, started, FIXED_DEVICE, FIXED_VERSIONS, active_run_id=7)
+
+        assert idle["active_run_id"] is None
+        assert busy["active_run_id"] == 7
 
     def test_values_and_iso_z_timestamps(self):
         started = datetime(2026, 1, 1, 12, 0, 0, tzinfo=UTC)
@@ -136,6 +146,23 @@ class TestRun:
         payload = json.loads(settings.heartbeat_path.read_text(encoding="utf-8"))
         assert payload["cuda_available"] is False
         assert payload["torch_version"] == "2.14.0+cpu"
+        assert payload["active_run_id"] is None
+
+    def test_the_active_run_is_read_on_every_beat(self, tmp_path: Path):
+        settings = WorkerSettings(data_dir=tmp_path, heartbeat_interval_seconds=1)
+        stop_event = threading.Event()
+        stop_event.set()
+
+        run(
+            settings,
+            stop_event,
+            device_probe=lambda: FIXED_DEVICE,
+            versions=FIXED_VERSIONS,
+            active_run=lambda: 7,
+        )
+
+        payload = json.loads(settings.heartbeat_path.read_text(encoding="utf-8"))
+        assert payload["active_run_id"] == 7
 
 
 class TestWorkerSettings:

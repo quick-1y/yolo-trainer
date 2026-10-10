@@ -48,6 +48,10 @@ DATASET_MISSING_MESSAGE = "The prepared dataset is missing."
 CLASS_MISMATCH_MESSAGE = "The trained model's class names do not match the dataset."
 STOPPED_MESSAGE = "The worker was stopped while this run was in progress."
 
+# Returned by `run_claimed` when the run row was deleted (or is no longer `running`) while
+# the child trained: the child is stopped and nothing is written to the database.
+VANISHED = "vanished"
+
 
 @dataclass(frozen=True)
 class Resolved:
@@ -185,7 +189,7 @@ class Supervisor:
         run_directory = layout.run_dir(data_dir, run_id)
         run = queue.load_run(self.engine, run_id)
         if run is None:
-            return "gone"
+            return VANISHED
         if not (run_directory / layout.JOB_FILE).is_file():
             queue.mark_failed(self.engine, run_id, DATASET_MISSING_MESSAGE, None)
             return "failed"
@@ -222,8 +226,15 @@ class Supervisor:
                     self.engine, run_id, f"Could not start the training process: {exc}", None
                 )
                 return "failed"
-            queue.record_start(self.engine, run_id, asdict(resolved), process.pid)
-            outcome, final_metrics = self._watch(run_id, run, process, run_directory, stop_event)
+            try:
+                queue.record_start(self.engine, run_id, asdict(resolved), process.pid)
+                outcome, final_metrics = self._watch(
+                    run_id, run, process, run_directory, stop_event
+                )
+            except BaseException:
+                # Whatever went wrong here, never leave the child training unsupervised.
+                self._terminate(process)
+                raise
         if outcome is not None:
             return outcome
         return self._finish(run_id, run, process.returncode, run_directory, final_metrics)
@@ -261,17 +272,26 @@ class Supervisor:
                     continue
                 last_real = metrics
                 value = metrics.get(key)
-                changed = queue.record_epoch(
-                    self.engine,
-                    run_id,
-                    int(event.get("epoch", 0)),
-                    event.get("epochs") or run.get("epochs"),
-                    value if isinstance(value, int | float) else None,
-                )
+                try:
+                    changed = queue.record_epoch(
+                        self.engine,
+                        run_id,
+                        int(event.get("epoch", 0)),
+                        event.get("epochs") or run.get("epochs"),
+                        value if isinstance(value, int | float) else None,
+                    )
+                except OperationalError:
+                    # A busy database must not kill a long training; the next epoch retries.
+                    logger.warning("Could not record progress of run %s", run_id, exc_info=True)
+                    continue
                 if changed == 0 and exit_code is None:
                     # The run row is gone or no longer running: stop the child.
                     self._terminate(process)
-                    outcome = "gone"
+                    outcome = VANISHED
+            if outcome is None and exit_code is None and not self._still_running(run_id):
+                # The row can disappear between epochs (project deleted): no event reveals it.
+                self._terminate(process)
+                outcome = VANISHED
             if outcome is not None or exit_code is not None:
                 break
             if stop_event.is_set():
@@ -285,7 +305,17 @@ class Supervisor:
                 outcome = "interrupted"
                 break
             stop_event.wait(self.tick_seconds)
+        if outcome is None and not self._still_running(run_id):
+            outcome = VANISHED
         return outcome, final or last_real
+
+    def _still_running(self, run_id: int) -> bool:
+        """False only if the row is gone or not `running`; a busy database counts as alive."""
+        try:
+            return queue.run_status(self.engine, run_id) == "running"
+        except OperationalError:
+            logger.warning("Could not check run %s; assuming it is still running", run_id)
+            return True
 
     @staticmethod
     def _terminate(process: subprocess.Popen) -> None:
@@ -294,7 +324,7 @@ class Supervisor:
             return
         try:
             if os.name == "posix":
-                os.killpg(process.pid, signal.SIGTERM)
+                os.killpg(os.getpgid(process.pid), signal.SIGTERM)
             else:
                 process.terminate()
         except (ProcessLookupError, PermissionError):
@@ -304,7 +334,7 @@ class Supervisor:
         except subprocess.TimeoutExpired:
             try:
                 if os.name == "posix":
-                    os.killpg(process.pid, signal.SIGKILL)
+                    os.killpg(os.getpgid(process.pid), signal.SIGKILL)
                 else:
                     process.kill()
             except (ProcessLookupError, PermissionError):

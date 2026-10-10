@@ -24,6 +24,7 @@ from yolo_trainer_api.routers.runs import router as runs_router
 from yolo_trainer_api.routers.splits import router as splits_router
 from yolo_trainer_api.settings import Settings, validate_data_dir
 from yolo_trainer_api.storage import reconcile_orphans
+from yolo_trainer_api.training.reconcile import reconcile_runs_on_startup
 
 logger = logging.getLogger(__name__)
 
@@ -57,6 +58,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.engine = engine
         app.state.sessionmaker = create_sessionmaker(engine)
 
+        # Runs a restart left in `preparing`/`running` get an honest final status (D-13).
+        await reconcile_runs_on_startup(app.state.sessionmaker, settings)
         await _cleanup_orphans(app, settings)
 
         yield

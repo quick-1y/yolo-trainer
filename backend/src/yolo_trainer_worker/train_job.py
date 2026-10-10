@@ -79,6 +79,18 @@ def _resolve_weights(data_dir: Path, base: dict) -> Path:
     return path
 
 
+def configure_ultralytics(data_dir: Path) -> None:
+    """Turn analytics off and point the weights cache at `DATA_DIR/weights` (Pitfall 5).
+
+    Runs before any model exists. `YOLO_CONFIG_DIR`, set by the supervisor, keeps the
+    settings file away from any user settings. Do not set `YOLO_OFFLINE`: it would also
+    disable the weights download.
+    """
+    from ultralytics import settings as yolo_settings
+
+    yolo_settings.update({"sync": False, "weights_dir": str(layout.weights_root(data_dir))})
+
+
 class ProgressWriter:
     """Appends one JSON line per event; values pass through `jsonable` (no NaN, no tensors)."""
 
@@ -99,12 +111,7 @@ def _train(args: argparse.Namespace) -> None:
     job = json.loads((run_directory / layout.JOB_FILE).read_text(encoding="utf-8"))
     settings = job["settings"]
 
-    # Analytics off before any model exists (Pitfall 5). YOLO_CONFIG_DIR, set by the
-    # supervisor, keeps this away from any user settings. Do not set YOLO_OFFLINE: it
-    # would also disable the weights download.
-    from ultralytics import settings as yolo_settings
-
-    yolo_settings.update({"sync": False, "weights_dir": str(layout.weights_root(data_dir))})
+    configure_ultralytics(data_dir)
 
     import torch
     import ultralytics
