@@ -81,6 +81,34 @@ export function officialModels(taskType: "detect" | "segment" = "detect"): Json[
   );
 }
 
+/** A dataset a run can start from: Train and Valid hold images, everything is assigned. */
+export function makeSummary(overrides: Json = {}): Json {
+  return {
+    train: { used: 8, unannotated: 0 },
+    valid: { used: 2, unannotated: 0 },
+    test: { used: 0, unannotated: 0 },
+    unassigned: 0,
+    class_count: 1,
+    ...overrides,
+  };
+}
+
+/** A model trained in this service (`TrainedModelOption`). */
+export function makeTrainedModel(overrides: Json = {}): Json {
+  return {
+    id: 4,
+    name: "best-cars",
+    project_id: 2,
+    project_name: "Plates",
+    map50: 0.8123,
+    class_count: 2,
+    class_names: ["car", "plate"],
+    classes_match: true,
+    created_at: "2026-01-14T10:00:00Z",
+    ...overrides,
+  };
+}
+
 export function makeOptions(overrides: Json = {}): Json {
   return {
     task_type: "detect",
@@ -89,6 +117,10 @@ export function makeOptions(overrides: Json = {}): Json {
     default_base: "yolo26n",
     defaults: { epochs: 100, imgsz: 640, batch: -1, device: "auto" },
     devices: { gpus: [], worker_fresh: false },
+    models: [],
+    summary: makeSummary(),
+    blockers: [],
+    warnings: [],
     ...overrides,
   };
 }
@@ -124,6 +156,10 @@ export interface StubTrainingOptions {
   removeDetail?: string;
   /** DELETE answers only after this promise settles, so a test can look at the pending state. */
   removeGate?: Promise<void>;
+  /** Body of POST /splits/auto/preview (default: 4 unassigned images -> Train 3, Valid 1). */
+  splitPreview?: Json;
+  /** Called when POST /splits/auto is applied, so a test can change what the options answer next. */
+  onSplitApply?: () => void;
 }
 
 export interface StubTrainingApi {
@@ -131,6 +167,8 @@ export interface StubTrainingApi {
   posts: Json[];
   /** Paths of every DELETE /api/projects/1/runs/:id, in order. */
   deletes: string[];
+  /** Parsed JSON bodies of every POST /api/projects/1/splits/auto (the apply call), in order. */
+  splitApplies: Json[];
   /** "METHOD /path" of every request, in order. */
   requests: string[];
   /** How many requests matched exactly this "METHOD /path". */
@@ -145,6 +183,7 @@ export interface StubTrainingApi {
 export function stubTrainingApi(stub: StubTrainingOptions = {}): StubTrainingApi {
   const posts: Json[] = [];
   const deletes: string[] = [];
+  const splitApplies: Json[] = [];
   const requests: string[] = [];
 
   const fetchMock = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
@@ -204,6 +243,20 @@ export function stubTrainingApi(stub: StubTrainingOptions = {}): StubTrainingApi
       }
       return json(found);
     }
+    if (method === "POST" && path === "/api/projects/1/splits/auto/preview") {
+      return json(
+        stub.splitPreview ?? {
+          seed: 7,
+          unassigned_total: 4,
+          counts: { train: 3, valid: 1, test: 0 },
+        },
+      );
+    }
+    if (method === "POST" && path === "/api/projects/1/splits/auto") {
+      splitApplies.push(JSON.parse(String(init?.body)) as Json);
+      stub.onSplitApply?.();
+      return json({ counts: { train: 3, valid: 1, test: 0 } });
+    }
     if (method === "GET" && path === "/api/projects/1/training/options") {
       if (stub.optionsStatus !== undefined && stub.optionsStatus !== 200) {
         return json({ detail: "Database is unavailable." }, stub.optionsStatus);
@@ -217,6 +270,7 @@ export function stubTrainingApi(stub: StubTrainingOptions = {}): StubTrainingApi
   return {
     posts,
     deletes,
+    splitApplies,
     requests,
     count: (request) => requests.filter((entry) => entry === request).length,
   };
