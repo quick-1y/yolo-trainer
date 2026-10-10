@@ -259,7 +259,7 @@ def test_names_are_numbered_and_unique_per_project(client: TestClient) -> None:
         ({"surprise": 1}, "surprise"),
         ({"base": {"kind": "official", "name": "../../etc/passwd"}}, ""),
         ({"base": {"kind": "official", "name": "yolov8n"}}, ""),
-        ({"base": {"kind": "path", "name": "yolo26n"}}, "base.kind"),
+        ({"base": {"kind": "path", "name": "yolo26n"}}, "base: Input tag 'path'"),
     ],
 )
 def test_run_requests_are_validated_on_the_server(

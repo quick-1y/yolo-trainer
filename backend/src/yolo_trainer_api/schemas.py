@@ -417,13 +417,25 @@ class OfficialBase(BaseModel):
     name: Annotated[str, Field(max_length=32)]
 
 
+class ModelBase(BaseModel):
+    """A model registered in this service, chosen by id; never a path (T4-01, T4-08-01)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["model"]
+    model_id: Annotated[int, Field(strict=True, ge=1)]
+
+
+RunBase = Annotated[OfficialBase | ModelBase, Field(discriminator="kind")]
+
+
 class RunCreate(BaseModel):
     """Start a training run (TRAN-01); every bound is enforced again here (T4-07)."""
 
     model_config = ConfigDict(extra="forbid")
 
     name: ProjectName | None = None
-    base: OfficialBase
+    base: RunBase
     epochs: Annotated[int, Field(strict=True, ge=1, le=1000)]
     imgsz: Annotated[int, Field(strict=True, ge=32, le=2048)]
     batch: Annotated[int, Field(strict=True)]
@@ -598,6 +610,61 @@ class TrainingDevices(BaseModel):
     worker_fresh: bool
 
 
+class SplitUsage(BaseModel):
+    """One split: images a run would use, and assigned images it would leave out (D-04)."""
+
+    used: int
+    unannotated: int
+
+
+class DatasetSummary(BaseModel):
+    """What a run started now would train on (D-06)."""
+
+    train: SplitUsage
+    valid: SplitUsage
+    test: SplitUsage
+    unassigned: int
+    class_count: int
+
+
+TrainingNoteCode = Literal[
+    "noClasses",
+    "trainEmpty",
+    "validEmpty",
+    "unannotated",
+    "unassigned",
+    "classesMissingTrain",
+    "classesMissingValid",
+    "workerStale",
+]
+
+
+class TrainingNote(BaseModel):
+    """A blocker or a warning as a code with parameters; the client words it (D-05)."""
+
+    code: TrainingNoteCode
+    count: int = 0
+    names: list[str] = Field(default_factory=list)
+
+
+class TrainedModelOption(BaseModel):
+    """A model trained in this service that can be the base of a new run (D-08)."""
+
+    id: int
+    name: str
+    project_id: int | None
+    project_name: str | None
+    map50: float | None
+    class_count: int
+    class_names: list[str]
+    classes_match: bool
+    created_at: datetime
+
+    @field_serializer("created_at")
+    def _serialize_utc(self, value: datetime) -> str | None:
+        return _utc_iso(value)
+
+
 class TrainingOptions(BaseModel):
     task_type: TaskType
     next_run_name: str
@@ -605,3 +672,7 @@ class TrainingOptions(BaseModel):
     default_base: str
     defaults: TrainingDefaults
     devices: TrainingDevices
+    models: list[TrainedModelOption]
+    summary: DatasetSummary
+    blockers: list[TrainingNote]
+    warnings: list[TrainingNote]

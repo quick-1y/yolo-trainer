@@ -56,14 +56,24 @@ def _sha256(path: Path) -> str:
 
 
 def _resolve_weights(data_dir: Path, base: dict) -> Path:
-    """The cached official weights file, downloaded on first use (Pitfall 6).
+    """The weights file to start from: a model trained here, or a cached official one.
 
-    The path is always absolute and below `DATA_DIR/weights/`; a relative name would
-    download into the working directory. The name is re-validated against the allow-list
-    pattern here (T4-01).
+    A model base resolves to `DATA_DIR/models/<id>.pt` from its integer id alone; no path
+    from `job.json` is ever used (T4-01, T4-08-01). An official base is downloaded on first
+    use (Pitfall 6): the path is always absolute and below `DATA_DIR/weights/`, because a
+    relative name would download into the working directory, and the name is re-validated
+    against the allow-list pattern here.
     """
+    if base.get("kind") == "model":
+        model_id = base.get("model_id")
+        if isinstance(model_id, bool) or not isinstance(model_id, int):
+            raise ValueError(f"Not a model id: {model_id!r}")
+        model_path = layout.model_file(data_dir, model_id)
+        if not model_path.is_file():
+            raise RuntimeError("The base model file is missing.")
+        return model_path
     if base.get("kind") != "official":
-        raise RuntimeError("Only official base models can be trained from yet.")
+        raise RuntimeError("Unknown base model kind.")
     name = str(base.get("name", ""))
     path = layout.weights_file(data_dir, name)
     if not path.exists():
