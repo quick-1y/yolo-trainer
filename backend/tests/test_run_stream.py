@@ -13,11 +13,12 @@ import threading
 from collections.abc import AsyncIterator
 from pathlib import Path
 
+import pytest
 from fastapi.sse import ServerSentEvent
 from fastapi.testclient import TestClient
 
 from yolo_trainer_api.settings import Settings
-from yolo_trainer_api.training.stream import progress_frames
+from yolo_trainer_api.training.stream import parse_last_event_id, progress_frames
 from yolo_trainer_common import layout
 from yolo_trainer_common.device import ComputeDevice
 from yolo_trainer_worker import queue
@@ -197,3 +198,194 @@ def test_http_stream_of_another_projects_run_or_an_unknown_run_is_404(
     assert foreign.json() == {"detail": "Run not found."}
     assert unknown.status_code == 404
     assert unknown.json() == {"detail": "Run not found."}
+
+
+@pytest.mark.parametrize(
+    ("raw", "size", "expected"),
+    [
+        (None, 500, 0),
+        ("120", 500, 120),
+        ("500", 500, 500),
+        ("0", 500, 0),
+        ("600", 500, 0),
+        ("-5", 500, 0),
+        ("12a", 500, 0),
+        ("1e3", 500, 0),
+        (" 7", 500, 0),
+        ("", 500, 0),
+        ("٣", 500, 0),  # an Arabic-Indic digit is not an ASCII digit
+    ],
+)
+def test_parse_last_event_id_accepts_only_a_plain_offset_inside_the_file(
+    raw: str | None, size: int, expected: int
+) -> None:
+    assert parse_last_event_id(raw, size) == expected
+
+
+def _progress_ids(frames: list[ServerSentEvent]) -> list[int]:
+    return [int(frame.id) for frame in frames if frame.event == "progress"]
+
+
+def test_an_offset_taken_from_a_previous_frame_id_replays_only_later_lines(tmp_path: Path) -> None:
+    path = tmp_path / "progress.jsonl"
+    path.write_bytes(_epoch(1, 0.5) + _epoch(2, 0.6))
+    ids = _offsets(_epoch(1, 0.5), _epoch(2, 0.6))
+
+    frames = _collect(
+        progress_frames(
+            path,
+            ids[1],
+            "detect",
+            _status_reader(_status("completed")),
+            file_tick=0.01,
+            status_every=1,
+        )
+    )
+
+    assert _progress_ids(frames) == ids[2:]
+    assert [frame.event for frame in frames][-2:] == ["status", "end"]
+
+
+def test_a_half_written_last_line_is_sent_only_once_it_is_complete(tmp_path: Path) -> None:
+    path = tmp_path / "progress.jsonl"
+    complete = _epoch(1, 0.5)
+    second = _line("train_epoch_end", epoch=2, epochs=2, tloss={"box_loss": 0.9})
+    path.write_bytes(complete + second[:20])
+
+    def finish_the_line(call: int) -> None:
+        if call == 2:
+            with path.open("ab") as handle:
+                handle.write(second[20:])
+
+    frames = _collect(
+        progress_frames(
+            path,
+            0,
+            "detect",
+            _status_reader(
+                _status("running"),
+                _status("running"),
+                _status("running"),
+                _status("completed"),
+                on_call=finish_the_line,
+            ),
+            file_tick=0.01,
+            status_every=1,
+        )
+    )
+
+    assert _progress_ids(frames) == _offsets(complete, second)
+    # The half line was never sent as a broken frame: every frame is a whole event.
+    assert [frame.data["epoch"] for frame in frames if frame.event == "progress"] == [1, 1, 2]
+
+
+def test_a_run_row_deleted_mid_stream_ends_the_stream(tmp_path: Path) -> None:
+    path = tmp_path / "progress.jsonl"
+    path.write_bytes(_epoch(1, 0.5))
+
+    frames = _collect(
+        progress_frames(
+            path,
+            0,
+            "detect",
+            _status_reader(_status("running"), None),
+            file_tick=0.01,
+            status_every=1,
+        )
+    )
+
+    assert [frame.event for frame in frames] == ["status", "progress", "progress", "end"]
+    assert frames[-1].data == {"status": None}
+
+
+def test_a_status_change_after_more_lines_yields_those_lines_then_status_and_end(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "progress.jsonl"
+    path.write_bytes(_epoch(1, 0.5))
+
+    def write_last_epoch(call: int) -> None:
+        if call == 1:
+            with path.open("ab") as handle:
+                handle.write(_epoch(2, 0.6))
+
+    frames = _collect(
+        progress_frames(
+            path,
+            0,
+            "detect",
+            _status_reader(_status("running"), _status("completed"), on_call=write_last_epoch),
+            file_tick=0.01,
+            status_every=1,
+        )
+    )
+
+    kinds = [frame.event for frame in frames]
+    assert kinds == ["status", "progress", "progress", "progress", "progress", "status", "end"]
+    assert frames[-2].data["status"] == "completed"
+    assert _progress_ids(frames)[-1] == path.stat().st_size
+
+
+def test_a_replay_sends_only_the_last_batch_progress_event(tmp_path: Path) -> None:
+    path = tmp_path / "progress.jsonl"
+    batches = b"".join(
+        _line("batch_progress", epoch=1, batch=number, nb=9) for number in range(1, 6)
+    )
+    path.write_bytes(_line("train_start") + batches + _epoch(1, 0.5))
+
+    frames = _collect(
+        progress_frames(
+            path, 0, "detect", _status_reader(_status("completed")), file_tick=0.01, status_every=1
+        )
+    )
+
+    sent = [frame.data["event"] for frame in frames if frame.event == "progress"]
+    assert sent == ["train_start", "batch_progress", "train_epoch_end", "fit_epoch_end"]
+    batch = next(frame for frame in frames if frame.data.get("event") == "batch_progress")
+    assert batch.data["batch"] == 5
+    assert path.read_bytes().count(b"batch_progress") == 5  # the file itself is untouched
+
+
+def _frames_of(body: str) -> list[dict[str, str]]:
+    frames = []
+    for block in body.strip().split("\n\n"):
+        fields: dict[str, str] = {}
+        for line in block.splitlines():
+            key, _, value = line.partition(": ")
+            fields[key] = value
+        frames.append(fields)
+    return frames
+
+
+def test_http_headers_and_resume_by_last_event_id(client: TestClient, settings: Settings) -> None:
+    project_id, run_id = _terminal_run(client, settings, "Resume")
+    url = f"/api/projects/{project_id}/runs/{run_id}/stream"
+
+    full = client.get(url)
+
+    assert full.headers["cache-control"] == "no-cache"
+    assert full.headers["x-accel-buffering"] == "no"
+    frames = _frames_of(full.text)
+    progress_ids = [frame["id"] for frame in frames if frame["event"] == "progress"]
+    assert len(progress_ids) >= 4
+    assert [frame["event"] for frame in frames][-2:] == ["status", "end"]
+
+    garbage = client.get(url, headers={"Last-Event-ID": "abc"})
+    assert _frames_of(garbage.text) == frames  # not a number: replay everything
+
+    beyond = client.get(url, headers={"Last-Event-ID": str(10**9)})
+    assert _frames_of(beyond.text) == frames  # beyond the file: replay everything
+
+    resumed = client.get(url, headers={"Last-Event-ID": progress_ids[1]})
+    resumed_frames = _frames_of(resumed.text)
+    assert [frame["id"] for frame in resumed_frames if frame["event"] == "progress"] == (
+        progress_ids[2:]
+    )
+    assert [frame["event"] for frame in resumed_frames][-2:] == ["status", "end"]
+
+
+def test_http_stream_of_an_unknown_project_is_404(client: TestClient) -> None:
+    response = client.get("/api/projects/9999/runs/1/stream")
+
+    assert response.status_code == 404
+    assert response.json() == {"detail": "Project not found."}

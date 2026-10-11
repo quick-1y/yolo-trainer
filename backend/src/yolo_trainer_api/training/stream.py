@@ -66,6 +66,11 @@ async def stream_target(project_id: int, run_id: int, request: Request) -> Strea
     )
 
 
+def parse_last_event_id(raw: str | None, size: int) -> int:
+    """Signature stub (RED): the real parse lands with the GREEN commit."""
+    return 0
+
+
 def status_payload(row) -> dict:
     return {"status": row.status, "epoch": row.epoch, "epochs": row.epochs}
 

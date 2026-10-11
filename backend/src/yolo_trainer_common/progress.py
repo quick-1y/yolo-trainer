@@ -20,6 +20,11 @@ EVENT_TRAIN_EPOCH_END = "train_epoch_end"
 EVENT_FIT_EPOCH_END = "fit_epoch_end"
 EVENT_MODEL_SAVE = "model_save"
 EVENT_TRAIN_END = "train_end"
+EVENT_TRAIN_START = "train_start"
+EVENT_BATCH_PROGRESS = "batch_progress"
+
+# Readers treat every field added in version 2 as optional (D-05): older files stay readable.
+SCHEMA_VERSION = 2
 
 LOG_TAIL_LINES = 50
 
@@ -152,6 +157,11 @@ def enrich_event(task_type: str, event: dict) -> dict:
             task_type, metrics if isinstance(metrics, dict) else None
         )
     return enriched
+
+
+def compact_replay(items: list[tuple[int, dict]]) -> list[tuple[int, dict]]:
+    """Signature stub (RED): the real compaction lands with the GREEN commit."""
+    return items
 
 
 def clean_log_tail(text: str, max_lines: int = LOG_TAIL_LINES) -> str:
