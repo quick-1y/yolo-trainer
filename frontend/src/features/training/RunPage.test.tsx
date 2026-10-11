@@ -337,10 +337,11 @@ function finalValidation(epoch: number, epochs: number) {
 
 describe("RunPage final validation", () => {
   it("reads Final validation after the last real epoch: full epoch bar, no batch bar, no time left, never epoch 11", async () => {
-    stubTrainingApi({ run: running({ epoch: 10, epochs: 10 }) });
+    // The poll still says 9 completed epochs; the stream knows the 10th was the last one.
+    stubTrainingApi({ run: running({ epoch: 9, epochs: 10 }) });
     renderWithProviders(<AppRoutes />, { route: RUN_PATH });
 
-    expect((await screen.findAllByText("Epoch 10 of 10")).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText("Epoch 9 of 10")).length).toBeGreaterThan(0);
     await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
     const source = latestEventSource();
     act(() => {

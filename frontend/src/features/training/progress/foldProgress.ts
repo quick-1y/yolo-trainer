@@ -245,6 +245,7 @@ export function foldProgress(state: ProgressState, frame: ProgressFrame): Progre
     if (frame.final_validation === true) {
       return {
         ...state,
+        phase: "final_validation",
         finalMetrics: {
           precision: numberOrNull(primary.precision),
           recall: numberOrNull(primary.recall),
@@ -258,8 +259,14 @@ export function foldProgress(state: ProgressState, frame: ProgressFrame): Progre
       return state;
     }
     const valParts = parts(frame.metrics, "val/");
+    // The last real epoch (final or early stop) is followed by the final validation, never by
+    // another epoch (D-04). A Phase 4 file has no `last_epoch`: its last planned epoch says it.
+    const lastReal =
+      frame.last_epoch === true ||
+      (frame.v === undefined && epochs !== null && frame.epoch >= epochs);
     return {
       ...state,
+      phase: lastReal ? "final_validation" : state.phase,
       rows: upsert(state.rows, frame.epoch, (row) => ({
         ...row,
         valParts,

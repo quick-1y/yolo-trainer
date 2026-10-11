@@ -26,9 +26,9 @@ import { estimateRemainingSeconds } from "./progress/eta";
 import type { ProgressState } from "./progress/foldProgress";
 import { RunCharts } from "./progress/RunCharts";
 import { useRunStream } from "./progress/useRunStream";
+import { FinalResultsCard } from "./FinalResultsCard";
 import { RemoveFromQueueModal } from "./RemoveFromQueueModal";
 import { RunFailureLog } from "./RunFailureLog";
-import { RunMetrics } from "./RunMetrics";
 import { RunSettingsCard } from "./RunSettingsCard";
 import { RunStatusBadge } from "./RunStatusBadge";
 
@@ -169,6 +169,7 @@ export function RunPage() {
         ) : null}
       </Group>
       <StatusCard run={run} progress={progress} />
+      <FinalResultsCard run={run} finalMetrics={progress.finalMetrics} />
       {streamEnabled ? (
         <RunCharts
           progress={progress}
@@ -326,8 +327,15 @@ function RunningBody({ run, progress }: { run: RunDetail; progress: ProgressStat
   const elapsed = useElapsedSeconds(run.started_at, true);
   const epochs = run.epochs;
   const hasEpoch = run.epoch !== null && epochs !== null && epochs > 0;
-  // The final validation emits one more event than there are epochs; never show Y+1 (D-12).
-  const shown = hasEpoch ? Math.min(run.epoch as number, epochs as number) : 0;
+  const lastRowEpoch = progress.rows.length > 0 ? progress.rows[progress.rows.length - 1].epoch : 0;
+  // The run query is polled slowly while the stream is healthy: once the stream says the last
+  // real epoch is done, trust its epoch. The final validation emits one more event than there
+  // are epochs; never show Y+1 (D-12).
+  const reached =
+    progress.phase === "final_validation"
+      ? Math.max(run.epoch ?? 0, lastRowEpoch)
+      : (run.epoch ?? 0);
+  const shown = hasEpoch ? Math.min(reached, epochs as number) : 0;
   const map50 =
     run.last_map50 === null
       ? "—"
@@ -339,9 +347,13 @@ function RunningBody({ run, progress }: { run: RunDetail; progress: ProgressStat
   // re-renders every second but never changes the estimate (D-03).
   const eta = useMemo(() => estimateRemainingSeconds(progress), [progress]);
   const batch = progress.batch;
+  // After the last real epoch (or, for a Phase 4 run, at epoch = epochs) the run only validates
+  // best.pt: no batch bar, no ETA, the epoch bar stays full (D-04).
+  const finalPhase = progress.phase === "final_validation" || (hasEpoch && shown >= (epochs as number));
   // "Time left: —" is only meaningful next to an epoch headline; Starting shows an ETA once known.
-  const etaText =
-    eta !== null
+  const etaText = finalPhase
+    ? null
+    : eta !== null
       ? t("run.running.eta", { time: formatClock(eta) })
       : hasEpoch
         ? t("run.running.etaUnknown")
@@ -387,19 +399,29 @@ function RunningBody({ run, progress }: { run: RunDetail; progress: ProgressStat
             aria-valuenow={shown}
             aria-live="off"
           >
-            <Progress.Section value={(shown / (epochs as number)) * 100} withAria={false} />
+            <Progress.Section
+              value={finalPhase ? 100 : (shown / (epochs as number)) * 100}
+              withAria={false}
+            />
           </Progress.Root>
         ) : null}
-        {batch !== null ? (
+        {finalPhase ? (
+          <Stack gap={4}>
+            <Group gap={8} wrap="nowrap">
+              <Loader size={12} />
+              <Text fz={14} fw={600}>
+                {t("run.running.finalValidation")}
+              </Text>
+            </Group>
+            <Text size="xs" c="dark.1">
+              {t("run.running.finalValidationHint")}
+            </Text>
+          </Stack>
+        ) : batch !== null ? (
           <BatchProgress batch={batch} map50={map50} />
         ) : hasEpoch ? (
           <Text size="xs" c="dark.1" style={TABULAR}>
             {t("run.running.map50", { value: map50 })}
-          </Text>
-        ) : null}
-        {hasEpoch && shown >= (epochs as number) ? (
-          <Text size="sm" c="dark.1">
-            {t("run.running.finishing")}
           </Text>
         ) : null}
         <Text size="xs" c="dark.1">
@@ -441,7 +463,11 @@ function CompletedBody({ run }: { run: RunDetail }) {
           </Text>
         ) : null}
       </Group>
-      <RunMetrics run={run} />
+      {run.epoch !== null && run.epochs !== null && run.epoch < run.epochs ? (
+        <Text size="sm" c="dark.1" style={TABULAR}>
+          {t("run.completed.earlyStop", { epoch: run.epoch, epochs: run.epochs })}
+        </Text>
+      ) : null}
       {model !== null ? (
         <>
           <Divider />
