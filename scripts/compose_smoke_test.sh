@@ -399,6 +399,24 @@ while :; do
   sleep 3
 done
 
+echo "    reading the progress stream of the finished run through nginx..."
+if ! curl -sS -N --max-time 30 -D "${SMOKE_TMP}/stream.headers" -o "${SMOKE_TMP}/stream.body" "${TRAIN_RUN_URL}/stream"; then
+  echo "FAIL: the progress stream did not finish within 30s (a terminal run must end its stream): $(cat "${SMOKE_TMP}/stream.headers" 2>/dev/null)" >&2
+  exit 1
+fi
+if ! grep -qi '^content-type:.*text/event-stream' "${SMOKE_TMP}/stream.headers"; then
+  echo "FAIL: the progress stream is not text/event-stream: $(cat "${SMOKE_TMP}/stream.headers")" >&2
+  exit 1
+fi
+if ! grep -q 'event: progress' "${SMOKE_TMP}/stream.body"; then
+  echo "FAIL: the progress stream carries no 'event: progress' frame: $(head -c 400 "${SMOKE_TMP}/stream.body")" >&2
+  exit 1
+fi
+if ! grep -q 'event: end' "${SMOKE_TMP}/stream.body"; then
+  echo "FAIL: the progress stream of a completed run did not end with 'event: end': $(tail -c 400 "${SMOKE_TMP}/stream.body")" >&2
+  exit 1
+fi
+
 for DATASET_FILE in data.yaml manifest.json; do
   if [ ! -f "${DATA_DIR}/runs/${TRAIN_RUN_ID}/dataset/${DATASET_FILE}" ]; then
     echo "FAIL: ${DATA_DIR}/runs/${TRAIN_RUN_ID}/dataset/${DATASET_FILE} does not exist on the host" >&2
