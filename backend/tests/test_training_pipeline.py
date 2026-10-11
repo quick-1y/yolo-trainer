@@ -567,6 +567,8 @@ class _StubTrainer:
         self.epoch = epoch
         self.epochs = epochs
         self.metrics = metrics
+        self.stop = epoch + 1 >= epochs  # True on the last real epoch, as in Ultralytics
+        self.fitness = 0.5
         self.tloss = {"box_loss": _Scalar(1.25)}
         self.last = Path("last.pt")
         self.best = Path("best.pt")
@@ -709,6 +711,9 @@ def test_train_job_disables_sync_first_and_tags_the_final_validation(
         (2, True),
     ]
     assert fits[-1]["metrics"] == {"metrics/mAP50(B)": 0.3}
+    assert [event.get("last_epoch") for event in fits] == [False, True, None]
+    assert [event.get("fitness") for event in fits] == [0.5, 0.5, None]
+    assert {event["v"] for event in events} == {2}
     first_tloss = next(event for event in events if event["event"] == "train_epoch_end")["tloss"]
     assert first_tloss == {"box_loss": 1.25}
     result = json.loads((run_directory / layout.RESULT_FILE).read_text(encoding="utf-8"))

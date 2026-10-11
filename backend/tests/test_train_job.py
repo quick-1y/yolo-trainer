@@ -19,6 +19,7 @@ import subprocess
 import sys
 import threading
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
@@ -113,6 +114,198 @@ def test_missing_official_weights_that_cannot_be_downloaded_fail_with_a_plain_me
     )
 
 
+class _Clock:
+    """A fake monotonic clock: each call returns the next planned instant."""
+
+    def __init__(self, *instants: float) -> None:
+        self._instants = iter(instants)
+
+    def __call__(self) -> float:
+        return next(self._instants)
+
+
+def _trainer(**overrides: object) -> SimpleNamespace:
+    values: dict[str, object] = {
+        "epochs": 3,
+        "epoch": 0,
+        "start_epoch": 0,
+        "resume": False,
+        "train_loader": [object()] * 4,
+        "tloss": {"box_loss": 1.0},
+        "metrics": {"metrics/mAP50(B)": 0.5},
+        "fitness": 0.31,
+        "stop": False,
+        "best": "best.pt",
+        "last": "last.pt",
+    }
+    values.update(overrides)
+    return SimpleNamespace(**values)
+
+
+def _events(path: Path) -> list[dict]:
+    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+
+
+def _run_batches(callbacks: dict, trainer: SimpleNamespace, count: int) -> None:
+    for _ in range(count):
+        callbacks["on_train_batch_end"](trainer)
+
+
+def test_every_progress_line_carries_the_schema_version(tmp_path: Path) -> None:
+    path = tmp_path / "progress.jsonl"
+    callbacks = train_job.make_callbacks(train_job.ProgressWriter(path), clock=_Clock(0.0, 0.0))
+    trainer = _trainer()
+
+    callbacks["on_train_start"](trainer)
+    callbacks["on_train_epoch_start"](trainer)
+    callbacks["on_train_batch_end"](trainer)
+    callbacks["on_train_epoch_end"](trainer)
+    callbacks["on_fit_epoch_end"](trainer)
+    callbacks["on_model_save"](trainer)
+    callbacks["on_train_end"](trainer)
+
+    events = _events(path)
+    assert [event["event"] for event in events] == [
+        "train_start",
+        "batch_progress",
+        "train_epoch_end",
+        "fit_epoch_end",
+        "model_save",
+        "train_end",
+    ]
+    assert [event["v"] for event in events] == [2] * len(events)
+
+
+def test_train_start_marks_the_segment_with_epochs_start_epoch_resume_and_batches(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "progress.jsonl"
+    callbacks = train_job.make_callbacks(train_job.ProgressWriter(path))
+
+    callbacks["on_train_start"](_trainer())
+    callbacks["on_train_start"](_trainer(start_epoch=2, resume=True))
+
+    first, second = _events(path)
+    assert (first["epochs"], first["start_epoch"], first["resumed"], first["nb"]) == (
+        3,
+        0,
+        False,
+        4,
+    )
+    assert (second["start_epoch"], second["resumed"]) == (2, True)
+
+
+def test_batch_events_are_throttled_but_the_first_and_last_batch_always_get_one(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "progress.jsonl"
+    callbacks = train_job.make_callbacks(
+        train_job.ProgressWriter(path), clock=_Clock(0.0, 0.5, 1.0, 1.5)
+    )
+    trainer = _trainer()
+
+    callbacks["on_train_epoch_start"](trainer)
+    _run_batches(callbacks, trainer, 4)
+
+    events = _events(path)
+    assert [(event["batch"], event["nb"], event["epoch"]) for event in events] == [
+        (1, 4, 1),
+        (4, 4, 1),
+    ]
+    assert train_job.BATCH_EVENT_MIN_INTERVAL == 2.0
+
+
+def test_a_batch_event_is_written_once_the_interval_has_passed(tmp_path: Path) -> None:
+    path = tmp_path / "progress.jsonl"
+    callbacks = train_job.make_callbacks(
+        train_job.ProgressWriter(path), clock=_Clock(0.0, 2.5, 5.0, 7.5)
+    )
+    trainer = _trainer()
+
+    callbacks["on_train_epoch_start"](trainer)
+    _run_batches(callbacks, trainer, 4)
+
+    assert [event["batch"] for event in _events(path)] == [1, 2, 3, 4]
+
+
+def test_a_batch_event_carries_no_loss_values(tmp_path: Path) -> None:
+    path = tmp_path / "progress.jsonl"
+    callbacks = train_job.make_callbacks(train_job.ProgressWriter(path), clock=_Clock(0.0))
+    trainer = _trainer()
+
+    callbacks["on_train_epoch_start"](trainer)
+    callbacks["on_train_batch_end"](trainer)
+
+    (event,) = _events(path)
+    assert set(event) == {"event", "time", "v", "epoch", "epochs", "batch", "nb"}
+
+
+def test_the_batch_counter_restarts_with_every_epoch(tmp_path: Path) -> None:
+    path = tmp_path / "progress.jsonl"
+    callbacks = train_job.make_callbacks(
+        train_job.ProgressWriter(path), clock=_Clock(0.0, 0.1, 0.2, 0.3, 0.4)
+    )
+
+    callbacks["on_train_epoch_start"](_trainer(epoch=0))
+    _run_batches(callbacks, _trainer(epoch=0), 4)
+    callbacks["on_train_epoch_start"](_trainer(epoch=1))
+    callbacks["on_train_batch_end"](_trainer(epoch=1))
+
+    assert [(event["epoch"], event["batch"]) for event in _events(path)] == [
+        (1, 1),
+        (1, 4),
+        (2, 1),
+    ]
+
+
+def test_a_single_batch_epoch_reports_batch_one_of_one(tmp_path: Path) -> None:
+    path = tmp_path / "progress.jsonl"
+    callbacks = train_job.make_callbacks(train_job.ProgressWriter(path), clock=_Clock(0.0))
+    trainer = _trainer(train_loader=[object()])
+
+    callbacks["on_train_epoch_start"](trainer)
+    callbacks["on_train_batch_end"](trainer)
+
+    (event,) = _events(path)
+    assert (event["batch"], event["nb"]) == (1, 1)
+
+
+def test_a_real_epoch_reports_fitness_and_whether_it_is_the_last_one(tmp_path: Path) -> None:
+    path = tmp_path / "progress.jsonl"
+    callbacks = train_job.make_callbacks(train_job.ProgressWriter(path))
+
+    callbacks["on_train_epoch_end"](_trainer(epoch=0))
+    callbacks["on_fit_epoch_end"](_trainer(epoch=0, stop=False))
+    callbacks["on_train_epoch_end"](_trainer(epoch=1))
+    callbacks["on_fit_epoch_end"](_trainer(epoch=1, stop=True))
+
+    _, first, _, last = _events(path)
+    assert (first["last_epoch"], first["fitness"], first["final_validation"]) == (
+        False,
+        0.31,
+        False,
+    )
+    assert (last["last_epoch"], last["final_validation"], last["epoch"]) == (True, False, 2)
+
+
+def test_the_post_training_validation_is_the_final_one_without_fitness(tmp_path: Path) -> None:
+    path = tmp_path / "progress.jsonl"
+    callbacks = train_job.make_callbacks(train_job.ProgressWriter(path))
+    trainer = _trainer(epoch=1, stop=True)
+
+    callbacks["on_train_epoch_end"](trainer)
+    callbacks["on_fit_epoch_end"](trainer)
+    callbacks["on_fit_epoch_end"](trainer)  # fires again after training, with no epoch before it
+
+    final = _events(path)[-1]
+    assert final["final_validation"] is True
+    assert final["epoch"] == 2
+    assert "fitness" not in final
+    assert "last_epoch" not in final
+    assert callbacks.state["final_metrics"] == {"metrics/mAP50(B)": 0.5}
+    assert callbacks.state["last_epoch"] == 2
+
+
 @pytest.mark.training
 def test_a_real_two_epoch_cpu_run_registers_a_model_a_plain_script_can_load(
     client: TestClient, settings: Settings, tmp_path: Path
@@ -152,6 +345,11 @@ def test_a_real_two_epoch_cpu_run_registers_a_model_a_plain_script_can_load(
     fits = [event for event in events if event["event"] == "fit_epoch_end"]
     assert [event["final_validation"] for event in fits] == [False, False, True]
     assert [event["epoch"] for event in fits] == [1, 2, 2]
+    assert [event["v"] for event in events] == [2] * len(events)
+    assert [event["event"] for event in events].count("train_start") == 1
+    batches = [event for event in events if event["event"] == "batch_progress"]
+    assert {event["epoch"] for event in batches} == {1, 2}  # at least one per epoch
+    assert fits[1]["last_epoch"] is True and "last_epoch" not in fits[2]
     assert finished["map50"] == fits[-1]["metrics"].get(map50_key("detect"))
 
     with Session(engine) as session:

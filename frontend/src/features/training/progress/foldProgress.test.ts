@@ -156,6 +156,82 @@ describe("foldProgress", () => {
   });
 });
 
+describe("foldProgress segments and batches", () => {
+  const start = (time: number, extra: ProgressFrame = {}): ProgressFrame => ({
+    event: "train_start",
+    epochs: 10,
+    start_epoch: 0,
+    resumed: false,
+    nb: 20,
+    time,
+    ...extra,
+  });
+
+  it("starts with no batch, no segment and the training phase", () => {
+    expect(initialProgressState.batch).toBeNull();
+    expect(initialProgressState.segmentStart).toBeNull();
+    expect(initialProgressState.segmentEpochEnds).toEqual([]);
+    expect(initialProgressState.resumedFrom).toBeNull();
+    expect(initialProgressState.phase).toBe("training");
+  });
+
+  it("keeps only the newest batch event, so a new epoch restarts the counter", () => {
+    const state = fold([
+      start(100),
+      { event: "batch_progress", epoch: 1, batch: 5, nb: 20, time: 110 },
+      { event: "batch_progress", epoch: 2, batch: 1, nb: 20, time: 160 },
+    ]);
+
+    expect(state.batch).toEqual({ epoch: 2, batch: 1, nb: 20, time: 160 });
+    expect(state.rows).toEqual([]);
+  });
+
+  it("ignores a malformed batch event", () => {
+    const state = fold([
+      { event: "batch_progress", epoch: 1, batch: 0, nb: 20 },
+      { event: "batch_progress", epoch: 1, batch: 3 },
+    ]);
+
+    expect(state.batch).toBeNull();
+  });
+
+  it("starts a segment on train_start: time, empty epoch ends, no batch, resume marker", () => {
+    const state = fold([
+      start(100),
+      { event: "batch_progress", epoch: 1, batch: 5, nb: 20, time: 110 },
+      trainEnd(1, { box_loss: 1 }),
+      { event: "train_epoch_end", epoch: 2, epochs: 10, tloss: {}, time: 300 },
+    ]);
+    expect(state.segmentStart).toBe(100);
+    expect(state.segmentEpochEnds).toEqual([{ epoch: 2, time: 300 }]);
+    expect(state.resumedFrom).toBeNull();
+
+    const resumed = foldProgress(state, start(900, { start_epoch: 2, resumed: true }));
+    expect(resumed.segmentStart).toBe(900);
+    expect(resumed.segmentEpochEnds).toEqual([]);
+    expect(resumed.batch).toBeNull();
+    expect(resumed.resumedFrom).toBe(2);
+
+    const fresh = foldProgress(resumed, start(1200));
+    expect(fresh.resumedFrom).toBeNull();
+  });
+
+  it("records the time of every finished epoch of the segment, one entry per epoch", () => {
+    const state = fold([
+      start(100),
+      { event: "train_epoch_end", epoch: 1, epochs: 10, tloss: {}, time: 200 },
+      { event: "train_epoch_end", epoch: 1, epochs: 10, tloss: {}, time: 210 },
+      { event: "train_epoch_end", epoch: 2, epochs: 10, tloss: {}, time: 320 },
+      { event: "train_epoch_end", epoch: 3, epochs: 10, tloss: {} },
+    ]);
+
+    expect(state.segmentEpochEnds).toEqual([
+      { epoch: 1, time: 210 },
+      { epoch: 2, time: 320 },
+    ]);
+  });
+});
+
 describe("bestEpoch", () => {
   it("picks the highest fitness and the later epoch on a tie", () => {
     const rows = [

@@ -208,6 +208,103 @@ describe("RunPage live charts", () => {
   });
 });
 
+function trainStart(time: number, extra: Record<string, unknown> = {}) {
+  return { event: "train_start", v: 2, epochs: 10, start_epoch: 0, resumed: false, nb: 10, time, ...extra };
+}
+
+function batchEvent(epoch: number, batch: number, time: number, nb = 10) {
+  return { event: "batch_progress", v: 2, epoch, epochs: 10, batch, nb, time };
+}
+
+describe("RunPage batch progress and ETA", () => {
+  async function openStream() {
+    stubTrainingApi({ run: running({ epoch: 1, epochs: 10 }) });
+    renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+    expect((await screen.findAllByText("Epoch 1 of 10")).length).toBeGreaterThan(0);
+    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+    const source = latestEventSource();
+    act(() => {
+      source.open();
+    });
+    return source;
+  }
+
+  it("shows no batch bar and an unknown time left before the first batch event", async () => {
+    const source = await openStream();
+    act(() => {
+      source.emit("progress", trainStart(1000), "10");
+    });
+
+    expect(screen.getAllByRole("progressbar")).toHaveLength(1);
+    expect(screen.queryByText(/Batch \d+ of/)).toBeNull();
+    expect(screen.getByText(/Time left: —/)).toBeInTheDocument();
+  });
+
+  it("adds a neutral batch bar with its caption and a time left once a batch event arrives", async () => {
+    const source = await openStream();
+    act(() => {
+      source.emit("progress", trainStart(1000), "10");
+      source.emit("progress", batchEvent(1, 3, 1030), "20");
+    });
+
+    const bar = await screen.findByRole("progressbar", { name: "Batch 3 of 10" });
+    expect(bar).toHaveAttribute("aria-valuenow", "3");
+    expect(bar).toHaveAttribute("aria-valuemax", "10");
+    expect(bar).toHaveAttribute("aria-live", "off");
+    expect(screen.getAllByRole("progressbar")).toHaveLength(2);
+    expect(screen.getByText("Batch 3 of 10")).toBeInTheDocument();
+    // 30 s for 3 of 10 batches: an epoch costs 100 s, 9.7 epochs are left.
+    expect(screen.getByText(/Time left: ~0:16:10/)).toBeInTheDocument();
+    expect(screen.getByText("Latest mAP50: 0.457")).toBeInTheDocument();
+  });
+
+  it("restarts the batch bar at each epoch and reads Batch 1 of 1 for a one-batch epoch", async () => {
+    const source = await openStream();
+    act(() => {
+      source.emit("progress", trainStart(1000, { nb: 1 }), "10");
+      source.emit("progress", batchEvent(1, 1, 1010, 1), "20");
+    });
+    const full = await screen.findByRole("progressbar", { name: "Batch 1 of 1" });
+    expect(full).toHaveAttribute("aria-valuenow", "1");
+    expect(full).toHaveAttribute("aria-valuemax", "1");
+
+    act(() => {
+      source.emit("progress", batchEvent(2, 1, 1020, 4), "30");
+    });
+    const restarted = await screen.findByRole("progressbar", { name: "Batch 1 of 4" });
+    expect(restarted).toHaveAttribute("aria-valuenow", "1");
+  });
+
+  it("notes a resume and measures the new segment from its own start", async () => {
+    const source = await openStream();
+    act(() => {
+      source.emit("progress", trainStart(1000), "10");
+      source.emit("progress", { event: "train_epoch_end", epoch: 1, epochs: 10, tloss: {}, time: 1100 }, "20");
+      source.emit("progress", trainStart(9000, { start_epoch: 1, resumed: true }), "30");
+      source.emit("progress", batchEvent(2, 5, 9050), "40");
+    });
+
+    expect(await screen.findByText("Resumed from epoch 1.")).toBeInTheDocument();
+    // 50 s for half an epoch: 100 s per epoch, (10 - 1 - 0.5) x 100.
+    expect(screen.getByText(/Time left: ~0:14:10/)).toBeInTheDocument();
+  });
+
+  it("labels the batch bar and the time left in Russian", async () => {
+    stubTrainingApi({ run: running({ epoch: 1, epochs: 10 }) });
+    renderWithProviders(<AppRoutes />, { route: RUN_PATH, language: "ru" });
+    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+    const source = latestEventSource();
+    act(() => {
+      source.open();
+      source.emit("progress", trainStart(1000), "10");
+      source.emit("progress", batchEvent(1, 3, 1030), "20");
+    });
+
+    expect(await screen.findByRole("progressbar", { name: "Батч 3 из 10" })).toBeInTheDocument();
+    expect(screen.getByText(/Осталось: ~0:16:10/)).toBeInTheDocument();
+  });
+});
+
 function trainEpoch(epoch: number, loss: number) {
   return {
     event: "train_epoch_end",

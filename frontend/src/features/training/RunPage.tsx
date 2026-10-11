@@ -13,7 +13,7 @@ import {
   Title,
   VisuallyHidden,
 } from "@mantine/core";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { Link, useOutletContext, useParams } from "react-router-dom";
 
@@ -21,6 +21,9 @@ import { ApiError } from "../../api/client";
 import type { Project } from "../../api/projects";
 import { modelDownloadUrl, useRun } from "../../api/training";
 import type { RunDetail, RunStatus } from "../../api/training";
+import { BatchProgress } from "./progress/BatchProgress";
+import { estimateRemainingSeconds } from "./progress/eta";
+import type { ProgressState } from "./progress/foldProgress";
 import { RunCharts } from "./progress/RunCharts";
 import { useRunStream } from "./progress/useRunStream";
 import { RemoveFromQueueModal } from "./RemoveFromQueueModal";
@@ -94,7 +97,7 @@ export function RunPage() {
     runId === null || (query.error instanceof ApiError && query.error.status === 404);
   if (isNotFound) {
     return (
-      <Stack gap="sm" align="flex-start" maw={960}>
+      <Stack gap={8} align="flex-start" maw={960}>
         <Title order={2}>{t("training:run.notFound.title")}</Title>
         <Text size="sm" c="dark.1">
           {t("training:run.notFound.body")}
@@ -165,7 +168,7 @@ export function RunPage() {
           </Button>
         ) : null}
       </Group>
-      <StatusCard run={run} />
+      <StatusCard run={run} progress={progress} />
       {streamEnabled ? (
         <RunCharts
           progress={progress}
@@ -267,7 +270,7 @@ function CancelledAlert() {
   );
 }
 
-function StatusCard({ run }: { run: RunDetail }) {
+function StatusCard({ run, progress }: { run: RunDetail; progress: ProgressState }) {
   if (run.status === "failed") {
     return <FailedAlert run={run} />;
   }
@@ -282,7 +285,7 @@ function StatusCard({ run }: { run: RunDetail }) {
       <Stack gap={16}>
         {run.status === "preparing" ? <PreparingBody /> : null}
         {run.status === "queued" ? <QueuedBody run={run} /> : null}
-        {run.status === "running" ? <RunningBody run={run} /> : null}
+        {run.status === "running" ? <RunningBody run={run} progress={progress} /> : null}
         {run.status === "completed" ? <CompletedBody run={run} /> : null}
       </Stack>
     </Paper>
@@ -318,7 +321,7 @@ function QueuedBody({ run }: { run: RunDetail }) {
   );
 }
 
-function RunningBody({ run }: { run: RunDetail }) {
+function RunningBody({ run, progress }: { run: RunDetail; progress: ProgressState }) {
   const { t, i18n } = useTranslation("training");
   const elapsed = useElapsedSeconds(run.started_at, true);
   const epochs = run.epochs;
@@ -332,6 +335,23 @@ function RunningBody({ run }: { run: RunDetail }) {
           minimumFractionDigits: 3,
           maximumFractionDigits: 3,
         }).format(run.last_map50);
+  // Recomputed only when a batch or epoch event changes `progress`; the clock tick above
+  // re-renders every second but never changes the estimate (D-03).
+  const eta = useMemo(() => estimateRemainingSeconds(progress), [progress]);
+  const batch = progress.batch;
+  // "Time left: —" is only meaningful next to an epoch headline; Starting shows an ETA once known.
+  const etaText =
+    eta !== null
+      ? t("run.running.eta", { time: formatClock(eta) })
+      : hasEpoch
+        ? t("run.running.etaUnknown")
+        : null;
+  const headlineRight = [
+    elapsed !== null ? t("run.running.elapsed", { time: formatClock(elapsed) }) : null,
+    etaText,
+  ]
+    .filter((part): part is string => part !== null)
+    .join(" · ");
 
   return (
     <>
@@ -346,14 +366,19 @@ function RunningBody({ run }: { run: RunDetail }) {
             <Text fw={600}>{t("run.running.starting")}</Text>
           </Group>
         )}
-        {elapsed !== null ? (
-          <Text size="sm" c="dark.1" style={TABULAR}>
-            {t("run.running.elapsed", { time: formatClock(elapsed) })}
+        {headlineRight !== "" ? (
+          <Text size="sm" c="dark.1" style={{ ...TABULAR, ...ONE_LINE, flexShrink: 0 }}>
+            {headlineRight}
           </Text>
         ) : null}
       </Group>
-      {hasEpoch ? (
-        <Stack gap={4}>
+      {!hasEpoch ? (
+        <Text size="sm" c="dark.1">
+          {t("run.running.startingHint")}
+        </Text>
+      ) : null}
+      <Stack gap={8}>
+        {hasEpoch ? (
           <Progress.Root
             size={8}
             role="progressbar"
@@ -364,30 +389,28 @@ function RunningBody({ run }: { run: RunDetail }) {
           >
             <Progress.Section value={(shown / (epochs as number)) * 100} withAria={false} />
           </Progress.Root>
-          <Group justify="space-between" wrap="nowrap">
-            <Text size="xs" c="dark.1" style={TABULAR}>
-              {t("run.running.map50", { value: map50 })}
-            </Text>
-            <Text size="xs" c="dark.1">
-              {t("run.running.closeHint")}
-            </Text>
-          </Group>
-          {shown >= (epochs as number) ? (
-            <Text size="sm" c="dark.1">
-              {t("run.running.finishing")}
-            </Text>
-          ) : null}
-        </Stack>
-      ) : (
-        <>
+        ) : null}
+        {batch !== null ? (
+          <BatchProgress batch={batch} map50={map50} />
+        ) : hasEpoch ? (
+          <Text size="xs" c="dark.1" style={TABULAR}>
+            {t("run.running.map50", { value: map50 })}
+          </Text>
+        ) : null}
+        {hasEpoch && shown >= (epochs as number) ? (
           <Text size="sm" c="dark.1">
-            {t("run.running.startingHint")}
+            {t("run.running.finishing")}
           </Text>
-          <Text size="xs" c="dark.1">
-            {t("run.running.closeHint")}
+        ) : null}
+        <Text size="xs" c="dark.1">
+          {t("run.running.closeHint")}
+        </Text>
+        {progress.resumedFrom !== null ? (
+          <Text size="xs" c="dark.1" style={TABULAR}>
+            {t("run.running.resumedNote", { epoch: progress.resumedFrom })}
           </Text>
-        </>
-      )}
+        ) : null}
+      </Stack>
     </>
   );
 }
