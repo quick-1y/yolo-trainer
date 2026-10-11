@@ -430,9 +430,6 @@ async def resume_run(
     not block (D-10). Settings cannot change: the worker reuses the stored device, batch and
     workers (D-11). The row stands at the end of the FIFO queue through a fresh `queued_at` (D-12).
     """
-    # Imported here: `options` imports this module.
-    from yolo_trainer_api.training.options import ensure_device_available
-
     run = await _find_run(session, project_id, run_id)
     if run is None:
         raise HTTPException(status_code=404, detail=RUN_NOT_FOUND_DETAIL)
@@ -443,10 +440,6 @@ async def resume_run(
         raise HTTPException(status_code=409, detail=RUN_NO_CHECKPOINT_DETAIL)
     if state.blocked is not None:
         raise HTTPException(status_code=409, detail=RUN_CHECKPOINT_NOT_RESUMABLE_DETAIL)
-    # A resume on a host that lost its GPU must answer like a start does.
-    ensure_device_available(
-        settings, str((run.resolved or {}).get("device") or run.settings.get("device", ""))
-    )
 
     values: dict[str, object] = {
         "status": "queued",

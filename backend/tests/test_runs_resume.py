@@ -255,26 +255,6 @@ def test_the_run_list_carries_no_resumability_field(client: TestClient, settings
     assert listed["resume_epoch"] is None
 
 
-def test_a_resume_needs_a_gpu_when_the_run_was_resolved_to_one(
-    client: TestClient, settings: Settings
-) -> None:
-    project_id, (run,) = _queued_runs(client, 1, "NoGpu")
-    engine = queue.create_worker_engine(worker_settings(settings))
-    _force(
-        engine,
-        run["id"],
-        status="interrupted",
-        resolved={"device": "0", "batch": 16, "workers": 2},
-    )
-    _write_weights(settings, run["id"])
-
-    response = _resume(client, project_id, run["id"])
-
-    assert response.status_code == 422
-    assert response.json()["detail"] == "No GPU is available."
-    assert _row(engine, run["id"]).status == "interrupted"
-
-
 def test_a_resumed_run_joins_the_end_of_the_queue(client: TestClient, settings: Settings) -> None:
     project_id, (old, newer) = _queued_runs(client, 2, "Fifo")
     engine = queue.create_worker_engine(worker_settings(settings))
