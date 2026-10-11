@@ -568,6 +568,11 @@ class RunSummary(BaseModel):
     # `resume_epoch` is null while the checkpoint state is unknown; the UI never guesses one.
     resume_count: int = 0
     resume_epoch: int | None = None
+    # Seconds the run spent actually training, summed over its running segments (D-09); waiting
+    # in the queue and the time between a stop and a resume never count. While the run is
+    # running, `segment_started_at` opens the current segment: the UI adds the live part.
+    active_seconds: float = 0
+    segment_started_at: datetime | None = None
 
     @computed_field  # type: ignore[prop-decorator]
     @property
@@ -577,7 +582,7 @@ class RunSummary(BaseModel):
             return None
         return quality_level(self.map50)  # type: ignore[return-value]
 
-    @field_serializer("created_at", "started_at", "finished_at")
+    @field_serializer("created_at", "started_at", "finished_at", "segment_started_at")
     def _serialize_utc(self, value: datetime | None) -> str | None:
         return _utc_iso(value)
 

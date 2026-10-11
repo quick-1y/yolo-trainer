@@ -16,6 +16,7 @@ import signal
 import subprocess
 import sys
 import threading
+import time
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
@@ -179,6 +180,20 @@ class Supervisor:
         self.command = command
         self.tick_seconds = tick_seconds
         self.active_run_id: int | None = None
+        # The open running segment of the claimed run, on the monotonic clock (D-09): when the
+        # child was started and the seconds banked by the earlier segments of the run.
+        self._segment_start: float | None = None
+        self._base_active = 0.0
+
+    def _active_total(self) -> float | None:
+        """Banked seconds plus the open segment; None while no child has been started.
+
+        Measured here on `time.monotonic()`, never from wall-clock stamps or SQL date functions,
+        so a clock change cannot bend a duration (Pitfall 7).
+        """
+        if self._segment_start is None:
+            return None
+        return self._base_active + (time.monotonic() - self._segment_start)
 
     def serve(self, stop_event: threading.Event) -> None:
         """Reconcile once, then claim and run queued runs until `stop_event` is set."""
@@ -211,7 +226,11 @@ class Supervisor:
                 logger.exception("Supervising run %s failed unexpectedly", run_id)
                 try:
                     queue.mark_failed(
-                        self.engine, run_id, "The worker failed while supervising this run.", None
+                        self.engine,
+                        run_id,
+                        "The worker failed while supervising this run.",
+                        None,
+                        active_seconds=self._active_total(),
                     )
                 except Exception:
                     logger.exception("Could not mark run %s as failed", run_id)
@@ -219,6 +238,8 @@ class Supervisor:
     def run_claimed(self, run_id: int, stop_event: threading.Event) -> str:
         """Run one claimed run to its end; returns the final status."""
         self.active_run_id = run_id
+        self._segment_start = None
+        self._base_active = 0.0
         try:
             return self._run(run_id, stop_event)
         finally:
@@ -275,6 +296,9 @@ class Supervisor:
                     _classify(exc),
                 )
                 return "failed"
+            # The running segment starts with the child; what waited in the queue never counts.
+            self._base_active = float(run.get("active_seconds") or 0.0)
+            self._segment_start = time.monotonic()
             try:
                 queue.record_start(self.engine, run_id, asdict(resolved), process.pid)
                 outcome, final_metrics = self._watch(
@@ -414,20 +438,26 @@ class Supervisor:
                     # `_terminate` returns once the child is dead, so the serve loop can never
                     # claim the next run while this trainer is still dying. A cancel is not a
                     # failure: the exit code is not classified and no model is registered (D-08).
+                    active = self._active_total()
                     self._terminate(process)
                     changed = queue.mark_cancelled(
-                        self.engine, run_id, _read_log_tail(run_directory / layout.LOG_FILE)
+                        self.engine,
+                        run_id,
+                        _read_log_tail(run_directory / layout.LOG_FILE),
+                        active_seconds=active,
                     )
                     outcome = CANCELLED if changed else VANISHED
             if outcome is not None or exit_code is not None:
                 break
             if stop_event.is_set():
+                active = self._active_total()
                 self._terminate(process)
                 queue.mark_interrupted(
                     self.engine,
                     run_id,
                     STOPPED_MESSAGE,
                     _read_log_tail(run_directory / layout.LOG_FILE),
+                    active_seconds=active,
                 )
                 outcome = "interrupted"
                 break
@@ -479,16 +509,28 @@ class Supervisor:
         final_metrics: dict,
     ) -> str:
         log_tail = _read_log_tail(run_directory / layout.LOG_FILE)
+        active = self._active_total()
         result_path = run_directory / layout.RESULT_FILE
         best = layout.best_weights(run_directory)
         if exit_code == 0 and result_path.is_file() and best.is_file():
             try:
                 result = json.loads(result_path.read_text(encoding="utf-8"))
                 if result.get("names") != run["class_names"]:
-                    queue.mark_failed(self.engine, run_id, CLASS_MISMATCH_MESSAGE, log_tail)
+                    queue.mark_failed(
+                        self.engine,
+                        run_id,
+                        CLASS_MISMATCH_MESSAGE,
+                        log_tail,
+                        active_seconds=active,
+                    )
                     return "failed"
                 queue.register_model(
-                    self.engine, self.settings.data_dir, run_id, result, final_metrics
+                    self.engine,
+                    self.settings.data_dir,
+                    run_id,
+                    result,
+                    final_metrics,
+                    active_seconds=active,
                 )
             except Exception as exc:
                 logger.exception("Could not register the model of run %s", run_id)
@@ -498,6 +540,7 @@ class Supervisor:
                     f"Could not register the trained model: {exc}",
                     log_tail,
                     _classify(exc),
+                    active_seconds=active,
                 )
                 return "failed"
             return "completed"
@@ -511,5 +554,5 @@ class Supervisor:
         if category is None:
             # A hard crash or an OS kill leaves no error file (or an old one without a category).
             category = classify_exit(exit_code, log_tail)
-        queue.mark_failed(self.engine, run_id, message, log_tail, category)
+        queue.mark_failed(self.engine, run_id, message, log_tail, category, active_seconds=active)
         return "failed"

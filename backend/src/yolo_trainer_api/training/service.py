@@ -518,6 +518,8 @@ def _summary_fields(
         "cancelling": run.status == "running" and run.cancel_requested_at is not None,
         "resume_count": run.resume_count,
         "resume_epoch": run.resume_epoch,
+        "active_seconds": run.active_seconds,
+        "segment_started_at": run.segment_started_at,
     }
 
 

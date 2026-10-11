@@ -528,3 +528,40 @@ def test_the_claim_of_a_resumed_run_keeps_the_first_start_and_opens_a_new_segmen
     loaded = queue.load_run(engine, run["id"])
     assert loaded["resume_count"] == 1
     assert loaded["active_seconds"] == 0
+
+
+# -- active time across a cancel and a resume (D-09) ----------------------------------------------
+
+
+def test_a_run_cancelled_and_resumed_counts_only_its_running_segments(
+    client: TestClient, settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    project_id, run_id, engine, _ = _cancelled_with_checkpoint(client, settings, monkeypatch)
+    cancelled = _row(engine, run_id)
+    first_start = cancelled.started_at
+    assert cancelled.active_seconds > 0
+    assert cancelled.segment_started_at is None  # the segment is closed
+    after_cancel = cancelled.active_seconds
+    assert _resume(client, project_id, run_id).status_code == 200
+    queued = _row(engine, run_id)
+    assert queued.active_seconds == after_cancel  # waiting in the queue is not training time
+    assert queued.segment_started_at is None
+    resuming = Supervisor(
+        engine,
+        worker_settings(settings),
+        ComputeDevice(cuda_available=False, device="cpu", device_name=None),
+        command=fake_command("success"),
+        tick_seconds=0.05,
+    )
+    assert queue.claim_next(engine) == run_id
+    assert _row(engine, run_id).segment_started_at is not None
+
+    assert resuming.run_claimed(run_id, threading.Event()) == "completed"
+
+    done = _row(engine, run_id)
+    assert done.active_seconds > after_cancel
+    assert done.segment_started_at is None
+    assert done.started_at == first_start
+    summary = client.get(_url(project_id, run_id)).json()
+    assert summary["active_seconds"] == done.active_seconds
+    assert summary["segment_started_at"] is None

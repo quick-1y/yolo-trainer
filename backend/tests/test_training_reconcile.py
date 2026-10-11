@@ -176,3 +176,81 @@ def test_queued_and_completed_runs_are_left_alone_and_the_messages_are_shared(
 
     assert _row(settings, queued_id).status == "queued"
     assert queue.INTERRUPTED_ON_RESTART_MESSAGE == reconcile.RUNNING_INTERRUPTED_DETAIL
+
+
+def _seed_segment(
+    settings: Settings,
+    run_id: int,
+    *,
+    active: float,
+    segment: datetime | None,
+    progress: datetime | None,
+) -> None:
+    engine = queue.create_worker_engine(worker_settings(settings))
+    with engine.begin() as connection:
+        connection.execute(
+            update(TrainingRun)
+            .where(TrainingRun.id == run_id)
+            .values(active_seconds=active, segment_started_at=segment, progress_updated_at=progress)
+        )
+    engine.dispose()
+
+
+def test_the_api_sweep_adds_the_last_known_running_time_of_the_segment(
+    settings: Settings,
+) -> None:
+    _, run_id = _seed_run(settings, "running")
+    start = datetime(2026, 10, 11, 10, 0, 0, tzinfo=UTC)
+    _seed_segment(
+        settings, run_id, active=10, segment=start, progress=start + timedelta(seconds=30)
+    )
+
+    with make_client(settings):
+        pass
+
+    run = _row(settings, run_id)
+    assert run.status == "interrupted"
+    assert run.active_seconds == 40.0
+    assert run.segment_started_at is None
+
+
+def test_the_api_sweep_adds_the_segment_to_a_cancelled_run_too(settings: Settings) -> None:
+    _, run_id = _seed_run(settings, "running")
+    start = datetime(2026, 10, 11, 10, 0, 0, tzinfo=UTC)
+    _seed_segment(settings, run_id, active=5, segment=start, progress=start + timedelta(minutes=1))
+    _request_cancel(settings, run_id)
+
+    with make_client(settings):
+        pass
+
+    run = _row(settings, run_id)
+    assert run.status == "cancelled"
+    assert run.active_seconds == 65.0
+    assert run.segment_started_at is None
+
+
+def test_the_api_sweep_adds_nothing_without_a_segment_start_or_a_progress_stamp(
+    settings: Settings,
+) -> None:
+    _, run_id = _seed_run(settings, "running")
+    _seed_segment(settings, run_id, active=3, segment=None, progress=None)
+
+    with make_client(settings):
+        pass
+
+    run = _row(settings, run_id)
+    assert (run.status, run.active_seconds, run.segment_started_at) == ("interrupted", 3.0, None)
+
+
+def test_a_live_worker_keeps_its_open_segment_on_an_api_only_restart(settings: Settings) -> None:
+    _, run_id = _seed_run(settings, "running")
+    start = datetime(2026, 10, 11, 10, 0, 0, tzinfo=UTC)
+    _seed_segment(settings, run_id, active=10, segment=start, progress=start)
+    _write_heartbeat(settings, age_seconds=5)
+
+    with make_client(settings):
+        pass
+
+    run = _row(settings, run_id)
+    assert (run.status, run.active_seconds) == ("running", 10.0)
+    assert run.segment_started_at is not None

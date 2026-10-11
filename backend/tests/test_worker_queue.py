@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 
 from yolo_trainer_api.models import TrainingRun, utcnow
 from yolo_trainer_api.settings import Settings
+from yolo_trainer_common import layout
 from yolo_trainer_worker import queue
 
 from .training_helpers import setup_project, start_run, wait_status, worker_settings
@@ -253,3 +254,134 @@ def test_load_run_reports_the_resume_count_the_stored_resolution_and_the_active_
     queue.record_start(engine, run_id, {"device": "cpu", "batch": 2, "workers": 0}, 123)
     stored = queue.load_run(engine, run_id)
     assert stored["resolved"] == {"device": "cpu", "batch": 2, "workers": 0}
+
+
+# -- active time (D-09): the duration of a run is the sum of its running segments ---------------
+
+
+def _running(client: TestClient, settings: Settings) -> tuple[Engine, int]:
+    (run_id,) = _queued_runs(client, (0,))
+    engine = queue.create_worker_engine(worker_settings(settings))
+    assert queue.claim_next(engine) == run_id
+    return engine, run_id
+
+
+def _stored(engine: Engine, run_id: int) -> TrainingRun:
+    with Session(engine) as session:
+        run = session.get(TrainingRun, run_id)
+        session.expunge(run)
+        return run
+
+
+@pytest.mark.parametrize("terminal", ["mark_failed", "mark_interrupted", "mark_cancelled"])
+def test_a_claim_opens_a_segment_and_every_terminal_write_closes_it_with_the_active_seconds(
+    client: TestClient, settings: Settings, terminal: str
+) -> None:
+    engine, run_id = _running(client, settings)
+    assert _stored(engine, run_id).segment_started_at is not None
+    arguments = {
+        "mark_failed": ("boom", None),
+        "mark_interrupted": ("stopped",),
+        "mark_cancelled": (None,),
+    }[terminal]
+
+    assert getattr(queue, terminal)(engine, run_id, *arguments, active_seconds=12.5) == 1
+
+    closed = _stored(engine, run_id)
+    assert closed.active_seconds == 12.5
+    assert closed.segment_started_at is None
+
+
+def test_a_terminal_write_without_active_seconds_keeps_the_stored_total_and_closes_the_segment(
+    client: TestClient, settings: Settings
+) -> None:
+    engine, run_id = _running(client, settings)
+    with engine.begin() as connection:
+        connection.execute(
+            update(TrainingRun).where(TrainingRun.id == run_id).values(active_seconds=7.0)
+        )
+
+    assert queue.mark_interrupted(engine, run_id, "stopped") == 1
+
+    closed = _stored(engine, run_id)
+    assert closed.active_seconds == 7.0
+    assert closed.segment_started_at is None
+
+
+def test_register_model_writes_the_active_seconds_and_closes_the_segment(
+    client: TestClient, settings: Settings
+) -> None:
+    engine, run_id = _running(client, settings)
+    best = layout.best_weights(layout.run_dir(settings.data_dir, run_id))
+    best.parent.mkdir(parents=True, exist_ok=True)
+    best.write_bytes(b"weights")
+
+    queue.register_model(engine, settings.data_dir, run_id, {}, {}, active_seconds=33.25)
+
+    done = _stored(engine, run_id)
+    assert done.status == "completed"
+    assert done.active_seconds == 33.25
+    assert done.segment_started_at is None
+
+
+def _seed_segment(
+    engine: Engine,
+    run_id: int,
+    *,
+    active: float,
+    segment: datetime | None,
+    progress: datetime | None,
+) -> None:
+    with engine.begin() as connection:
+        connection.execute(
+            update(TrainingRun)
+            .where(TrainingRun.id == run_id)
+            .values(active_seconds=active, segment_started_at=segment, progress_updated_at=progress)
+        )
+
+
+def test_reconcile_on_start_adds_the_last_known_running_time_of_the_segment(
+    client: TestClient, settings: Settings
+) -> None:
+    interrupted, cancelling, no_stamp = _queued_runs(client, (0, 0, 0))
+    engine = queue.create_worker_engine(worker_settings(settings))
+    start = datetime(2026, 10, 11, 10, 0, 0, tzinfo=UTC)
+    for run_id in (interrupted, cancelling, no_stamp):
+        _set_status(engine, run_id, "running")
+    _seed_segment(engine, interrupted, active=10, segment=start, progress=start.replace(second=30))
+    _seed_segment(engine, cancelling, active=5, segment=start, progress=start.replace(minute=1))
+    _seed_segment(engine, no_stamp, active=3, segment=None, progress=start)
+    _request_cancel(engine, cancelling)
+
+    assert queue.reconcile_on_start(engine) == 3
+
+    ended = _stored(engine, interrupted)
+    assert (ended.status, ended.active_seconds, ended.segment_started_at) == (
+        "interrupted",
+        40.0,
+        None,
+    )
+    stopped = _stored(engine, cancelling)
+    assert (stopped.status, stopped.active_seconds, stopped.segment_started_at) == (
+        "cancelled",
+        65.0,
+        None,
+    )
+    unknown = _stored(engine, no_stamp)  # no segment start: nothing can be added
+    assert (unknown.status, unknown.active_seconds, unknown.segment_started_at) == (
+        "interrupted",
+        3.0,
+        None,
+    )
+
+
+def test_reconcile_never_adds_a_negative_segment(client: TestClient, settings: Settings) -> None:
+    (run_id,) = _queued_runs(client, (0,))
+    engine = queue.create_worker_engine(worker_settings(settings))
+    _set_status(engine, run_id, "running")
+    start = datetime(2026, 10, 11, 10, 0, 0, tzinfo=UTC)
+    _seed_segment(engine, run_id, active=10, segment=start, progress=start.replace(hour=9))
+
+    assert queue.reconcile_on_start(engine) == 1
+
+    assert _stored(engine, run_id).active_seconds == 10.0

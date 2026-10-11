@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session, aliased
 
 from yolo_trainer_api.db import apply_sqlite_pragmas
 from yolo_trainer_api.models import TrainedModel, TrainingRun, utcnow
-from yolo_trainer_api.training.reconcile import RUNNING_INTERRUPTED_DETAIL
+from yolo_trainer_api.training.reconcile import RUNNING_INTERRUPTED_DETAIL, swept_active_seconds
 from yolo_trainer_api.training.snapshot import link_or_copy
 from yolo_trainer_common import layout
 from yolo_trainer_common.failures import UNKNOWN, normalize_category
@@ -87,28 +87,44 @@ def reconcile_on_start(engine: Engine, now: datetime | None = None) -> int:
     """Every `running` run ends; `queued` runs stay queued (D-13).
 
     A run with a pending cancel request becomes `cancelled` (the user already decided to stop it,
-    Pitfall 14); every other `running` run becomes `interrupted`. Both updates share one
-    transaction and return the total. Deliberately never signals the PID recorded on a run: after
-    a container restart the PID namespace is new and that number may belong to an unrelated
-    process.
+    Pitfall 14); every other `running` run becomes `interrupted`. Each row also banks the running
+    time of its last segment: the supervisor that measured it is gone, so the last progress write
+    is the latest moment it is known to have been training (D-09). Every row is one guarded UPDATE
+    in one transaction, and the total is returned. Deliberately never signals the PID recorded on
+    a run: after a container restart the PID namespace is new and that number may belong to an
+    unrelated process.
     """
     stamp = now or utcnow()
     with engine.begin() as connection:
-        cancelled = connection.execute(
-            update(TrainingRun)
-            .where(TrainingRun.status == "running", TrainingRun.cancel_requested_at.is_not(None))
-            .values(status="cancelled", finished_at=stamp, error_message=None)
-        )
-        interrupted = connection.execute(
-            update(TrainingRun)
-            .where(TrainingRun.status == "running")
-            .values(
-                status="interrupted",
-                finished_at=stamp,
-                error_message=INTERRUPTED_ON_RESTART_MESSAGE,
+        running = connection.execute(
+            select(
+                TrainingRun.id,
+                TrainingRun.active_seconds,
+                TrainingRun.segment_started_at,
+                TrainingRun.progress_updated_at,
+                TrainingRun.cancel_requested_at,
+            ).where(TrainingRun.status == "running")
+        ).all()
+        swept = 0
+        for row in running:
+            ended: dict[str, object] = (
+                {"status": "cancelled", "error_message": None}
+                if row.cancel_requested_at is not None
+                else {"status": "interrupted", "error_message": INTERRUPTED_ON_RESTART_MESSAGE}
             )
-        )
-        return cancelled.rowcount + interrupted.rowcount
+            swept += connection.execute(
+                update(TrainingRun)
+                .where(TrainingRun.id == row.id, TrainingRun.status == "running")
+                .values(
+                    **ended,
+                    finished_at=stamp,
+                    active_seconds=swept_active_seconds(
+                        row.active_seconds, row.segment_started_at, row.progress_updated_at
+                    ),
+                    segment_started_at=None,
+                )
+            ).rowcount
+        return swept
 
 
 def load_run(engine: Engine, run_id: int) -> dict | None:
@@ -187,12 +203,25 @@ def record_checkpoint(engine: Engine, run_id: int, resume_epoch: int | None) -> 
     return _update_running(engine, run_id, resume_epoch=resume_epoch)
 
 
+def _segment_end(active_seconds: float | None) -> dict[str, object]:
+    """What every terminal write adds: the segment is closed, and the total is banked when known.
+
+    `active_seconds` is the new total (the banked seconds plus this segment, measured on the
+    supervisor's monotonic clock). Without it the stored total is left alone (D-09).
+    """
+    values: dict[str, object] = {"segment_started_at": None}
+    if active_seconds is not None:
+        values["active_seconds"] = active_seconds
+    return values
+
+
 def mark_failed(
     engine: Engine,
     run_id: int,
     message: str,
     log_tail: str | None,
     category: str = UNKNOWN,
+    active_seconds: float | None = None,
 ) -> int:
     """Fail a running run: `message` stays the raw text, `category` is allow-list checked."""
     return _update_running(
@@ -203,10 +232,17 @@ def mark_failed(
         error_category=normalize_category(category),
         log_tail=log_tail,
         finished_at=utcnow(),
+        **_segment_end(active_seconds),
     )
 
 
-def mark_interrupted(engine: Engine, run_id: int, message: str, log_tail: str | None = None) -> int:
+def mark_interrupted(
+    engine: Engine,
+    run_id: int,
+    message: str,
+    log_tail: str | None = None,
+    active_seconds: float | None = None,
+) -> int:
     return _update_running(
         engine,
         run_id,
@@ -214,10 +250,16 @@ def mark_interrupted(engine: Engine, run_id: int, message: str, log_tail: str | 
         error_message=message,
         log_tail=log_tail,
         finished_at=utcnow(),
+        **_segment_end(active_seconds),
     )
 
 
-def mark_cancelled(engine: Engine, run_id: int, log_tail: str | None = None) -> int:
+def mark_cancelled(
+    engine: Engine,
+    run_id: int,
+    log_tail: str | None = None,
+    active_seconds: float | None = None,
+) -> int:
     """End a running run as `cancelled`: no error message, no category, no model (D-08).
 
     A user-requested cancel is not a failure, so nothing about the stopped child is classified.
@@ -231,6 +273,7 @@ def mark_cancelled(engine: Engine, run_id: int, log_tail: str | None = None) -> 
         error_message=None,
         error_category=None,
         log_tail=log_tail,
+        **_segment_end(active_seconds),
     )
 
 
@@ -246,7 +289,12 @@ def _file_digest(path: Path) -> tuple[int, str]:
 
 
 def register_model(
-    engine: Engine, data_dir: Path, run_id: int, result: dict, final_metrics: dict
+    engine: Engine,
+    data_dir: Path,
+    run_id: int,
+    result: dict,
+    final_metrics: dict,
+    active_seconds: float | None = None,
 ) -> int:
     """Register `best.pt` as a model and complete the run, all in ONE transaction (D-16).
 
@@ -303,6 +351,7 @@ def register_model(
                     error_message=None,
                     # The final epoch's checkpoint is stripped by Ultralytics: nothing to resume.
                     resume_epoch=None,
+                    **_segment_end(active_seconds),
                 )
                 .execution_options(synchronize_session=False)
             ).rowcount

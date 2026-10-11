@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from datetime import datetime
+from datetime import UTC, datetime
 
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import async_sessionmaker
@@ -28,6 +28,30 @@ PREPARING_INTERRUPTED_DETAIL = (
     "Dataset preparation was interrupted by a restart. Start the run again."
 )
 RUNNING_INTERRUPTED_DETAIL = "The service was restarted while this run was training."
+
+
+def _as_utc(value: datetime) -> datetime:
+    """SQLite hands datetimes back naive; they were stored as UTC."""
+    return value.replace(tzinfo=UTC) if value.tzinfo is None else value
+
+
+def swept_active_seconds(
+    active_seconds: float | None,
+    segment_started_at: datetime | None,
+    progress_updated_at: datetime | None,
+) -> float:
+    """The active time of a run a restart ended: the banked total plus its last known segment.
+
+    The supervisor that measured the segment is gone, so the last progress write is the latest
+    moment the run is known to have been training (RESEARCH Pattern 6). With either stamp missing
+    nothing can be added, and the segment never counts backwards. Plain Python on purpose: no SQL
+    date functions, which would not port to Postgres.
+    """
+    total = float(active_seconds or 0.0)
+    if segment_started_at is None or progress_updated_at is None:
+        return total
+    elapsed = (_as_utc(progress_updated_at) - _as_utc(segment_started_at)).total_seconds()
+    return total + max(0.0, elapsed)
 
 
 async def reconcile_runs_on_startup(
@@ -64,24 +88,38 @@ async def reconcile_runs_on_startup(
             )
             if not worker_alive:
                 # A pending cancel was already decided by the user: it ends as cancelled, not
-                # interrupted (Pitfall 14). The rest of the running rows are interrupted.
-                await session.execute(
-                    update(TrainingRun)
-                    .where(
-                        TrainingRun.status == "running",
-                        TrainingRun.cancel_requested_at.is_not(None),
+                # interrupted (Pitfall 14). The rest of the running rows are interrupted. Each
+                # row also banks the running time of its last segment (D-09).
+                running = (
+                    await session.execute(
+                        select(
+                            TrainingRun.id,
+                            TrainingRun.active_seconds,
+                            TrainingRun.segment_started_at,
+                            TrainingRun.progress_updated_at,
+                            TrainingRun.cancel_requested_at,
+                        ).where(TrainingRun.status == "running")
                     )
-                    .values(status="cancelled", error_message=None, finished_at=stamp)
-                )
-                await session.execute(
-                    update(TrainingRun)
-                    .where(TrainingRun.status == "running")
-                    .values(
-                        status="interrupted",
-                        error_message=RUNNING_INTERRUPTED_DETAIL,
-                        finished_at=stamp,
+                ).all()
+                for row in running:
+                    active = swept_active_seconds(
+                        row.active_seconds, row.segment_started_at, row.progress_updated_at
                     )
-                )
+                    ended = (
+                        {"status": "cancelled", "error_message": None}
+                        if row.cancel_requested_at is not None
+                        else {"status": "interrupted", "error_message": RUNNING_INTERRUPTED_DETAIL}
+                    )
+                    await session.execute(
+                        update(TrainingRun)
+                        .where(TrainingRun.id == row.id, TrainingRun.status == "running")
+                        .values(
+                            **ended,
+                            finished_at=stamp,
+                            active_seconds=active,
+                            segment_started_at=None,
+                        )
+                    )
             await session.commit()
         for run_id in preparing:
             try:
