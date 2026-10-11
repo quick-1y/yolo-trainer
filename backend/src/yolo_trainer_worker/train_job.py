@@ -18,6 +18,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from yolo_trainer_common import layout
+from yolo_trainer_common.failures import classify_exception
 from yolo_trainer_common.progress import (
     EVENT_BATCH_PROGRESS,
     EVENT_FIT_EPOCH_END,
@@ -34,6 +35,10 @@ _HASH_CHUNK = 1024 * 1024
 # At most one `batch_progress` line per this many seconds (plus the first and the last batch of
 # every epoch): a CPU epoch has hundreds of batches and the file is never rewritten (D-03, T-05-08).
 BATCH_EVENT_MIN_INTERVAL = 2.0
+
+
+class WeightsDownloadError(RuntimeError):
+    """The official weights are not cached and could not be downloaded."""
 
 
 def _parse_args(argv: list[str] | None) -> argparse.Namespace:
@@ -90,7 +95,7 @@ def _resolve_weights(data_dir: Path, base: dict) -> Path:
 
         attempt_download_asset(str(path))
     if not path.exists():
-        raise RuntimeError(
+        raise WeightsDownloadError(
             f"Could not download {name}.pt. Check the internet access of the worker container, "
             f"or place the file in {layout.weights_root(data_dir)}/."
         )
@@ -302,8 +307,14 @@ def main(argv: list[str] | None = None) -> int:
     try:
         _train(args)
     except Exception as exc:
+        type_name = type(exc).__name__
         layout.write_json_atomic(
-            args.run_dir / layout.ERROR_FILE, {"type": type(exc).__name__, "message": str(exc)}
+            args.run_dir / layout.ERROR_FILE,
+            {
+                "type": type_name,
+                "message": str(exc),
+                "category": classify_exception(type_name, str(exc), getattr(exc, "errno", None)),
+            },
         )
         traceback.print_exc()  # lands in train.log
         return 1

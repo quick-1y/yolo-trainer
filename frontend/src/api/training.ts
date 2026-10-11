@@ -24,6 +24,31 @@ export type DeviceChoice = "auto" | "cpu" | "0";
 
 export type QualityLevel = "excellent" | "good" | "fair" | "poor";
 
+/** The failure codes of the worker (D-16); each has `failure.<code>.title` / `.hint` in i18n. */
+export type ErrorCategory =
+  | "out_of_memory"
+  | "disk_full"
+  | "invalid_dataset"
+  | "weights_download"
+  | "process_killed"
+  | "not_resumable"
+  | "unknown";
+
+const ERROR_CATEGORIES: readonly ErrorCategory[] = [
+  "out_of_memory",
+  "disk_full",
+  "invalid_dataset",
+  "weights_download",
+  "process_killed",
+  "not_resumable",
+  "unknown",
+];
+
+/** The code itself when it is one of the seven, else "unknown" (null, an old run, a newer code). */
+export function failureCategory(code: string | null): ErrorCategory {
+  return ERROR_CATEGORIES.find((category) => category === code) ?? "unknown";
+}
+
 export interface RunSettings {
   epochs: number;
   imgsz: number;
@@ -75,6 +100,8 @@ export interface RunSummary {
   started_at: string | null;
   finished_at: string | null;
   model: RunModelRef | null;
+  /** Failure code of a failed run (D-16); null for other runs and for runs from before codes. */
+  error_category: string | null;
   /** Verdict on mAP50 computed by the server (null while there is no final mAP50). */
   quality: QualityLevel | null;
 }

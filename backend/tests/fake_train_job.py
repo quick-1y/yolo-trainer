@@ -5,7 +5,9 @@ real job writes (`progress.jsonl`, `out/train/weights/{best,last}.pt`, `result.j
 `error.json`) so the supervisor, registration and download can be tested fast.
 
 Modes: `success`, `fail` (exit 1 with error.json after 80 noisy lines), `crash` (exit 3, no
-error.json), `sleep` (one real epoch, then sleeps for a minute so a test can stop the worker).
+error.json), `oom` (exit 1, error.json with the out-of-memory category), `badcategory` (exit 1,
+error.json with a category outside the allow-list), `exit137` (exit 137, no error.json), `sleep`
+(one real epoch, then sleeps for a minute so a test can stop the worker).
 """
 
 from __future__ import annotations
@@ -15,6 +17,8 @@ import json
 import sys
 import time
 from pathlib import Path
+
+from yolo_trainer_common.failures import classify_exception
 
 BEST_BYTES = b"fake-best-weights"
 LAST_BYTES = b"fake-last-weights-differ"
@@ -72,6 +76,43 @@ def main() -> int:
             json.dumps({"type": "RuntimeError", "message": "Fake failure."}), encoding="utf-8"
         )
         return 1
+
+    if args.mode == "oom":
+        # Exactly what train_job.main() writes for an out-of-memory failure.
+        message = "CUDA out of memory. Tried to allocate 2.00 GiB."
+        type_name = "OutOfMemoryError"
+        print("epoch 1/3", flush=True)
+        print(f"torch.OutOfMemoryError: {message}", flush=True)
+        (run_dir / "error.json").write_text(
+            json.dumps(
+                {
+                    "type": type_name,
+                    "message": message,
+                    "category": classify_exception(type_name, message),
+                }
+            ),
+            encoding="utf-8",
+        )
+        return 1
+
+    if args.mode == "badcategory":
+        # A category outside the allow-list must never reach the database.
+        (run_dir / "error.json").write_text(
+            json.dumps(
+                {
+                    "type": "RuntimeError",
+                    "message": "Fake failure with a made-up category.",
+                    "category": "<img src=x onerror=alert(1)>",
+                }
+            ),
+            encoding="utf-8",
+        )
+        return 1
+
+    if args.mode == "exit137":
+        # What the OS kill of a training process leaves behind: no error.json at all.
+        print("epoch 1/3", flush=True)
+        return 137
 
     epochs = 2
     _emit(

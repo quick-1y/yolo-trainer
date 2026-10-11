@@ -22,6 +22,7 @@ from yolo_trainer_api.models import TrainedModel, TrainingRun, utcnow
 from yolo_trainer_api.training.reconcile import RUNNING_INTERRUPTED_DETAIL
 from yolo_trainer_api.training.snapshot import link_or_copy
 from yolo_trainer_common import layout
+from yolo_trainer_common.failures import UNKNOWN, normalize_category
 from yolo_trainer_common.progress import jsonable, primary_metrics
 
 if TYPE_CHECKING:
@@ -139,12 +140,20 @@ def record_epoch(
     return _update_running(engine, run_id, **values)
 
 
-def mark_failed(engine: Engine, run_id: int, message: str, log_tail: str | None) -> int:
+def mark_failed(
+    engine: Engine,
+    run_id: int,
+    message: str,
+    log_tail: str | None,
+    category: str = UNKNOWN,
+) -> int:
+    """Fail a running run: `message` stays the raw text, `category` is allow-list checked."""
     return _update_running(
         engine,
         run_id,
         status="failed",
         error_message=message,
+        error_category=normalize_category(category),
         log_tail=log_tail,
         finished_at=utcnow(),
     )

@@ -26,6 +26,12 @@ from sqlalchemy.exc import OperationalError
 
 from yolo_trainer_common import layout
 from yolo_trainer_common.device import ComputeDevice
+from yolo_trainer_common.failures import (
+    INVALID_DATASET,
+    classify_exception,
+    classify_exit,
+    normalize_category,
+)
 from yolo_trainer_common.progress import (
     EVENT_FIT_EPOCH_END,
     ProgressTail,
@@ -113,13 +119,29 @@ def _read_log_tail(path: Path) -> str:
     return clean_log_tail(raw.decode("utf-8", errors="replace"))
 
 
-def _read_error_message(path: Path) -> str | None:
+def _classify(exc: BaseException) -> str:
+    """The failure category of an exception the supervisor itself caught."""
+    return classify_exception(type(exc).__name__, str(exc), getattr(exc, "errno", None))
+
+
+def _read_error_file(path: Path) -> tuple[str | None, str | None]:
+    """`(message, category)` from the child's `error.json`; each is None when absent or unusable.
+
+    The file is written by the child process, so the category is checked against the allow-list
+    before anything is stored: a value outside it becomes `unknown` (T-05-11).
+    """
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
-        return None
-    message = payload.get("message") if isinstance(payload, dict) else None
-    return message if isinstance(message, str) and message.strip() else None
+        return None, None
+    if not isinstance(payload, dict):
+        return None, None
+    message = payload.get("message")
+    category = payload.get("category")
+    return (
+        message if isinstance(message, str) and message.strip() else None,
+        normalize_category(category) if category is not None else None,
+    )
 
 
 class Supervisor:
@@ -191,7 +213,7 @@ class Supervisor:
         if run is None:
             return VANISHED
         if not (run_directory / layout.JOB_FILE).is_file():
-            queue.mark_failed(self.engine, run_id, DATASET_MISSING_MESSAGE, None)
+            queue.mark_failed(self.engine, run_id, DATASET_MISSING_MESSAGE, None, INVALID_DATASET)
             return "failed"
 
         resolved = resolve_settings(run["settings"], self.device, os.cpu_count() or 1)
@@ -223,7 +245,11 @@ class Supervisor:
                 )
             except OSError as exc:
                 queue.mark_failed(
-                    self.engine, run_id, f"Could not start the training process: {exc}", None
+                    self.engine,
+                    run_id,
+                    f"Could not start the training process: {exc}",
+                    None,
+                    _classify(exc),
                 )
                 return "failed"
             try:
@@ -366,16 +392,23 @@ class Supervisor:
             except Exception as exc:
                 logger.exception("Could not register the model of run %s", run_id)
                 queue.mark_failed(
-                    self.engine, run_id, f"Could not register the trained model: {exc}", log_tail
+                    self.engine,
+                    run_id,
+                    f"Could not register the trained model: {exc}",
+                    log_tail,
+                    _classify(exc),
                 )
                 return "failed"
             return "completed"
 
-        message = _read_error_message(run_directory / layout.ERROR_FILE)
+        message, category = _read_error_file(run_directory / layout.ERROR_FILE)
         if message is None:
             if exit_code == 0:
                 message = "The training process finished without producing a model."
             else:
                 message = f"The training process exited with code {exit_code}."
-        queue.mark_failed(self.engine, run_id, message, log_tail)
+        if category is None:
+            # A hard crash or an OS kill leaves no error file (or an old one without a category).
+            category = classify_exit(exit_code, log_tail)
+        queue.mark_failed(self.engine, run_id, message, log_tail, category)
         return "failed"

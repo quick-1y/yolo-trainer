@@ -26,9 +26,9 @@ import { estimateRemainingSeconds } from "./progress/eta";
 import type { ProgressState } from "./progress/foldProgress";
 import { RunCharts } from "./progress/RunCharts";
 import { useRunStream } from "./progress/useRunStream";
+import { FailureAlert } from "./FailureAlert";
 import { FinalResultsCard } from "./FinalResultsCard";
 import { RemoveFromQueueModal } from "./RemoveFromQueueModal";
-import { RunFailureLog } from "./RunFailureLog";
 import { RunSettingsCard } from "./RunSettingsCard";
 import { RunStatusBadge } from "./RunStatusBadge";
 
@@ -223,25 +223,6 @@ function StatusAnnouncer({ status }: { status: RunStatus }) {
   );
 }
 
-function FailedAlert({ run }: { run: RunDetail }) {
-  const { t } = useTranslation("training");
-  return (
-    <Alert
-      color="red"
-      title={<Text fz={14} fw={600}>{t("run.failed.title")}</Text>}
-    >
-      <Stack gap={8}>
-        <Text size="sm" style={{ whiteSpace: "pre-wrap", overflowWrap: "anywhere" }}>
-          {run.error_message !== null && run.error_message !== ""
-            ? run.error_message
-            : t("run.failed.noMessage")}
-        </Text>
-        <RunFailureLog log={run.log_tail} />
-      </Stack>
-    </Alert>
-  );
-}
-
 function InterruptedAlert({ run }: { run: RunDetail }) {
   const { t } = useTranslation("training");
   return (
@@ -273,7 +254,7 @@ function CancelledAlert() {
 
 function StatusCard({ run, progress }: { run: RunDetail; progress: ProgressState }) {
   if (run.status === "failed") {
-    return <FailedAlert run={run} />;
+    return <FailureAlert run={run} />;
   }
   if (run.status === "interrupted") {
     return <InterruptedAlert run={run} />;

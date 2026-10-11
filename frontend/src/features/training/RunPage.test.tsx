@@ -190,6 +190,20 @@ describe("RunPage live charts", () => {
     expect(source.readyState).toBe(FakeEventSource.CLOSED);
   });
 
+  it("shows the categorized failure at once when a status frame reports the run failed", async () => {
+    stubTrainingApi({ run: running() });
+    renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+
+    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+    const source = latestEventSource();
+    act(() => {
+      source.open();
+      source.emit("status", { status: "failed", epoch: 12, epochs: 100, error_category: "disk_full" });
+    });
+
+    expect(await screen.findByText("Disk is full")).toBeInTheDocument();
+  });
+
   it("opens one stream per page and closes it on unmount", async () => {
     stubTrainingApi({ run: running() });
     const view = renderWithProviders(<AppRoutes />, { route: RUN_PATH });
@@ -908,6 +922,7 @@ function failed(overrides: Record<string, unknown> = {}) {
     started_at: STARTED_AT,
     finished_at: "2026-01-15T10:20:00Z",
     error_message: "CUDA out of memory.",
+    error_category: "out_of_memory",
     log_tail: "epoch 1/3\nepoch 2/3\nCUDA out of memory.",
     ...overrides,
   });
@@ -922,7 +937,7 @@ describe("RunPage failed run", () => {
     stubTrainingApi({ run: failed() });
     const view = renderWithProviders(<AppRoutes />, { route: RUN_PATH });
 
-    expect(await screen.findByText("Training failed")).toBeInTheDocument();
+    expect(await screen.findByText("Out of memory")).toBeInTheDocument();
     expect(screen.getByText("CUDA out of memory.", { selector: "div,p" })).toBeInTheDocument();
     // Collapse may mount its hidden content a render pass later; either way it is not shown.
     const hiddenTitle = screen.queryByText("Last log lines");
@@ -938,6 +953,80 @@ describe("RunPage failed run", () => {
     expect(screen.getByText(/epoch 1\/3/)).toBeVisible();
     expect(await screen.findByRole("button", { name: "Copy log" })).toBeVisible();
     expect(screen.getByRole("button", { name: "Hide log" })).toBeInTheDocument();
+  });
+
+  it("titles an out-of-memory failure, says what to do and keeps the original message and log", async () => {
+    stubTrainingApi({ run: failed() });
+    renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+
+    expect(await screen.findByText("Out of memory")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "The GPU or the system ran out of memory. Start a new run with a smaller batch size or image size, or pick a smaller model.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Original message")).toBeInTheDocument();
+    expect(screen.getByText("CUDA out of memory.", { selector: "div,p" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Show log" })).toBeInTheDocument();
+  });
+
+  it("shows 'Unexpected error' with the raw message when the run has no category", async () => {
+    stubTrainingApi({ run: failed({ error_category: null, error_message: "Something odd." }) });
+    renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+
+    expect(await screen.findByText("Unexpected error")).toBeInTheDocument();
+    expect(
+      screen.getByText("Open the log below for details. If it keeps happening, start a new run."),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Something odd.", { selector: "div,p" })).toBeInTheDocument();
+  });
+
+  it.each([
+    ["out_of_memory", "Out of memory", "ran out of memory"],
+    ["disk_full", "Disk is full", "no free space left for training files"],
+    ["invalid_dataset", "Invalid dataset", "could not read the dataset"],
+    ["weights_download", "Could not download model weights", "downloaded on first use"],
+    ["process_killed", "Training process was killed", "stopped the training process"],
+    ["not_resumable", "Cannot resume", "checkpoint is missing, damaged"],
+    ["unknown", "Unexpected error", "Open the log below for details"],
+  ])("renders its own title and hint for %s", async (code, title, hintPart) => {
+    stubTrainingApi({ run: failed({ error_category: code, error_message: `raw ${code}` }) });
+    renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+
+    expect(await screen.findByText(title)).toBeInTheDocument();
+    expect(screen.getByText(new RegExp(hintPart, "i"))).toBeInTheDocument();
+    expect(screen.getByText("Original message")).toBeInTheDocument();
+    expect(screen.getByText(`raw ${code}`, { selector: "div,p" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Show log" })).toBeInTheDocument();
+  });
+
+  it("renders an unrecognized category as 'Unexpected error' with the raw message", async () => {
+    stubTrainingApi({
+      run: failed({ error_category: "brand_new_code", error_message: "New kind of failure." }),
+    });
+    renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+
+    expect(await screen.findByText("Unexpected error")).toBeInTheDocument();
+    expect(screen.queryByText("brand_new_code")).toBeNull();
+    expect(screen.getByText("New kind of failure.", { selector: "div,p" })).toBeInTheDocument();
+  });
+
+  it("shows the Russian title and hint of a category", async () => {
+    stubTrainingApi({ run: failed({ error_category: "disk_full" }) });
+    renderWithProviders(<AppRoutes />, { route: RUN_PATH, language: "ru" });
+
+    expect(await screen.findByText("Закончилось место на диске")).toBeInTheDocument();
+    expect(screen.getByText(/Освободите место в папке данных \(DATA_DIR\)/)).toBeInTheDocument();
+    expect(screen.getByText("Исходное сообщение")).toBeInTheDocument();
+  });
+
+  it("wraps a 10,000-character raw message inside the alert instead of widening the page", async () => {
+    const long = "x".repeat(10_000);
+    stubTrainingApi({ run: failed({ error_message: long }) });
+    renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+
+    const message = await screen.findByText(long, { selector: "div,p" });
+    expect(message).toHaveStyle({ whiteSpace: "pre-wrap", overflowWrap: "anywhere" });
   });
 
   it("copies the log", async () => {
@@ -1110,7 +1199,7 @@ describe("RunPage settings card", () => {
     renderWithProviders(<AppRoutes />, { route: RUN_PATH, language: "ru" });
 
     expect(await screen.findByText("Использованные настройки")).toBeInTheDocument();
-    expect(await screen.findByText("Обучение не удалось")).toBeInTheDocument();
+    expect(await screen.findByText("Не хватило памяти")).toBeInTheDocument();
   });
 });
 

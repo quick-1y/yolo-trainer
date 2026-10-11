@@ -69,6 +69,7 @@ export function makeRun(overrides: Json = {}): Json {
     class_names: ["plate"],
     metrics: null,
     error_message: null,
+    error_category: null,
     log_tail: null,
     ...overrides,
   };

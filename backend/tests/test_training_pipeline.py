@@ -444,6 +444,7 @@ def test_a_missing_dataset_fails_the_claimed_run(client: TestClient, settings: S
 
     finished = client.get(f"/api/projects/{ids['project_id']}/runs/{run['id']}").json()
     assert finished["error_message"] == "The prepared dataset is missing."
+    assert finished["error_category"] == "invalid_dataset"
 
 
 def test_a_vanished_source_image_fails_the_preparing_run(
@@ -466,7 +467,26 @@ def test_a_vanished_source_image_fails_the_preparing_run(
     run = client.get(f"/api/projects/{ids['project_id']}/runs/{started['id']}").json()
     assert run["status"] == "failed"
     assert run["error_message"] == service.PREPARE_SOURCE_MISSING_DETAIL
+    assert run["error_category"] == "invalid_dataset"
     assert not layout.run_dir(settings.data_dir, started["id"]).exists()
+
+
+def test_a_dataset_that_cannot_be_written_fails_the_preparing_run_with_its_category(
+    client: TestClient, settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    ids = setup_project(client, "Full disk", train=1, valid=1)
+
+    def disk_full(data_dir: Path, snapshot) -> None:  # noqa: ANN001
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr(service, "materialize", disk_full)
+
+    started = start_run(client, ids["project_id"])
+
+    run = client.get(f"/api/projects/{ids['project_id']}/runs/{started['id']}").json()
+    assert run["status"] == "failed"
+    assert run["error_message"].startswith("Could not prepare the dataset")
+    assert run["error_category"] == "disk_full"
 
 
 def test_the_run_rows_live_in_the_shared_database_file(
@@ -747,6 +767,8 @@ def test_train_job_reports_a_failed_download_in_plain_words(
 
     error = json.loads((run_directory / layout.ERROR_FILE).read_text(encoding="utf-8"))
     assert error["message"].startswith("Could not download yolo26n.pt.")
+    assert error["type"] == "WeightsDownloadError"
+    assert error["category"] == "weights_download"
     assert "train" not in calls
 
 
