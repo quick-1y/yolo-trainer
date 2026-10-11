@@ -7,10 +7,14 @@ vi.mock("@mantine/notifications", () => ({
 
 import { notifications } from "@mantine/notifications";
 
+import { RUN_POLL_INTERVAL_MS, RUN_SAFETY_POLL_INTERVAL_MS, runPollInterval } from "../../api/training";
 import { AppRoutes } from "../../app/routes";
 import { renderWithProviders } from "../../test/render";
 import { FakeEventSource, latestEventSource } from "../../test/fakeEventSource";
+import { useSizedRechartsContainers } from "../../test/rechartsSize";
 import { makeRun, stubTrainingApi } from "../../test/trainingApi";
+
+useSizedRechartsContainers();
 
 const RUN_PATH = "/projects/1/training/7";
 const STARTED_AT = "2026-01-15T10:05:00Z";
@@ -201,6 +205,226 @@ describe("RunPage live charts", () => {
 
     expect(await screen.findByText("In queue: position 2")).toBeInTheDocument();
     expect(FakeEventSource.instances).toHaveLength(0);
+  });
+});
+
+function trainEpoch(epoch: number, loss: number) {
+  return {
+    event: "train_epoch_end",
+    epoch,
+    epochs: 10,
+    tloss: { box_loss: loss * 0.5, cls_loss: loss * 0.3, dfl_loss: loss * 0.2 },
+  };
+}
+
+function fitEpochWithLoss(epoch: number, map50: number) {
+  return {
+    event: "fit_epoch_end",
+    epoch,
+    epochs: 10,
+    final_validation: false,
+    metrics: { "val/box_loss": 0.4, "val/cls_loss": 0.3, "val/dfl_loss": 0.2 },
+    primary: { precision: 0.8, recall: 0.7, map50, map50_95: map50 - 0.2 },
+  };
+}
+
+describe("RunPage history charts", () => {
+  it("rebuilds the loss, mAP and precision/recall charts of a finished run from the replay", async () => {
+    stubTrainingApi({ run: completed({ epochs: 10, settings: { epochs: 10, imgsz: 640, batch: -1, device: "auto" } }) });
+    renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+
+    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+    const source = latestEventSource();
+    act(() => {
+      source.open();
+      for (const epoch of [1, 2, 3]) {
+        source.emit("progress", trainEpoch(epoch, 3 - epoch * 0.5), String(epoch * 100));
+        source.emit("progress", fitEpochWithLoss(epoch, 0.3 + epoch * 0.1), String(epoch * 100 + 50));
+      }
+      source.emit("end", { status: "completed" });
+    });
+
+    for (const [name, labels] of [
+      ["Loss", ["Train", "Validation"]],
+      ["mAP", ["mAP50", "mAP50-95"]],
+      ["Precision and recall", ["Precision", "Recall"]],
+    ] as const) {
+      const group = await screen.findByRole("group", { name });
+      for (const label of labels) {
+        expect(within(group).getAllByText(label).length).toBeGreaterThan(0);
+      }
+    }
+    expect(screen.getByText("Latest, epoch 3: Train 1.500, Validation 0.900")).toBeInTheDocument();
+    expect(screen.getByText("Latest, epoch 3: mAP50 0.600, mAP50-95 0.400")).toBeInTheDocument();
+    expect(screen.getByText("Latest, epoch 3: Precision 0.800, Recall 0.700")).toBeInTheDocument();
+    // The X axis spans the planned epochs, not only the epochs reached.
+    expect(within(screen.getByRole("group", { name: "mAP" })).getByText("10")).toBeInTheDocument();
+  });
+
+  it("renders the same charts for a Phase 4 history without v, batch events or fitness", async () => {
+    stubTrainingApi({ run: completed({ epochs: 10 }) });
+    renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+
+    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+    const source = latestEventSource();
+    act(() => {
+      source.open();
+      source.emit("progress", {
+        event: "fit_epoch_end",
+        epoch: 1,
+        epochs: 10,
+        primary: { precision: 0.5, recall: 0.4, map50: 0.3, map50_95: 0.2 },
+      });
+    });
+
+    expect(await screen.findByRole("group", { name: "Loss" })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "mAP" })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Precision and recall" })).toBeInTheDocument();
+  });
+
+  it("labels the charts in Russian", async () => {
+    stubTrainingApi({ run: completed({ epochs: 10 }) });
+    renderWithProviders(<AppRoutes />, { route: RUN_PATH, language: "ru" });
+
+    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+    const source = latestEventSource();
+    act(() => {
+      source.open();
+      source.emit("progress", fitEpochWithLoss(1, 0.5));
+    });
+
+    expect(await screen.findByRole("group", { name: "Потери" })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Precision и recall" })).toBeInTheDocument();
+  });
+});
+
+describe("RunPage stream states", () => {
+  it("shows three skeleton charts until the stream opens, then the waiting panel for a running run", async () => {
+    stubTrainingApi({ run: running() });
+    renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+
+    expect(await screen.findAllByTestId("chart-skeleton")).toHaveLength(3);
+    expect(screen.queryByText("Charts appear after the first epoch finishes.")).toBeNull();
+
+    act(() => {
+      latestEventSource().open();
+    });
+
+    expect(await screen.findByText("Charts appear after the first epoch finishes.")).toBeInTheDocument();
+    expect(screen.queryByTestId("chart-skeleton")).toBeNull();
+  });
+
+  it("renders no chart section for a finished run whose history has no epoch", async () => {
+    stubTrainingApi({ run: completed() });
+    renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+
+    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+    act(() => {
+      latestEventSource().open();
+      latestEventSource().emit("end", { status: "completed" });
+    });
+
+    await waitFor(() => expect(screen.queryByTestId("chart-skeleton")).toBeNull());
+    expect(screen.queryByText("Charts appear after the first epoch finishes.")).toBeNull();
+    expect(screen.queryByRole("group", { name: "mAP" })).toBeNull();
+  });
+
+  it("shows Reconnecting while the browser retries and keeps the charts", async () => {
+    stubTrainingApi({ run: running() });
+    renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+
+    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+    const source = latestEventSource();
+    act(() => {
+      source.open();
+      source.emit("progress", fitEpoch(1, 0.5), "100");
+    });
+    expect(await screen.findByRole("group", { name: "mAP" })).toBeInTheDocument();
+
+    act(() => {
+      source.fail(FakeEventSource.CONNECTING);
+    });
+    expect(await screen.findByText("Reconnecting…")).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "mAP" })).toBeInTheDocument();
+
+    act(() => {
+      source.open();
+    });
+    await waitFor(() => expect(screen.queryByText("Reconnecting…")).toBeNull());
+  });
+
+  it("keeps the last data when the stream closes for good and reopens it on Try again", async () => {
+    stubTrainingApi({ run: running() });
+    const view = renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+
+    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+    const source = latestEventSource();
+    act(() => {
+      source.open();
+      source.emit("progress", fitEpoch(1, 0.5), "100");
+    });
+    expect(await screen.findByRole("group", { name: "mAP" })).toBeInTheDocument();
+
+    act(() => {
+      source.fail(FakeEventSource.CLOSED);
+    });
+    const message = await screen.findByText(
+      "Live updates are unavailable. Charts show data up to the last update.",
+    );
+    expect(screen.getByRole("group", { name: "mAP" })).toBeInTheDocument();
+
+    await view.user.click(within(message.closest("[role='status']") as HTMLElement).getByRole("button", { name: "Try again" }));
+
+    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(2));
+    expect(source.readyState).toBe(FakeEventSource.CLOSED);
+    expect(latestEventSource().url).toBe("/api/projects/1/runs/7/stream");
+  });
+
+  it("polls a running run every 15 seconds while the stream is healthy and every 3 seconds when it is down", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const stub = stubTrainingApi({ run: running() });
+    renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+
+    expect((await screen.findAllByText("Epoch 12 of 100")).length).toBeGreaterThan(0);
+    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+    act(() => {
+      latestEventSource().open();
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(4000);
+    });
+    expect(stub.count("GET /api/projects/1/runs/7")).toBe(1);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(12000);
+    });
+    await waitFor(() => expect(stub.count("GET /api/projects/1/runs/7")).toBe(2));
+
+    act(() => {
+      latestEventSource().fail(FakeEventSource.CLOSED);
+    });
+    const before = stub.count("GET /api/projects/1/runs/7");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3100);
+    });
+    await waitFor(() => expect(stub.count("GET /api/projects/1/runs/7")).toBeGreaterThan(before));
+  });
+});
+
+describe("runPollInterval", () => {
+  it("is 15 s for a running run with a healthy stream and 3 s otherwise while the run is active", () => {
+    expect(runPollInterval({ status: "running" }, true)).toBe(RUN_SAFETY_POLL_INTERVAL_MS);
+    expect(RUN_SAFETY_POLL_INTERVAL_MS).toBe(15000);
+    expect(runPollInterval({ status: "running" }, false)).toBe(RUN_POLL_INTERVAL_MS);
+    expect(runPollInterval({ status: "queued" }, true)).toBe(RUN_POLL_INTERVAL_MS);
+    expect(runPollInterval({ status: "preparing" }, true)).toBe(RUN_POLL_INTERVAL_MS);
+  });
+
+  it("stops for a finished run and before the first answer", () => {
+    for (const status of ["completed", "failed", "cancelled", "interrupted"] as const) {
+      expect(runPollInterval({ status }, false)).toBe(false);
+    }
+    expect(runPollInterval(undefined, true)).toBe(false);
   });
 });
 

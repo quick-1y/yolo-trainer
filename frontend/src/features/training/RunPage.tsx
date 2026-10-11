@@ -71,20 +71,24 @@ export function RunPage() {
   const { project } = useOutletContext<ProjectOutletContext>();
   const params = useParams<{ runId: string }>();
   const runId = parseRunId(params.runId);
-  const query = useRun(project.id, runId);
-  const [removeOpened, setRemoveOpened] = useState(false);
-  const listPath = `/projects/${project.id}/training`;
   // A hook, so it runs before the early returns below. The stream opens once the run has left
   // the preparing and queued states and closes itself when the server sends `end`.
+  const [streamHealthy, setStreamHealthy] = useState(false);
+  const query = useRun(project.id, runId, { streamHealthy });
+  const [removeOpened, setRemoveOpened] = useState(false);
+  const listPath = `/projects/${project.id}/training`;
   const streamStatus = query.data?.status;
-  const { progress } = useRunStream(project.id, runId ?? 0, {
-    enabled:
-      runId !== null &&
-      streamStatus !== undefined &&
-      streamStatus !== "preparing" &&
-      streamStatus !== "queued",
+  const streamEnabled =
+    runId !== null &&
+    streamStatus !== undefined &&
+    streamStatus !== "preparing" &&
+    streamStatus !== "queued";
+  const { progress, connection, retry } = useRunStream(project.id, runId ?? 0, {
+    enabled: streamEnabled,
     resumeKey: 0,
   });
+  // The page polls slowly only while the stream is healthy; any other state falls back to 3 s.
+  useEffect(() => setStreamHealthy(connection === "open"), [connection]);
 
   const isNotFound =
     runId === null || (query.error instanceof ApiError && query.error.status === 404);
@@ -162,7 +166,15 @@ export function RunPage() {
         ) : null}
       </Group>
       <StatusCard run={run} />
-      {progress.rows.length > 0 ? <RunCharts progress={progress} /> : null}
+      {streamEnabled ? (
+        <RunCharts
+          progress={progress}
+          connection={connection}
+          running={run.status === "running"}
+          epochs={run.epochs ?? run.settings.epochs}
+          onRetry={retry}
+        />
+      ) : null}
       <RunSettingsCard run={run} />
       <StatusAnnouncer status={run.status} />
       {run.status === "queued" ? (
