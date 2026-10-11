@@ -70,6 +70,7 @@ export function makeRun(overrides: Json = {}): Json {
     metrics: null,
     error_message: null,
     error_category: null,
+    cancelling: false,
     log_tail: null,
     ...overrides,
   };
@@ -157,6 +158,14 @@ export interface StubTrainingOptions {
   removeDetail?: string;
   /** DELETE answers only after this promise settles, so a test can look at the pending state. */
   removeGate?: Promise<void>;
+  /** Status of POST /api/projects/1/runs/:id/cancel (default 200); anything else answers `cancelDetail` as the error. */
+  cancelStatus?: number;
+  /** Body of a successful cancel (default: a running run with `cancelling: true`). */
+  cancelResult?: Json;
+  /** `detail` of a failed cancel (default: the API's 409 message). */
+  cancelDetail?: string;
+  /** The cancel answers only after this promise settles, so a test can look at the pending state. */
+  cancelGate?: Promise<void>;
   /** Body of POST /splits/auto/preview (default: 4 unassigned images -> Train 3, Valid 1). */
   splitPreview?: Json;
   /** Called when POST /splits/auto is applied, so a test can change what the options answer next. */
@@ -172,6 +181,8 @@ export interface StubTrainingApi {
   posts: Json[];
   /** Paths of every DELETE /api/projects/1/runs/:id, in order. */
   deletes: string[];
+  /** Paths of every POST /api/projects/1/runs/:id/cancel, in order. */
+  cancels: string[];
   /** Parsed JSON bodies of every POST /api/projects/1/splits/auto (the apply call), in order. */
   splitApplies: Json[];
   /** "METHOD /path" of every request, in order. */
@@ -188,6 +199,7 @@ export interface StubTrainingApi {
 export function stubTrainingApi(stub: StubTrainingOptions = {}): StubTrainingApi {
   const posts: Json[] = [];
   const deletes: string[] = [];
+  const cancels: string[] = [];
   const splitApplies: Json[] = [];
   const requests: string[] = [];
 
@@ -213,6 +225,20 @@ export function stubTrainingApi(stub: StubTrainingOptions = {}): StubTrainingApi
       posts.push(JSON.parse(String(init?.body)) as Json);
       const status = stub.createStatus ?? 201;
       return json(stub.createResult ?? makeRun({ id: 12, status: "preparing" }), status);
+    }
+    if (method === "POST" && /^\/api\/projects\/1\/runs\/\d+\/cancel$/.test(path)) {
+      cancels.push(path);
+      if (stub.cancelGate !== undefined) {
+        await stub.cancelGate;
+      }
+      const status = stub.cancelStatus ?? 200;
+      if (status === 200) {
+        return json(
+          stub.cancelResult ??
+            makeRun({ status: "running", queue_position: null, cancelling: true }),
+        );
+      }
+      return json({ detail: stub.cancelDetail ?? "Only a running run can be cancelled." }, status);
     }
     const runMatch = /^\/api\/projects\/1\/runs\/(\d+)$/.exec(path);
     if (method === "DELETE" && runMatch !== null) {
@@ -281,6 +307,7 @@ export function stubTrainingApi(stub: StubTrainingOptions = {}): StubTrainingApi
   return {
     posts,
     deletes,
+    cancels,
     splitApplies,
     requests,
     count: (request) => requests.filter((entry) => entry === request).length,

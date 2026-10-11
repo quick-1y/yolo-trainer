@@ -112,6 +112,21 @@ def run_status(engine: Engine, run_id: int) -> str | None:
         ).scalar_one_or_none()
 
 
+def run_control(engine: Engine, run_id: int) -> tuple[str | None, datetime | None]:
+    """`(status, cancel_requested_at)` of a run, or `(None, None)` when its row is gone.
+
+    One tiny SELECT per supervisor tick: the cancel flag set by the api is the only way a
+    user-requested cancel reaches the worker (D-07).
+    """
+    with engine.connect() as connection:
+        row = connection.execute(
+            select(TrainingRun.status, TrainingRun.cancel_requested_at).where(
+                TrainingRun.id == run_id
+            )
+        ).first()
+    return (None, None) if row is None else (row.status, row.cancel_requested_at)
+
+
 def _update_running(engine: Engine, run_id: int, **values: object) -> int:
     """One UPDATE scoped to a `running` run; returns the number of rows changed."""
     with engine.begin() as connection:
@@ -167,6 +182,23 @@ def mark_interrupted(engine: Engine, run_id: int, message: str, log_tail: str | 
         error_message=message,
         log_tail=log_tail,
         finished_at=utcnow(),
+    )
+
+
+def mark_cancelled(engine: Engine, run_id: int, log_tail: str | None = None) -> int:
+    """End a running run as `cancelled`: no error message, no category, no model (D-08).
+
+    A user-requested cancel is not a failure, so nothing about the stopped child is classified.
+    Guarded by `status = 'running'`, so a run that already finished changes 0 rows.
+    """
+    return _update_running(
+        engine,
+        run_id,
+        status="cancelled",
+        finished_at=utcnow(),
+        error_message=None,
+        error_category=None,
+        log_tail=log_tail,
     )
 
 

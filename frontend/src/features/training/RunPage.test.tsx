@@ -1282,3 +1282,116 @@ describe("RunPage remove from queue", () => {
     }
   });
 });
+
+describe("RunPage cancel training", () => {
+  it("opens a confirmation with Keep training focused, sends the cancel and shows Cancelling…", async () => {
+    let current = running({ epoch: 2, epochs: 10, settings: { epochs: 10, imgsz: 640, batch: -1, device: "auto" } });
+    const stub = stubTrainingApi({
+      run: () => current,
+      cancelResult: running({ epoch: 2, epochs: 10, cancelling: true }),
+    });
+    const view = renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+
+    const open = await screen.findByRole("button", { name: "Cancel training" });
+    await view.user.click(open);
+
+    const dialog = await screen.findByRole("dialog", { name: "Cancel training" });
+    expect(
+      within(dialog).getByText(
+        "Training will stop at epoch 3. You can resume it from the last checkpoint.",
+      ),
+    ).toBeInTheDocument();
+    expect(within(dialog).getByText("The epoch in progress is not saved.")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(within(dialog).getByRole("button", { name: "Keep training" })).toHaveFocus(),
+    );
+
+    current = running({ epoch: 2, epochs: 10, cancelling: true });
+    await view.user.click(within(dialog).getByRole("button", { name: "Cancel training" }));
+
+    expect(stub.cancels).toEqual(["/api/projects/1/runs/7/cancel"]);
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect((await screen.findAllByText("Cancelling…")).length).toBeGreaterThan(0);
+    expect(
+      screen.getByText("Stopping the training process. This takes a few seconds."),
+    ).toBeInTheDocument();
+    const header = screen.getByRole("button", { name: "Cancelling…" });
+    expect(header).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Cancel training" })).toBeNull();
+    // no epoch bar, ETA or batch caption while the worker stops the process
+    expect(screen.queryByRole("progressbar")).toBeNull();
+    expect(screen.queryByText(/Time left/)).toBeNull();
+    expect(notifications.show).not.toHaveBeenCalled();
+  });
+
+  it("caps the epoch in the confirmation at the planned total", async () => {
+    stubTrainingApi({ run: running({ epoch: 10, epochs: 10 }) });
+    const view = renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+
+    await view.user.click(await screen.findByRole("button", { name: "Cancel training" }));
+
+    const dialog = await screen.findByRole("dialog", { name: "Cancel training" });
+    expect(within(dialog).getByText(/Training will stop at epoch 10\./)).toBeInTheDocument();
+  });
+
+  it("disables both buttons while the request is pending", async () => {
+    let release: () => void = () => undefined;
+    const cancelGate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    stubTrainingApi({ run: running(), cancelGate });
+    const view = renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+
+    await view.user.click(await screen.findByRole("button", { name: "Cancel training" }));
+    const dialog = await screen.findByRole("dialog", { name: "Cancel training" });
+    await view.user.click(within(dialog).getByRole("button", { name: "Cancel training" }));
+
+    await waitFor(() =>
+      expect(within(dialog).getByRole("button", { name: "Keep training" })).toBeDisabled(),
+    );
+    expect(within(dialog).getByRole("button", { name: /Cancel training/ })).toBeDisabled();
+
+    release();
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  });
+
+  it("offers no cancel button for preparing, queued, completed, failed, interrupted or cancelled runs", async () => {
+    for (const status of [
+      "preparing",
+      "queued",
+      "completed",
+      "failed",
+      "interrupted",
+      "cancelled",
+    ] as const) {
+      stubTrainingApi({ run: makeRun({ id: 7, name: "run-7", status, queue_position: null }) });
+      const view = renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+      await screen.findByText("Settings used");
+      expect(screen.queryByRole("button", { name: /Cancel training|Cancelling/ })).toBeNull();
+      view.unmount();
+    }
+  });
+
+  it("offers no cancel button in the run list", async () => {
+    stubTrainingApi({ runs: [running()] });
+    renderWithProviders(<AppRoutes />, { route: "/projects/1/training" });
+
+    expect(await screen.findByTestId("run-row")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Cancel training/ })).toBeNull();
+  });
+
+  it("words the confirmation in Russian", async () => {
+    stubTrainingApi({ run: running({ epoch: 2, epochs: 10 }) });
+    const view = renderWithProviders(<AppRoutes />, { route: RUN_PATH, language: "ru" });
+
+    await view.user.click(await screen.findByRole("button", { name: "Отменить обучение" }));
+
+    const dialog = await screen.findByRole("dialog", { name: "Отмена обучения" });
+    expect(
+      within(dialog).getByText(
+        "Обучение остановится на эпохе 3. Вы сможете возобновить его с последней контрольной точки.",
+      ),
+    ).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "Продолжить обучение" })).toBeInTheDocument();
+  });
+});

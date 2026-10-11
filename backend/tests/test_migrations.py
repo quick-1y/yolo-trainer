@@ -383,3 +383,53 @@ def test_0006_downgrades_to_0005_and_back_keeping_the_runs(tmp_path: Path) -> No
         ]
     finally:
         connection.close()
+
+
+def test_a_populated_0006_database_upgrades_with_no_pending_cancel_and_round_trips(
+    tmp_path: Path,
+) -> None:
+    settings = Settings(
+        data_dir=tmp_path / "data", allowed_hosts=["testserver", "localhost", "127.0.0.1"]
+    )
+    settings.data_dir.mkdir(parents=True)
+    config = _alembic_config(settings.sync_database_url)
+    command.upgrade(config, "0006")
+    _seed_0005_run(settings)
+
+    command.upgrade(config, "head")
+
+    connection = sqlite3.connect(settings.db_path)
+    try:
+        assert connection.execute(
+            "SELECT status, error_message, cancel_requested_at FROM training_runs WHERE id = 1"
+        ).fetchone() == ("failed", "CUDA out of memory.", None)
+        columns = {row[1]: row for row in connection.execute("PRAGMA table_info(training_runs)")}
+        assert columns["cancel_requested_at"][3] == 0  # nullable
+    finally:
+        connection.close()
+
+    command.downgrade(config, "0006")
+
+    connection = sqlite3.connect(settings.db_path)
+    try:
+        columns = [row[1] for row in connection.execute("PRAGMA table_info(training_runs)")]
+        assert "cancel_requested_at" not in columns
+        assert "error_category" in columns  # only the 0007 column goes
+        assert connection.execute("SELECT name FROM training_runs").fetchall() == [("run-1",)]
+        sql = connection.execute(
+            "SELECT sql FROM sqlite_master WHERE name = 'training_runs'"
+        ).fetchone()[0]
+        assert "ck_training_runs_status" in sql
+        assert "AUTOINCREMENT" in sql
+    finally:
+        connection.close()
+
+    command.upgrade(config, "head")
+
+    connection = sqlite3.connect(settings.db_path)
+    try:
+        assert connection.execute("SELECT cancel_requested_at FROM training_runs").fetchall() == [
+            (None,)
+        ]
+    finally:
+        connection.close()

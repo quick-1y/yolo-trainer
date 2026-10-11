@@ -119,6 +119,20 @@ async def remove_run(
     return Response(status_code=204)
 
 
+@router.post(
+    "/projects/{project_id}/runs/{run_id}/cancel",
+    response_model=RunRead,
+    dependencies=[Depends(require_xhr)],
+)
+async def cancel_run(
+    project_id: int, run_id: int, session: AsyncSession = Depends(get_session)
+) -> RunRead:
+    """Ask for a running run to be cancelled. Only sets the flag the worker reads (D-07)."""
+    await get_project_or_404(session, project_id)
+    run = await service.cancel_run(session, project_id, run_id)
+    return await service.run_read(session, run)
+
+
 @router.get("/projects/{project_id}/runs/{run_id}", response_model=RunRead)
 async def get_run(
     project_id: int, run_id: int, session: AsyncSession = Depends(get_session)

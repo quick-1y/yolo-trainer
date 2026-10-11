@@ -7,7 +7,8 @@ real job writes (`progress.jsonl`, `out/train/weights/{best,last}.pt`, `result.j
 Modes: `success`, `fail` (exit 1 with error.json after 80 noisy lines), `crash` (exit 3, no
 error.json), `oom` (exit 1, error.json with the out-of-memory category), `badcategory` (exit 1,
 error.json with a category outside the allow-list), `exit137` (exit 137, no error.json), `sleep`
-(one real epoch, then sleeps for a minute so a test can stop the worker).
+(one real epoch, then sleeps for a minute so a test can stop the worker). Every real epoch writes
+`weights/last.pt` and `weights/best.pt` and a `model_save` event, like Ultralytics does.
 """
 
 from __future__ import annotations
@@ -43,6 +44,19 @@ def _real_epoch(run_dir: Path, epoch: int, epochs: int, map50: float) -> None:
             nb=BATCHES_PER_EPOCH,
         )
     _emit(run_dir, "train_epoch_end", epoch=epoch, epochs=epochs, tloss={"box_loss": 1.0})
+    # Ultralytics saves the checkpoints and emits on_model_save BEFORE on_fit_epoch_end, so a
+    # cancelled run has an interim best.pt and last.pt from every epoch it finished.
+    weights = run_dir / "out" / "train" / "weights"
+    weights.mkdir(parents=True, exist_ok=True)
+    (weights / "last.pt").write_bytes(LAST_BYTES)
+    (weights / "best.pt").write_bytes(BEST_BYTES)
+    _emit(
+        run_dir,
+        "model_save",
+        epoch=epoch,
+        last=str(weights / "last.pt"),
+        best=str(weights / "best.pt"),
+    )
     _emit(
         run_dir,
         "fit_epoch_end",

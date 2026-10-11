@@ -54,6 +54,7 @@ logger = logging.getLogger(__name__)
 
 RUN_NOT_FOUND_DETAIL = "Run not found."
 RUN_NOT_QUEUED_DETAIL = "This run has already started and can no longer be removed from the queue."
+RUN_NOT_CANCELLABLE_DETAIL = "Only a running run can be cancelled."
 NO_CLASSES_DETAIL = "Add at least one class before training."
 TRAIN_EMPTY_DETAIL = "No annotated images are assigned to Train."
 VALID_EMPTY_DETAIL = "No annotated images are assigned to Valid."
@@ -309,6 +310,39 @@ async def remove_queued_run(
     await _remove_folder(settings, run_id)
 
 
+async def cancel_run(session: AsyncSession, project_id: int, run_id: int) -> TrainingRun:
+    """Ask for a `running` run to be cancelled (D-06, D-07); anything else is refused with 409.
+
+    One UPDATE sets `cancel_requested_at` and is guarded by `status = 'running'`, so a run that
+    finished a moment earlier is never touched. The api signals nothing: the worker supervisor
+    reads the flag in its next tick, stops its own child and writes `cancelled`. A second request
+    while the run is still running changes nothing and answers 200 (idempotent).
+    """
+    result = await session.execute(
+        update(TrainingRun)
+        .where(
+            TrainingRun.id == run_id,
+            TrainingRun.project_id == project_id,
+            TrainingRun.status == "running",
+            TrainingRun.cancel_requested_at.is_(None),
+        )
+        .values(cancel_requested_at=utcnow())
+    )
+    await session.commit()
+    run = (
+        await session.execute(
+            select(TrainingRun)
+            .where(TrainingRun.id == run_id, TrainingRun.project_id == project_id)
+            .execution_options(populate_existing=True)
+        )
+    ).scalar_one_or_none()
+    if run is None:
+        raise HTTPException(status_code=404, detail=RUN_NOT_FOUND_DETAIL)
+    if result.rowcount == 0 and run.status != "running":
+        raise HTTPException(status_code=409, detail=RUN_NOT_CANCELLABLE_DETAIL)
+    return run
+
+
 def model_download_name(project_name: str | None, model_name: str) -> str:
     """`<project>_<run>_best.pt` reduced to safe filename characters (D-18, Pattern 8).
 
@@ -353,6 +387,7 @@ def _summary_fields(
         "finished_at": run.finished_at,
         "model": model,
         "error_category": run.error_category,
+        "cancelling": run.status == "running" and run.cancel_requested_at is not None,
     }
 
 
