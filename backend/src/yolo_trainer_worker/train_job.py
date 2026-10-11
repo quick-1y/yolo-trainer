@@ -18,6 +18,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from yolo_trainer_common import layout
+from yolo_trainer_common.failures import classify_exception
 from yolo_trainer_common.progress import (
     EVENT_BATCH_PROGRESS,
     EVENT_FIT_EPOCH_END,
@@ -302,8 +303,14 @@ def main(argv: list[str] | None = None) -> int:
     try:
         _train(args)
     except Exception as exc:
+        type_name = type(exc).__name__
         layout.write_json_atomic(
-            args.run_dir / layout.ERROR_FILE, {"type": type(exc).__name__, "message": str(exc)}
+            args.run_dir / layout.ERROR_FILE,
+            {
+                "type": type_name,
+                "message": str(exc),
+                "category": classify_exception(type_name, str(exc), getattr(exc, "errno", None)),
+            },
         )
         traceback.print_exc()  # lands in train.log
         return 1

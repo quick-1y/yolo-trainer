@@ -283,3 +283,103 @@ def test_a_populated_0004_database_upgrades_keeping_annotations_and_autoincremen
         )
     finally:
         connection.close()
+
+
+def _seed_0005_run(settings: Settings) -> None:
+    stamp = "2026-10-05 10:00:00.000000"
+    connection = sqlite3.connect(settings.db_path)
+    try:
+        connection.execute("PRAGMA foreign_keys=ON")
+        connection.execute(
+            "INSERT INTO projects (id, name, normalized_name, task_type, created_at, updated_at) "
+            "VALUES (1, 'Old', 'old', 'detect', ?, ?)",
+            (stamp, stamp),
+        )
+        connection.execute(
+            "INSERT INTO training_runs (id, project_id, name, normalized_name, status, task_type, "
+            "base_kind, base_name, settings, error_message, created_at) "
+            "VALUES (1, 1, 'run-1', 'run-1', 'failed', 'detect', 'official', 'yolo26n', '{}', "
+            "'CUDA out of memory.', ?)",
+            (stamp,),
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+
+def test_a_populated_0005_database_upgrades_with_every_existing_run_uncategorized(
+    tmp_path: Path,
+) -> None:
+    settings = Settings(
+        data_dir=tmp_path / "data", allowed_hosts=["testserver", "localhost", "127.0.0.1"]
+    )
+    settings.data_dir.mkdir(parents=True)
+    config = _alembic_config(settings.sync_database_url)
+    command.upgrade(config, "0005")
+    _seed_0005_run(settings)
+
+    command.upgrade(config, "head")
+
+    connection = sqlite3.connect(settings.db_path)
+    try:
+        assert connection.execute(
+            "SELECT status, error_message, error_category FROM training_runs WHERE id = 1"
+        ).fetchone() == ("failed", "CUDA out of memory.", None)
+        columns = {row[1]: row for row in connection.execute("PRAGMA table_info(training_runs)")}
+        # (cid, name, type, notnull, default, pk): nullable, 32 characters, and no CHECK on it so a
+        # new code never needs a table rebuild.
+        assert columns["error_category"][2].upper() == "VARCHAR(32)"
+        assert columns["error_category"][3] == 0
+        sql = connection.execute(
+            "SELECT sql FROM sqlite_master WHERE name = 'training_runs'"
+        ).fetchone()[0]
+        assert "ck_training_runs_status" in sql  # the status CHECK survives untouched
+        assert "error_category IN" not in sql
+        connection.execute(
+            "UPDATE training_runs SET error_category = 'brand_new_code' WHERE id = 1"
+        )
+    finally:
+        connection.close()
+
+
+def test_0006_downgrades_to_0005_and_back_keeping_the_runs(tmp_path: Path) -> None:
+    settings = Settings(
+        data_dir=tmp_path / "data", allowed_hosts=["testserver", "localhost", "127.0.0.1"]
+    )
+    settings.data_dir.mkdir(parents=True)
+    config = _alembic_config(settings.sync_database_url)
+    command.upgrade(config, "0005")
+    _seed_0005_run(settings)
+    command.upgrade(config, "head")
+
+    command.downgrade(config, "0005")
+
+    connection = sqlite3.connect(settings.db_path)
+    try:
+        columns = [row[1] for row in connection.execute("PRAGMA table_info(training_runs)")]
+        assert "error_category" not in columns
+        assert connection.execute("SELECT name FROM training_runs").fetchall() == [("run-1",)]
+        sql = connection.execute(
+            "SELECT sql FROM sqlite_master WHERE name = 'training_runs'"
+        ).fetchone()[0]
+        assert "ck_training_runs_status" in sql
+        assert "AUTOINCREMENT" in sql
+        indexes = {row[1] for row in connection.execute("PRAGMA index_list(training_runs)")}
+        assert {
+            "uq_training_runs_project_name",
+            "ix_training_runs_status_id",
+            "ix_training_runs_project_id",
+            "ix_training_runs_base_model_id",
+        } <= indexes
+    finally:
+        connection.close()
+
+    command.upgrade(config, "head")
+
+    connection = sqlite3.connect(settings.db_path)
+    try:
+        assert connection.execute("SELECT error_category FROM training_runs").fetchall() == [
+            (None,)
+        ]
+    finally:
+        connection.close()

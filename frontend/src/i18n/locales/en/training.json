@@ -256,5 +256,36 @@
   "finalResults": {
     "title": "Final results (best.pt)",
     "caption": "Final validation of the best checkpoint on the validation images."
+  },
+  "failure": {
+    "raw": "Original message",
+    "out_of_memory": {
+      "title": "Out of memory",
+      "hint": "The GPU or the system ran out of memory. Start a new run with a smaller batch size or image size, or pick a smaller model."
+    },
+    "disk_full": {
+      "title": "Disk is full",
+      "hint": "There is no free space left for training files. Free up disk space in the data folder (DATA_DIR), then resume this run or start a new one."
+    },
+    "invalid_dataset": {
+      "title": "Invalid dataset",
+      "hint": "Training could not read the dataset. Check that the images and annotations are valid, then start a new run."
+    },
+    "weights_download": {
+      "title": "Could not download model weights",
+      "hint": "Official model weights are downloaded on first use. Check the worker's internet connection or place the weights file in DATA_DIR/weights/, then start a new run."
+    },
+    "process_killed": {
+      "title": "Training process was killed",
+      "hint": "The system stopped the training process, most often because it ran out of memory. Give Docker more memory or use a smaller batch or image size, then resume or start a new run."
+    },
+    "not_resumable": {
+      "title": "Cannot resume",
+      "hint": "The saved checkpoint is missing, damaged, or training had already finished. Start a new run instead."
+    },
+    "unknown": {
+      "title": "Unexpected error",
+      "hint": "Open the log below for details. If it keeps happening, start a new run."
+    }
   }
 }

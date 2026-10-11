@@ -559,6 +559,9 @@ class RunSummary(BaseModel):
     started_at: datetime | None = None
     finished_at: datetime | None = None
     model: RunModelRef | None = None
+    # A stable failure code (D-16) for a failed run; NULL for runs that did not fail and for
+    # runs that failed before categories existed. The UI maps an unknown code to "unknown".
+    error_category: str | None = None
 
     @computed_field  # type: ignore[prop-decorator]
     @property

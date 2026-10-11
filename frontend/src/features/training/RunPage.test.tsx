@@ -908,6 +908,7 @@ function failed(overrides: Record<string, unknown> = {}) {
     started_at: STARTED_AT,
     finished_at: "2026-01-15T10:20:00Z",
     error_message: "CUDA out of memory.",
+    error_category: "out_of_memory",
     log_tail: "epoch 1/3\nepoch 2/3\nCUDA out of memory.",
     ...overrides,
   });
@@ -922,7 +923,7 @@ describe("RunPage failed run", () => {
     stubTrainingApi({ run: failed() });
     const view = renderWithProviders(<AppRoutes />, { route: RUN_PATH });
 
-    expect(await screen.findByText("Training failed")).toBeInTheDocument();
+    expect(await screen.findByText("Out of memory")).toBeInTheDocument();
     expect(screen.getByText("CUDA out of memory.", { selector: "div,p" })).toBeInTheDocument();
     // Collapse may mount its hidden content a render pass later; either way it is not shown.
     const hiddenTitle = screen.queryByText("Last log lines");
@@ -938,6 +939,32 @@ describe("RunPage failed run", () => {
     expect(screen.getByText(/epoch 1\/3/)).toBeVisible();
     expect(await screen.findByRole("button", { name: "Copy log" })).toBeVisible();
     expect(screen.getByRole("button", { name: "Hide log" })).toBeInTheDocument();
+  });
+
+  it("titles an out-of-memory failure, says what to do and keeps the original message and log", async () => {
+    stubTrainingApi({ run: failed() });
+    renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+
+    expect(await screen.findByText("Out of memory")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "The GPU or the system ran out of memory. Start a new run with a smaller batch size or image size, or pick a smaller model.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Original message")).toBeInTheDocument();
+    expect(screen.getByText("CUDA out of memory.", { selector: "div,p" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Show log" })).toBeInTheDocument();
+  });
+
+  it("shows 'Unexpected error' with the raw message when the run has no category", async () => {
+    stubTrainingApi({ run: failed({ error_category: null, error_message: "Something odd." }) });
+    renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+
+    expect(await screen.findByText("Unexpected error")).toBeInTheDocument();
+    expect(
+      screen.getByText("Open the log below for details. If it keeps happening, start a new run."),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Something odd.", { selector: "div,p" })).toBeInTheDocument();
   });
 
   it("copies the log", async () => {
@@ -1110,7 +1137,7 @@ describe("RunPage settings card", () => {
     renderWithProviders(<AppRoutes />, { route: RUN_PATH, language: "ru" });
 
     expect(await screen.findByText("Использованные настройки")).toBeInTheDocument();
-    expect(await screen.findByText("Обучение не удалось")).toBeInTheDocument();
+    expect(await screen.findByText("Не хватило памяти")).toBeInTheDocument();
   });
 });
 

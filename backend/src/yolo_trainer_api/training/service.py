@@ -341,6 +341,7 @@ def _summary_fields(
         "started_at": run.started_at,
         "finished_at": run.finished_at,
         "model": model,
+        "error_category": run.error_category,
     }
 
 

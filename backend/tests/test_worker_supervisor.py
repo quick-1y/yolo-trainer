@@ -183,6 +183,44 @@ def test_a_failed_run_keeps_the_trainer_message_and_a_short_clean_log_tail(
     assert tail_lines[-1] == "progress 50%"
 
 
+def test_an_out_of_memory_failure_is_stored_with_its_category_and_the_raw_message(
+    client: TestClient, settings: Settings
+) -> None:
+    supervisor, _, project_id, run_id = _claimed_run(client, settings, "oom")
+
+    assert supervisor.run_claimed(run_id, threading.Event()) == "failed"
+
+    run = client.get(f"/api/projects/{project_id}/runs/{run_id}").json()
+    assert run["status"] == "failed"
+    assert run["error_category"] == "out_of_memory"
+    assert run["error_message"] == "CUDA out of memory. Tried to allocate 2.00 GiB."
+    assert "CUDA out of memory" in run["log_tail"]
+
+
+def test_a_failure_without_a_category_in_its_error_file_is_classified_from_the_exit(
+    client: TestClient, settings: Settings
+) -> None:
+    supervisor, _, project_id, run_id = _claimed_run(client, settings, "fail")
+
+    assert supervisor.run_claimed(run_id, threading.Event()) == "failed"
+
+    run = client.get(f"/api/projects/{project_id}/runs/{run_id}").json()
+    assert run["error_message"] == "Fake failure."
+    assert run["error_category"] == "unknown"
+
+
+def test_a_category_in_an_error_file_outside_the_allow_list_is_stored_as_unknown(
+    client: TestClient, settings: Settings
+) -> None:
+    supervisor, _, project_id, run_id = _claimed_run(client, settings, "badcategory")
+
+    assert supervisor.run_claimed(run_id, threading.Event()) == "failed"
+
+    run = client.get(f"/api/projects/{project_id}/runs/{run_id}").json()
+    assert run["error_message"] == "Fake failure with a made-up category."
+    assert run["error_category"] == "unknown"
+
+
 def test_a_crashing_trainer_without_an_error_file_reports_its_exit_code(
     client: TestClient, settings: Settings
 ) -> None:

@@ -226,6 +226,9 @@ class TrainingRun(Base):
     last_map50: Mapped[float | None] = mapped_column(Float, nullable=True)
     worker_pid: Mapped[int | None] = mapped_column(Integer, nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # One of `yolo_trainer_common.failures.CATEGORIES` for a failed run, else NULL (D-16). No DB
+    # CHECK: the allow-list lives in Python so a new code never needs a table rebuild.
+    error_category: Mapped[str | None] = mapped_column(String(32), nullable=True)
     log_tail: Mapped[str | None] = mapped_column(Text, nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=utcnow
