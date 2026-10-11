@@ -232,6 +232,48 @@ describe("foldProgress segments and batches", () => {
   });
 });
 
+describe("foldProgress phase", () => {
+  it("enters final validation when a real epoch reports last_epoch", () => {
+    expect(fold([fitEnd(9, { last_epoch: false })]).phase).toBe("training");
+    expect(fold([fitEnd(9, { last_epoch: true, v: 2 })]).phase).toBe("final_validation");
+  });
+
+  it("enters final validation for an early stop below the planned total", () => {
+    expect(fold([fitEnd(7, { last_epoch: true, v: 2 })]).phase).toBe("final_validation");
+  });
+
+  it("treats a Phase 4 event without v at the last planned epoch as the final validation", () => {
+    expect(fold([fitEnd(10)]).phase).toBe("final_validation");
+    expect(fold([fitEnd(9)]).phase).toBe("training");
+    // With a v, only last_epoch decides.
+    expect(fold([fitEnd(10, { v: 2, last_epoch: false })]).phase).toBe("training");
+  });
+
+  it("returns to training on a later train_start", () => {
+    const state = fold([
+      fitEnd(3, { last_epoch: true, v: 2 }),
+      { event: "train_start", epochs: 10, start_epoch: 3, resumed: true, nb: 20 },
+    ]);
+
+    expect(state.phase).toBe("training");
+  });
+
+  it("keeps the final-validation phase when the final event arrives and adds no row", () => {
+    const state = fold([
+      fitEnd(10, { last_epoch: true, v: 2 }),
+      fitEnd(10, {
+        final_validation: true,
+        v: 2,
+        primary: { precision: 0.95, recall: 0.9, map50: 0.85, map50_95: 0.6 },
+      }),
+    ]);
+
+    expect(state.phase).toBe("final_validation");
+    expect(state.rows).toHaveLength(1);
+    expect(state.finalMetrics?.map50).toBe(0.85);
+  });
+});
+
 describe("bestEpoch", () => {
   it("picks the highest fitness and the later epoch on a tie", () => {
     const rows = [

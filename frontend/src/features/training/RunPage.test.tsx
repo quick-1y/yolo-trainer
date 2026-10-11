@@ -107,9 +107,13 @@ describe("RunPage progress", () => {
     renderWithProviders(<AppRoutes />, { route: RUN_PATH });
 
     expect((await screen.findAllByText("Epoch 100 of 100")).length).toBeGreaterThan(0);
+    expect(screen.getByText("Final validation…")).toBeInTheDocument();
     expect(
-      screen.getByText("Finishing: validating the best model and registering it."),
+      screen.getByText(
+        "Checking the best model on the validation images. The model is registered right after.",
+      ),
     ).toBeInTheDocument();
+    expect(screen.queryByText(/Finishing/)).toBeNull();
   });
 
   it("never shows an epoch above epochs", async () => {
@@ -302,6 +306,209 @@ describe("RunPage batch progress and ETA", () => {
 
     expect(await screen.findByRole("progressbar", { name: "Батч 3 из 10" })).toBeInTheDocument();
     expect(screen.getByText(/Осталось: ~0:16:10/)).toBeInTheDocument();
+  });
+});
+
+const FINAL_PRIMARY = { precision: 0.91, recall: 0.82, map50: 0.873, map50_95: 0.614 };
+
+function lastRealEpoch(epoch: number, epochs: number) {
+  return {
+    event: "fit_epoch_end",
+    v: 2,
+    epoch,
+    epochs,
+    final_validation: false,
+    last_epoch: true,
+    fitness: 0.5,
+    primary: { precision: 0.8, recall: 0.7, map50: 0.6, map50_95: 0.4 },
+  };
+}
+
+function finalValidation(epoch: number, epochs: number) {
+  return {
+    event: "fit_epoch_end",
+    v: 2,
+    epoch,
+    epochs,
+    final_validation: true,
+    primary: FINAL_PRIMARY,
+  };
+}
+
+describe("RunPage final validation", () => {
+  it("reads Final validation after the last real epoch: full epoch bar, no batch bar, no time left, never epoch 11", async () => {
+    stubTrainingApi({ run: running({ epoch: 10, epochs: 10 }) });
+    renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+
+    expect((await screen.findAllByText("Epoch 10 of 10")).length).toBeGreaterThan(0);
+    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+    const source = latestEventSource();
+    act(() => {
+      source.open();
+      source.emit("progress", trainStart(1000), "10");
+      source.emit("progress", batchEvent(10, 7, 1900), "20");
+    });
+    expect(await screen.findByRole("progressbar", { name: "Batch 7 of 10" })).toBeInTheDocument();
+
+    act(() => {
+      source.emit("progress", lastRealEpoch(10, 10), "30");
+    });
+
+    expect(await screen.findByText("Final validation…")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Checking the best model on the validation images. The model is registered right after.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getAllByText("Epoch 10 of 10").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Epoch 11 of 10")).toBeNull();
+    expect(screen.queryByRole("progressbar", { name: /Batch/ })).toBeNull();
+    expect(screen.queryByText(/Time left/)).toBeNull();
+    const bar = screen.getByRole("progressbar");
+    expect(bar).toHaveAttribute("aria-valuenow", "10");
+    expect(bar).toHaveAttribute("aria-valuemax", "10");
+  });
+
+  it("shows the final results card from the final-validation event while the run is still running", async () => {
+    stubTrainingApi({ run: running({ epoch: 10, epochs: 10 }) });
+    renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+
+    expect((await screen.findAllByText("Epoch 10 of 10")).length).toBeGreaterThan(0);
+    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+    const source = latestEventSource();
+    act(() => {
+      source.open();
+      source.emit("progress", lastRealEpoch(10, 10), "10");
+    });
+    expect(screen.queryByText("Final results (best.pt)")).toBeNull();
+
+    act(() => {
+      source.emit("progress", finalValidation(10, 10), "20");
+    });
+
+    const card = await screen.findByTestId("final-results");
+    expect(within(card).getByText("Final results (best.pt)")).toBeInTheDocument();
+    expect(
+      within(card).getByText("Final validation of the best checkpoint on the validation images."),
+    ).toBeInTheDocument();
+    for (const value of ["0.910", "0.820", "0.873", "0.614"]) {
+      expect(within(card).getByText(value)).toBeInTheDocument();
+    }
+    expect(within(card).queryByText("Good result")).toBeNull();
+    expect(screen.getByText("Final validation…")).toBeInTheDocument();
+  });
+
+  it("shows a dash for a metric the final event does not carry and no verdict", async () => {
+    stubTrainingApi({ run: running({ epoch: 10, epochs: 10 }) });
+    renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+
+    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+    const source = latestEventSource();
+    act(() => {
+      source.open();
+      source.emit(
+        "progress",
+        {
+          ...finalValidation(10, 10),
+          primary: { precision: 0.9, recall: null, map50: 0.8, map50_95: 0.5 },
+        },
+        "10",
+      );
+    });
+
+    const card = await screen.findByTestId("final-results");
+    expect(within(card).getByTestId("metric-recall")).toHaveTextContent("—");
+    expect(within(card).getByTestId("metric-map50")).toHaveTextContent("0.800");
+  });
+
+  it("moves the four tiles and the verdict out of the completed status card into the final results card", async () => {
+    stubTrainingApi({ run: completed() });
+    renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+
+    expect(await screen.findByText("Training complete")).toBeInTheDocument();
+    const card = screen.getByTestId("final-results");
+    expect(within(card).getByText("Final results (best.pt)")).toBeInTheDocument();
+    for (const value of ["0.900", "0.800", "0.812", "0.500"]) {
+      expect(within(card).getByText(value)).toBeInTheDocument();
+    }
+    expect(within(card).getByText("Good result")).toBeInTheDocument();
+    expect(within(card).getByText("Verdict is based on mAP50.")).toBeInTheDocument();
+    expect(screen.getAllByTestId("metric-map50")).toHaveLength(1);
+    expect(card.contains(screen.getByText("Training complete"))).toBe(false);
+  });
+
+  it("puts the final results card between the status card and the charts", async () => {
+    stubTrainingApi({ run: completed({ epochs: 10 }) });
+    renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+
+    const status = await screen.findByText("Training complete");
+    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+    act(() => {
+      latestEventSource().open();
+      latestEventSource().emit("progress", fitEpochWithLoss(1, 0.5), "10");
+    });
+    const charts = await screen.findByRole("group", { name: "mAP" });
+    const card = screen.getByTestId("final-results");
+    const settings = screen.getByTestId("run-settings");
+
+    expect(status.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(card.compareDocumentPosition(charts) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(charts.compareDocumentPosition(settings) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it("explains an early stop without rendering it as an error", async () => {
+    stubTrainingApi({ run: completed({ epoch: 7, epochs: 10 }) });
+    renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+
+    expect(
+      await screen.findByText(
+        "Training stopped early at epoch 7 of 10 because the metrics stopped improving.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("does not mention an early stop when every planned epoch ran", async () => {
+    stubTrainingApi({ run: completed() });
+    renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+
+    expect(await screen.findByText("Training complete")).toBeInTheDocument();
+    expect(screen.queryByText(/stopped early/)).toBeNull();
+  });
+
+  it("renders no final results card for failed, cancelled or interrupted runs, even with a final event in the stream", async () => {
+    for (const status of ["failed", "cancelled", "interrupted"] as const) {
+      stubTrainingApi({
+        run: makeRun({ id: 7, name: "run-7", status, queue_position: null, epoch: 10, epochs: 10 }),
+      });
+      const view = renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+      await waitFor(() => expect(FakeEventSource.instances.length).toBeGreaterThan(0));
+      act(() => {
+        latestEventSource().open();
+        latestEventSource().emit("progress", finalValidation(10, 10), "10");
+      });
+      await screen.findByText("Settings used");
+
+      expect(screen.queryByTestId("final-results")).toBeNull();
+      expect(screen.queryByText("Final results (best.pt)")).toBeNull();
+      view.unmount();
+    }
+  });
+
+  it("labels the final validation and the final results card in Russian", async () => {
+    stubTrainingApi({ run: running({ epoch: 10, epochs: 10 }) });
+    renderWithProviders(<AppRoutes />, { route: RUN_PATH, language: "ru" });
+
+    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+    const source = latestEventSource();
+    act(() => {
+      source.open();
+      source.emit("progress", lastRealEpoch(10, 10), "10");
+      source.emit("progress", finalValidation(10, 10), "20");
+    });
+
+    expect(await screen.findByText("Итоговая валидация…")).toBeInTheDocument();
+    expect(await screen.findByText("Итоговые результаты (best.pt)")).toBeInTheDocument();
   });
 });
 
