@@ -7,6 +7,7 @@ status, and no ending may leave the child process running (TRAN-04, D-13, D-15, 
 
 from __future__ import annotations
 
+import errno
 import subprocess
 import threading
 import time
@@ -231,6 +232,49 @@ def test_a_crashing_trainer_without_an_error_file_reports_its_exit_code(
     run = client.get(f"/api/projects/{project_id}/runs/{run_id}").json()
     assert run["status"] == "failed"
     assert run["error_message"] == "The training process exited with code 3."
+    assert run["error_category"] == "unknown"
+
+
+def test_a_trainer_killed_by_the_system_is_a_killed_process(
+    client: TestClient, settings: Settings
+) -> None:
+    supervisor, _, project_id, run_id = _claimed_run(client, settings, "exit137")
+
+    assert supervisor.run_claimed(run_id, threading.Event()) == "failed"
+
+    run = client.get(f"/api/projects/{project_id}/runs/{run_id}").json()
+    assert run["error_message"] == "The training process exited with code 137."
+    assert run["error_category"] == "process_killed"
+
+
+def test_a_missing_prepared_dataset_is_an_invalid_dataset(
+    client: TestClient, settings: Settings
+) -> None:
+    supervisor, _, project_id, run_id = _claimed_run(client, settings, "success")
+    layout.run_dir(settings.data_dir, run_id).joinpath(layout.JOB_FILE).unlink()
+
+    assert supervisor.run_claimed(run_id, threading.Event()) == "failed"
+
+    run = client.get(f"/api/projects/{project_id}/runs/{run_id}").json()
+    assert run["error_message"] == "The prepared dataset is missing."
+    assert run["error_category"] == "invalid_dataset"
+
+
+def test_a_trainer_that_cannot_be_started_is_classified_from_its_error(
+    client: TestClient, settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    supervisor, _, project_id, run_id = _claimed_run(client, settings, "success")
+
+    def cannot_start(*args: object, **kwargs: object) -> None:
+        raise OSError(errno.ENOSPC, "No space left on device")
+
+    monkeypatch.setattr(supervisor_module.subprocess, "Popen", cannot_start)
+
+    assert supervisor.run_claimed(run_id, threading.Event()) == "failed"
+
+    run = client.get(f"/api/projects/{project_id}/runs/{run_id}").json()
+    assert run["error_message"].startswith("Could not start the training process")
+    assert run["error_category"] == "disk_full"
 
 
 def test_a_model_with_other_class_names_is_refused_and_no_model_row_exists(
@@ -245,6 +289,7 @@ def test_a_model_with_other_class_names_is_refused_and_no_model_row_exists(
     run = client.get(f"/api/projects/{project_id}/runs/{run_id}").json()
     assert run["status"] == "failed"
     assert run["error_message"] == "The trained model's class names do not match the dataset."
+    assert run["error_category"] == "unknown"
     with Session(engine) as session:
         assert session.scalars(select(TrainedModel)).all() == []
 
@@ -265,6 +310,7 @@ def test_a_registration_failure_leaves_no_model_row_and_no_model_file(
     run = client.get(f"/api/projects/{project_id}/runs/{run_id}").json()
     assert run["status"] == "failed"
     assert run["error_message"].startswith("Could not register the trained model")
+    assert run["error_category"] == "disk_full"  # classified from the exception, not the wrapper
     assert run["model"] is None
     with Session(engine) as session:
         assert session.scalars(select(TrainedModel)).all() == []

@@ -384,6 +384,35 @@ def test_http_headers_and_resume_by_last_event_id(client: TestClient, settings: 
     assert [frame["event"] for frame in resumed_frames][-2:] == ["status", "end"]
 
 
+def test_the_status_frame_of_a_failed_run_carries_its_error_category(
+    client: TestClient, settings: Settings
+) -> None:
+    ids = setup_project(client, "Failing", train=2, valid=1)
+    run = start_run(client, ids["project_id"])
+    wait_status(client, ids["project_id"], run["id"], {"queued"})
+    engine = queue.create_worker_engine(worker_settings(settings))
+    try:
+        assert queue.claim_next(engine) == run["id"]
+        Supervisor(
+            engine,
+            worker_settings(settings),
+            ComputeDevice(cuda_available=False, device="cpu", device_name=None),
+            command=fake_command("oom"),
+            tick_seconds=0.05,
+        ).run_claimed(run["id"], threading.Event())
+    finally:
+        engine.dispose()
+    wait_status(client, ids["project_id"], run["id"], {"failed"})
+
+    response = client.get(f"/api/projects/{ids['project_id']}/runs/{run['id']}/stream")
+
+    frames = _frames_of(response.text)
+    status = json.loads([frame for frame in frames if frame["event"] == "status"][-1]["data"])
+    assert status["status"] == "failed"
+    assert status["error_category"] == "out_of_memory"
+    assert frames[-1]["event"] == "end"
+
+
 def test_http_stream_of_an_unknown_project_is_404(client: TestClient) -> None:
     response = client.get("/api/projects/9999/runs/1/stream")
 

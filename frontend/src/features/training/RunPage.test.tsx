@@ -967,6 +967,54 @@ describe("RunPage failed run", () => {
     expect(screen.getByText("Something odd.", { selector: "div,p" })).toBeInTheDocument();
   });
 
+  it.each([
+    ["out_of_memory", "Out of memory", "ran out of memory"],
+    ["disk_full", "Disk is full", "no free space left for training files"],
+    ["invalid_dataset", "Invalid dataset", "could not read the dataset"],
+    ["weights_download", "Could not download model weights", "downloaded on first use"],
+    ["process_killed", "Training process was killed", "stopped the training process"],
+    ["not_resumable", "Cannot resume", "checkpoint is missing, damaged"],
+    ["unknown", "Unexpected error", "Open the log below for details"],
+  ])("renders its own title and hint for %s", async (code, title, hintPart) => {
+    stubTrainingApi({ run: failed({ error_category: code, error_message: `raw ${code}` }) });
+    renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+
+    expect(await screen.findByText(title)).toBeInTheDocument();
+    expect(screen.getByText(new RegExp(hintPart, "i"))).toBeInTheDocument();
+    expect(screen.getByText("Original message")).toBeInTheDocument();
+    expect(screen.getByText(`raw ${code}`, { selector: "div,p" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Show log" })).toBeInTheDocument();
+  });
+
+  it("renders an unrecognized category as 'Unexpected error' with the raw message", async () => {
+    stubTrainingApi({
+      run: failed({ error_category: "brand_new_code", error_message: "New kind of failure." }),
+    });
+    renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+
+    expect(await screen.findByText("Unexpected error")).toBeInTheDocument();
+    expect(screen.queryByText("brand_new_code")).toBeNull();
+    expect(screen.getByText("New kind of failure.", { selector: "div,p" })).toBeInTheDocument();
+  });
+
+  it("shows the Russian title and hint of a category", async () => {
+    stubTrainingApi({ run: failed({ error_category: "disk_full" }) });
+    renderWithProviders(<AppRoutes />, { route: RUN_PATH, language: "ru" });
+
+    expect(await screen.findByText("Закончилось место на диске")).toBeInTheDocument();
+    expect(screen.getByText(/Освободите место в папке данных \(DATA_DIR\)/)).toBeInTheDocument();
+    expect(screen.getByText("Исходное сообщение")).toBeInTheDocument();
+  });
+
+  it("wraps a 10,000-character raw message inside the alert instead of widening the page", async () => {
+    const long = "x".repeat(10_000);
+    stubTrainingApi({ run: failed({ error_message: long }) });
+    renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+
+    const message = await screen.findByText(long, { selector: "div,p" });
+    expect(message).toHaveStyle({ whiteSpace: "pre-wrap", overflowWrap: "anywhere" });
+  });
+
   it("copies the log", async () => {
     stubTrainingApi({ run: failed() });
     const view = renderWithProviders(<AppRoutes />, { route: RUN_PATH });

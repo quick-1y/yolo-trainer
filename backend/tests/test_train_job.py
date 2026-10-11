@@ -112,6 +112,52 @@ def test_missing_official_weights_that_cannot_be_downloaded_fail_with_a_plain_me
         "Could not download yolo26n.pt. Check the internet access of the worker container, "
         f"or place the file in {layout.weights_root(data_dir)}/."
     )
+    assert error["type"] == "WeightsDownloadError"
+    assert error["category"] == "weights_download"
+
+
+@pytest.mark.parametrize(
+    ("raised", "category"),
+    [
+        (MemoryError("boom"), "out_of_memory"),
+        (OSError(28, "No space left on device"), "disk_full"),
+        (RuntimeError("Dataset 'x' error ❌ train: images not found"), "invalid_dataset"),
+        (ValueError("something else"), "unknown"),
+    ],
+)
+def test_main_writes_the_category_of_the_exception_next_to_its_type_and_message(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, raised: Exception, category: str
+) -> None:
+    run_directory = layout.run_dir(tmp_path / "data", 3)
+    run_directory.mkdir(parents=True)
+
+    def fail(args: object) -> None:
+        raise raised
+
+    monkeypatch.setattr(train_job, "_train", fail)
+
+    exit_code = train_job.main(
+        [
+            "--run-dir",
+            str(run_directory),
+            "--data-dir",
+            str(tmp_path / "data"),
+            "--device",
+            "cpu",
+            "--batch",
+            "2",
+            "--workers",
+            "0",
+        ]
+    )
+
+    assert exit_code == 1
+    error = json.loads((run_directory / layout.ERROR_FILE).read_text(encoding="utf-8"))
+    assert error == {
+        "type": type(raised).__name__,
+        "message": str(raised),
+        "category": category,
+    }
 
 
 class _Clock:
