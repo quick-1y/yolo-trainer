@@ -9,6 +9,7 @@ the stream is open: the ownership check and every status read use their own shor
 from __future__ import annotations
 
 import asyncio
+import re
 from collections.abc import AsyncIterator, Awaitable, Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -22,7 +23,7 @@ from yolo_trainer_api.models import TrainingRun
 from yolo_trainer_api.routers.projects import get_project_or_404
 from yolo_trainer_api.training import service
 from yolo_trainer_common import layout
-from yolo_trainer_common.progress import ProgressTail, enrich_event
+from yolo_trainer_common.progress import ProgressTail, compact_replay, enrich_event
 
 TERMINAL_STATUSES = frozenset({"completed", "failed", "interrupted", "cancelled"})
 
@@ -67,8 +68,15 @@ async def stream_target(project_id: int, run_id: int, request: Request) -> Strea
 
 
 def parse_last_event_id(raw: str | None, size: int) -> int:
-    """Signature stub (RED): the real parse lands with the GREEN commit."""
-    return 0
+    """The offset to resume at from a `Last-Event-ID` header, or 0 to replay everything.
+
+    Only a plain run of ASCII digits no larger than the file counts; anything else (absent,
+    signed, padded, exponent, longer than the file) restarts at 0. The header is client input.
+    """
+    if raw is None or len(raw) > 18 or re.fullmatch(r"[0-9]+", raw) is None:
+        return 0
+    value = int(raw)
+    return value if value <= size else 0
 
 
 def status_payload(row) -> dict:
@@ -107,6 +115,8 @@ async def progress_frames(
 
     async def file_frames() -> list[ServerSentEvent]:
         lines = await asyncio.to_thread(tail.read_new_lines, progress_path)
+        # The first read is the replay; later reads are small and follow the same rule.
+        lines = compact_replay(lines)
         return [
             ServerSentEvent(
                 event="progress", id=str(end_offset), data=enrich_event(task_type, event)

@@ -160,8 +160,20 @@ def enrich_event(task_type: str, event: dict) -> dict:
 
 
 def compact_replay(items: list[tuple[int, dict]]) -> list[tuple[int, dict]]:
-    """Signature stub (RED): the real compaction lands with the GREEN commit."""
-    return items
+    """Drop every `batch_progress` item except the last one, keeping the order (D-03).
+
+    Used when a stream replays history: a CPU run writes hundreds of batch lines per epoch
+    and only the newest says where the run is now. The file itself is never rewritten.
+    """
+    last_batch = -1
+    for index, (_, event) in enumerate(items):
+        if event.get("event") == EVENT_BATCH_PROGRESS:
+            last_batch = index
+    return [
+        item
+        for index, item in enumerate(items)
+        if item[1].get("event") != EVENT_BATCH_PROGRESS or index == last_batch
+    ]
 
 
 def clean_log_tail(text: str, max_lines: int = LOG_TAIL_LINES) -> str:

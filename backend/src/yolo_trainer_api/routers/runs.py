@@ -5,9 +5,12 @@ The router has the `/api` prefix and absolute sub-paths; `/training/active` (D-1
 
 from __future__ import annotations
 
+import asyncio
 import functools
+from pathlib import Path
+from typing import Annotated
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response
+from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Request, Response
 from fastapi.sse import EventSourceResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,6 +24,7 @@ from yolo_trainer_api.training import service
 from yolo_trainer_api.training.options import build_options, ensure_device_available
 from yolo_trainer_api.training.stream import (
     StreamTarget,
+    parse_last_event_id,
     progress_frames,
     read_run_status,
     stream_target,
@@ -133,14 +137,33 @@ async def get_run(
 
 
 @router.get("/projects/{project_id}/runs/{run_id}/stream", response_class=EventSourceResponse)
-async def stream_run(request: Request, target: StreamTarget = Depends(stream_target)):
+async def stream_run(
+    request: Request,
+    last_event_id: Annotated[str | None, Header()] = None,
+    target: StreamTarget = Depends(stream_target),
+):
     """Progress of a run as Server-Sent Events: the replay of `progress.jsonl`, then live lines.
 
-    No request-scoped database session here: FastAPI would keep it open for the whole stream
-    (see `training.stream`).
+    A reconnecting browser sends the id of the last frame it saw (a byte offset) as
+    `Last-Event-ID`; the stream resumes there, or replays from the start when the header is
+    not a valid offset. No request-scoped database session here: FastAPI would keep it open for
+    the whole stream (see `training.stream`).
     """
+    size = await asyncio.to_thread(_file_size, target.progress_path)
     status_reader = functools.partial(
         read_run_status, request.app.state.sessionmaker, target.run_id
     )
-    async for frame in progress_frames(target.progress_path, 0, target.task_type, status_reader):
+    async for frame in progress_frames(
+        target.progress_path,
+        parse_last_event_id(last_event_id, size),
+        target.task_type,
+        status_reader,
+    ):
         yield frame
+
+
+def _file_size(path: Path) -> int:
+    try:
+        return path.stat().st_size
+    except OSError:
+        return 0
