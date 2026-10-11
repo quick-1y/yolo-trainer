@@ -433,3 +433,81 @@ def test_a_populated_0006_database_upgrades_with_no_pending_cancel_and_round_tri
         ]
     finally:
         connection.close()
+
+
+def test_a_populated_0007_database_upgrades_with_every_existing_run_never_resumed(
+    tmp_path: Path,
+) -> None:
+    settings = Settings(
+        data_dir=tmp_path / "data", allowed_hosts=["testserver", "localhost", "127.0.0.1"]
+    )
+    settings.data_dir.mkdir(parents=True)
+    config = _alembic_config(settings.sync_database_url)
+    command.upgrade(config, "0007")
+    _seed_0005_run(settings)
+
+    command.upgrade(config, "head")
+
+    connection = sqlite3.connect(settings.db_path)
+    try:
+        assert connection.execute(
+            "SELECT status, resume_count, active_seconds, resume_epoch, queued_at, "
+            "segment_started_at FROM training_runs WHERE id = 1"
+        ).fetchone() == ("failed", 0, 0.0, None, None, None)
+        columns = {row[1]: row for row in connection.execute("PRAGMA table_info(training_runs)")}
+        # (cid, name, type, notnull, default, pk): the two counters are NOT NULL with a default 0,
+        # the rest are nullable. resume_epoch is not backfilled: Phase 4 rows are derived at read.
+        assert columns["resume_count"][3] == 1
+        assert str(columns["resume_count"][4]).strip("'") == "0"
+        assert columns["active_seconds"][3] == 1
+        assert str(columns["active_seconds"][4]).strip("'") == "0"
+        for nullable in ("resume_epoch", "queued_at", "segment_started_at"):
+            assert columns[nullable][3] == 0, nullable
+    finally:
+        connection.close()
+
+
+def test_0008_downgrades_to_0007_and_back_keeping_the_runs_and_autoincrement(
+    tmp_path: Path,
+) -> None:
+    settings = Settings(
+        data_dir=tmp_path / "data", allowed_hosts=["testserver", "localhost", "127.0.0.1"]
+    )
+    settings.data_dir.mkdir(parents=True)
+    config = _alembic_config(settings.sync_database_url)
+    command.upgrade(config, "0007")
+    _seed_0005_run(settings)
+    command.upgrade(config, "head")
+
+    command.downgrade(config, "0007")
+
+    connection = sqlite3.connect(settings.db_path)
+    try:
+        columns = [row[1] for row in connection.execute("PRAGMA table_info(training_runs)")]
+        for dropped in (
+            "resume_count",
+            "resume_epoch",
+            "queued_at",
+            "active_seconds",
+            "segment_started_at",
+        ):
+            assert dropped not in columns, dropped
+        assert "cancel_requested_at" in columns  # only the 0008 columns go
+        assert connection.execute("SELECT name FROM training_runs").fetchall() == [("run-1",)]
+        sql = connection.execute(
+            "SELECT sql FROM sqlite_master WHERE name = 'training_runs'"
+        ).fetchone()[0]
+        assert "ck_training_runs_status" in sql
+        assert "AUTOINCREMENT" in sql
+    finally:
+        connection.close()
+
+    command.upgrade(config, "head")
+
+    connection = sqlite3.connect(settings.db_path)
+    try:
+        assert connection.execute(
+            "SELECT resume_count, active_seconds FROM training_runs"
+        ).fetchall() == [(0, 0.0)]
+    finally:
+        connection.close()

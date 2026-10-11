@@ -26,6 +26,11 @@ EVENT_BATCH_PROGRESS = "batch_progress"
 # Readers treat every field added in version 2 as optional (D-05): older files stay readable.
 SCHEMA_VERSION = 2
 
+# What a run's progress events say about its `last.pt` (see `checkpoint_state`).
+CHECKPOINT_RESUMABLE = "resumable"
+CHECKPOINT_ENDED = "ended"
+CHECKPOINT_UNKNOWN = "unknown"
+
 LOG_TAIL_LINES = 50
 
 _ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;?]*[ -/]*[@-~]")
@@ -174,6 +179,58 @@ def compact_replay(items: list[tuple[int, dict]]) -> list[tuple[int, dict]]:
         for index, item in enumerate(items)
         if item[1].get("event") != EVENT_BATCH_PROGRESS or index == last_batch
     ]
+
+
+def _whole_number(value: object) -> int | None:
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
+
+
+def checkpoint_state(events: list[dict], epochs: int | None) -> tuple[str, int | None]:
+    """What a run's progress events say about its `last.pt`: `(state, epoch)` (D-10).
+
+    Walks the events in file order. A `train_start` opens a segment: the loop is running again
+    and a resumed segment names the epoch it loaded. A `model_save` of epoch N is a resumable
+    checkpoint unless it is the last planned epoch (Ultralytics strips `last.pt` right after).
+    A `fit_epoch_end` that reports `last_epoch` or is the final validation means the training
+    loop is over. The result is `(ENDED, None)` when it ended, `(RESUMABLE, N)` when a
+    checkpoint epoch is known, else `(UNKNOWN, None)`: no epoch is ever guessed. Phase 4 files
+    (no `v`, no `train_start`, no `last_epoch`) go through the same rules unchanged. Torch-free,
+    so the api can call it.
+    """
+    ended = False
+    epoch: int | None = None
+    for event in events:
+        kind = event.get("event")
+        if kind == EVENT_TRAIN_START:
+            ended = False
+            start = _whole_number(event.get("start_epoch"))
+            if event.get("resumed") is True and start is not None and start > 0:
+                epoch = start
+        elif kind == EVENT_MODEL_SAVE:
+            saved = _whole_number(event.get("epoch"))
+            if saved is None:
+                continue
+            if epochs is not None and saved >= epochs:
+                ended = True
+            else:
+                epoch = saved
+                ended = False
+        elif kind == EVENT_FIT_EPOCH_END:
+            if event.get("last_epoch") is True or event.get("final_validation") is True:
+                ended = True
+    if ended:
+        return CHECKPOINT_ENDED, None
+    if epoch is not None:
+        return CHECKPOINT_RESUMABLE, epoch
+    return CHECKPOINT_UNKNOWN, None
+
+
+def read_checkpoint_state(path: Path, epochs: int | None) -> tuple[str, int | None]:
+    """`checkpoint_state` of a `progress.jsonl`; a missing file is `(UNKNOWN, None)`.
+
+    Complete lines only and undecodable lines skipped, like every other reader of the file.
+    """
+    return checkpoint_state(ProgressTail().read_new_events(path), epochs)
 
 
 def clean_log_tail(text: str, max_lines: int = LOG_TAIL_LINES) -> str:

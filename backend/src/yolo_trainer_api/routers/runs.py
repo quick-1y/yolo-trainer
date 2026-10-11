@@ -58,7 +58,7 @@ async def start_run(
         snapshot,
     )
     await session.refresh(run)
-    return await service.run_read(session, run)
+    return await service.run_read(session, run, request.app.state.settings.data_dir)
 
 
 @router.get("/training/active", response_model=ActiveRun | None)
@@ -125,17 +125,41 @@ async def remove_run(
     dependencies=[Depends(require_xhr)],
 )
 async def cancel_run(
-    project_id: int, run_id: int, session: AsyncSession = Depends(get_session)
+    project_id: int,
+    run_id: int,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
 ) -> RunRead:
     """Ask for a running run to be cancelled. Only sets the flag the worker reads (D-07)."""
     await get_project_or_404(session, project_id)
     run = await service.cancel_run(session, project_id, run_id)
-    return await service.run_read(session, run)
+    return await service.run_read(session, run, request.app.state.settings.data_dir)
+
+
+@router.post(
+    "/projects/{project_id}/runs/{run_id}/resume",
+    response_model=RunRead,
+    dependencies=[Depends(require_xhr)],
+)
+async def resume_run(
+    project_id: int,
+    run_id: int,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+) -> RunRead:
+    """Queue an interrupted, cancelled or failed run again; it continues from its checkpoint."""
+    await get_project_or_404(session, project_id)
+    settings = request.app.state.settings
+    run = await service.resume_run(session, settings, project_id, run_id)
+    return await service.run_read(session, run, settings.data_dir)
 
 
 @router.get("/projects/{project_id}/runs/{run_id}", response_model=RunRead)
 async def get_run(
-    project_id: int, run_id: int, session: AsyncSession = Depends(get_session)
+    project_id: int,
+    run_id: int,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
 ) -> RunRead:
     await get_project_or_404(session, project_id)
     run = (
@@ -147,7 +171,7 @@ async def get_run(
     ).scalar_one_or_none()
     if run is None:
         raise HTTPException(status_code=404, detail=service.RUN_NOT_FOUND_DETAIL)
-    return await service.run_read(session, run)
+    return await service.run_read(session, run, request.app.state.settings.data_dir)
 
 
 @router.get("/projects/{project_id}/runs/{run_id}/stream", response_class=EventSourceResponse)

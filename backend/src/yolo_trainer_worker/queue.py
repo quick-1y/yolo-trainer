@@ -14,7 +14,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from sqlalchemy import Engine, create_engine, event, exists, select, update
+from sqlalchemy import Engine, create_engine, event, exists, func, select, update
 from sqlalchemy.orm import Session, aliased
 
 from yolo_trainer_api.db import apply_sqlite_pragmas
@@ -50,19 +50,33 @@ def claim_next(engine: Engine, now: datetime | None = None) -> int | None:
     """Atomically move the oldest `queued` run to `running`; None when there is nothing to do.
 
     One UPDATE ... RETURNING that only succeeds while no run is `running` (D-11). Both
-    subqueries select from aliases, so neither correlates to the UPDATE target.
+    subqueries select from aliases, so neither correlates to the UPDATE target. "Oldest" is the
+    time the run last became queued (`created_at` for rows from before `queued_at` existed),
+    then id, so a resumed run joins the END of the queue (D-12). A claim keeps `started_at` as
+    the first start, opens a new running segment and clears the end of the previous attempt:
+    `finished_at` and the cancel flag (D-09, Pitfall 7).
     """
     stamp = now or utcnow()
     oldest = aliased(TrainingRun)
     other = aliased(TrainingRun)
     oldest_queued = (
-        select(oldest.id).where(oldest.status == "queued").order_by(oldest.id).limit(1)
+        select(oldest.id)
+        .where(oldest.status == "queued")
+        .order_by(func.coalesce(oldest.queued_at, oldest.created_at), oldest.id)
+        .limit(1)
     ).scalar_subquery()
     something_running = exists().where(other.status == "running")
     statement = (
         update(TrainingRun)
         .where(TrainingRun.id == oldest_queued, ~something_running)
-        .values(status="running", started_at=stamp, progress_updated_at=stamp)
+        .values(
+            status="running",
+            started_at=func.coalesce(TrainingRun.started_at, stamp),
+            segment_started_at=stamp,
+            finished_at=None,
+            cancel_requested_at=None,
+            progress_updated_at=stamp,
+        )
         .returning(TrainingRun.id)
     )
     with engine.begin() as connection:
@@ -109,6 +123,11 @@ def load_run(engine: Engine, run_id: int) -> dict | None:
             "settings": dict(run.settings),
             "class_names": list(run.class_names or []),
             "epochs": run.epochs,
+            "resume_count": run.resume_count,
+            # What an `auto` request turned into on the first start; a resumed segment reuses it
+            # instead of resolving again, so settings cannot change on resume (D-11).
+            "resolved": dict(run.resolved) if run.resolved else None,
+            "active_seconds": run.active_seconds,
         }
 
 
@@ -161,6 +180,11 @@ def record_epoch(
     if epochs is not None:
         values["epochs"] = epochs
     return _update_running(engine, run_id, **values)
+
+
+def record_checkpoint(engine: Engine, run_id: int, resume_epoch: int | None) -> int:
+    """Store the epoch `last.pt` can resume from; None when the loop is over (Pitfall 3)."""
+    return _update_running(engine, run_id, resume_epoch=resume_epoch)
 
 
 def mark_failed(
@@ -277,6 +301,8 @@ def register_model(
                     if headline["map50"] is not None
                     else run.last_map50,
                     error_message=None,
+                    # The final epoch's checkpoint is stripped by Ultralytics: nothing to resume.
+                    resume_epoch=None,
                 )
                 .execution_options(synchronize_session=False)
             ).rowcount

@@ -10,19 +10,25 @@ import json
 from pathlib import Path
 
 from yolo_trainer_common.progress import (
+    CHECKPOINT_ENDED,
+    CHECKPOINT_RESUMABLE,
+    CHECKPOINT_UNKNOWN,
     EVENT_BATCH_PROGRESS,
     EVENT_FIT_EPOCH_END,
+    EVENT_MODEL_SAVE,
     EVENT_TRAIN_EPOCH_END,
     EVENT_TRAIN_START,
     LOG_TAIL_LINES,
     SCHEMA_VERSION,
     ProgressTail,
+    checkpoint_state,
     clean_log_tail,
     compact_replay,
     enrich_event,
     jsonable,
     map50_key,
     primary_metrics,
+    read_checkpoint_state,
 )
 
 ESC = chr(27)
@@ -210,3 +216,89 @@ def test_primary_metrics_report_missing_or_non_finite_values_as_none() -> None:
     assert primary_metrics("segment", {"metrics/mAP50(B)": 0.9}) == nothing
     assert primary_metrics("detect", None) == nothing
     assert primary_metrics("detect", {"metrics/mAP50(B)": float("nan")})["map50"] is None
+
+
+def _phase4_events(saved: int, *, final: bool = False) -> list[dict]:
+    """Events as Phase 4 wrote them: no `v`, no `train_start`, no `last_epoch`."""
+    events: list[dict] = []
+    for epoch in range(1, saved + 1):
+        events.append({"event": EVENT_TRAIN_EPOCH_END, "epoch": epoch, "epochs": 10})
+        events.append({"event": EVENT_MODEL_SAVE, "epoch": epoch, "last": "l", "best": "b"})
+        events.append(
+            {"event": EVENT_FIT_EPOCH_END, "epoch": epoch, "epochs": 10, "final_validation": False}
+        )
+    if final:
+        events.append(
+            {"event": EVENT_FIT_EPOCH_END, "epoch": saved, "epochs": 10, "final_validation": True}
+        )
+    return events
+
+
+def test_checkpoint_state_of_phase4_events_is_the_last_saved_epoch_below_the_total() -> None:
+    assert checkpoint_state(_phase4_events(3), 10) == (CHECKPOINT_RESUMABLE, 3)
+
+
+def test_checkpoint_state_is_ended_after_the_final_validation_or_a_save_at_the_last_epoch() -> None:
+    assert checkpoint_state(_phase4_events(3, final=True), 10) == (CHECKPOINT_ENDED, None)
+    saved_last = [{"event": EVENT_MODEL_SAVE, "epoch": 10, "last": "l", "best": "b"}]
+    assert checkpoint_state(saved_last, 10) == (CHECKPOINT_ENDED, None)
+
+
+def test_checkpoint_state_is_ended_once_a_v2_epoch_reports_last_epoch() -> None:
+    events = [
+        {"v": 2, "event": EVENT_MODEL_SAVE, "epoch": 4},
+        {"v": 2, "event": EVENT_FIT_EPOCH_END, "epoch": 4, "last_epoch": True},
+    ]
+
+    assert checkpoint_state(events, 10) == (CHECKPOINT_ENDED, None)  # an early stop
+
+
+def test_checkpoint_state_follows_a_resumed_segment_and_its_train_start() -> None:
+    events = [
+        {"v": 2, "event": EVENT_TRAIN_START, "start_epoch": 0, "resumed": False},
+        {"v": 2, "event": EVENT_MODEL_SAVE, "epoch": 2},
+        {"v": 2, "event": EVENT_TRAIN_START, "start_epoch": 2, "resumed": True},
+        {"v": 2, "event": EVENT_MODEL_SAVE, "epoch": 3},
+    ]
+
+    assert checkpoint_state(events, 10) == (CHECKPOINT_RESUMABLE, 3)
+    # a resumed segment that was killed before its first save still knows the epoch it loaded
+    assert checkpoint_state(events[:3], 10) == (CHECKPOINT_RESUMABLE, 2)
+
+
+def test_checkpoint_state_reopens_after_a_segment_that_had_ended() -> None:
+    events = [
+        {"event": EVENT_MODEL_SAVE, "epoch": 4},
+        {"event": EVENT_FIT_EPOCH_END, "epoch": 4, "last_epoch": True},
+        {"event": EVENT_TRAIN_START, "start_epoch": 4, "resumed": True},
+    ]
+
+    assert checkpoint_state(events, 10) == (CHECKPOINT_RESUMABLE, 4)
+
+
+def test_checkpoint_state_is_unknown_without_a_save_or_a_resumed_start() -> None:
+    assert checkpoint_state([], 10) == (CHECKPOINT_UNKNOWN, None)
+    only_start = [{"v": 2, "event": EVENT_TRAIN_START, "start_epoch": 0, "resumed": False}]
+    assert checkpoint_state(only_start, 10) == (CHECKPOINT_UNKNOWN, None)
+    # an unknown planned total never makes a save look like the last one
+    assert checkpoint_state([{"event": EVENT_MODEL_SAVE, "epoch": 50}], None) == (
+        CHECKPOINT_RESUMABLE,
+        50,
+    )
+    assert checkpoint_state([{"event": EVENT_MODEL_SAVE, "epoch": "x"}], 10) == (
+        CHECKPOINT_UNKNOWN,
+        None,
+    )
+
+
+def test_read_checkpoint_state_reads_the_file_and_skips_undecodable_lines(tmp_path: Path) -> None:
+    path = tmp_path / "progress.jsonl"
+    lines = [json.dumps(event) for event in _phase4_events(2)]
+    body = [lines[0], "{not json", *lines[1:]]
+    path.write_text("\n".join(body) + "\n", encoding="utf-8")
+
+    assert read_checkpoint_state(path, 5) == (CHECKPOINT_RESUMABLE, 2)
+
+
+def test_read_checkpoint_state_of_a_missing_file_is_unknown(tmp_path: Path) -> None:
+    assert read_checkpoint_state(tmp_path / "missing.jsonl", 5) == (CHECKPOINT_UNKNOWN, None)

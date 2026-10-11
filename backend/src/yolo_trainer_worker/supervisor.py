@@ -16,11 +16,10 @@ import signal
 import subprocess
 import sys
 import threading
-from collections.abc import Callable
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol
 
 from sqlalchemy import Engine
 from sqlalchemy.exc import OperationalError
@@ -35,6 +34,8 @@ from yolo_trainer_common.failures import (
 )
 from yolo_trainer_common.progress import (
     EVENT_FIT_EPOCH_END,
+    EVENT_MODEL_SAVE,
+    EVENT_TRAIN_START,
     ProgressTail,
     clean_log_tail,
     map50_key,
@@ -88,9 +89,14 @@ def resolve_settings(settings: dict, device: ComputeDevice, cpu_count: int) -> R
     return Resolved(device=chosen, batch=batch, workers=workers)
 
 
-def default_command(run_directory: Path, data_dir: Path, resolved: Resolved) -> list[str]:
-    """The training command line: an argument list, built from validated values only (T4-02)."""
-    return [
+def default_command(
+    run_directory: Path, data_dir: Path, resolved: Resolved, *, resume: bool = False
+) -> list[str]:
+    """The training command line: an argument list, built from validated values only (T4-02).
+
+    `resume` appends `--resume`: the job continues from the run's own `last.pt` (D-09).
+    """
+    command = [
         sys.executable,
         "-m",
         "yolo_trainer_worker.train_job",
@@ -105,9 +111,17 @@ def default_command(run_directory: Path, data_dir: Path, resolved: Resolved) -> 
         "--workers",
         str(resolved.workers),
     ]
+    if resume:
+        command.append("--resume")
+    return command
 
 
-CommandBuilder = Callable[[Path, Path, Resolved], list[str]]
+class CommandBuilder(Protocol):
+    """Builds the training command; `resume` is True for every segment after the first."""
+
+    def __call__(
+        self, run_directory: Path, data_dir: Path, resolved: Resolved, *, resume: bool = False
+    ) -> list[str]: ...
 
 
 def _read_log_tail(path: Path) -> str:
@@ -220,8 +234,13 @@ class Supervisor:
             queue.mark_failed(self.engine, run_id, DATASET_MISSING_MESSAGE, None, INVALID_DATASET)
             return "failed"
 
-        resolved = resolve_settings(run["settings"], self.device, os.cpu_count() or 1)
+        resuming = run["resume_count"] > 0
+        resolved = self._resolved_for(run, resuming)
         layout.write_json_atomic(run_directory / layout.RESOLVED_FILE, asdict(resolved))
+        if resuming:
+            # The previous attempt's verdict files must not be mistaken for this segment's.
+            (run_directory / layout.ERROR_FILE).unlink(missing_ok=True)
+            (run_directory / layout.RESULT_FILE).unlink(missing_ok=True)
         layout.ultralytics_config_dir(data_dir).mkdir(parents=True, exist_ok=True)
         log_path = run_directory / layout.LOG_FILE
         env = {
@@ -240,7 +259,7 @@ class Supervisor:
         with log_path.open("ab") as log:
             try:
                 process = subprocess.Popen(
-                    self.command(run_directory, data_dir, resolved),
+                    self.command(run_directory, data_dir, resolved, resume=resuming),
                     cwd=run_directory,
                     stdout=log,
                     stderr=subprocess.STDOUT,
@@ -259,7 +278,7 @@ class Supervisor:
             try:
                 queue.record_start(self.engine, run_id, asdict(resolved), process.pid)
                 outcome, final_metrics = self._watch(
-                    run_id, run, process, run_directory, stop_event
+                    run_id, run, process, run_directory, stop_event, resuming
                 )
             except BaseException:
                 # Whatever went wrong here, never leave the child training unsupervised.
@@ -268,6 +287,27 @@ class Supervisor:
         if outcome is not None:
             return outcome
         return self._finish(run_id, run, process.returncode, run_directory, final_metrics)
+
+    def _resolved_for(self, run: dict, resuming: bool) -> Resolved:
+        """What this segment runs with: the stored resolution on a resume, else a fresh one.
+
+        A resumed segment reuses the device, batch and workers stored for the run, never the
+        request again: settings cannot change on resume, even when the host did (D-11).
+        """
+        stored = run.get("resolved")
+        if resuming and isinstance(stored, dict):
+            try:
+                return Resolved(**stored)
+            except TypeError:
+                logger.warning("Run %s has an unusable stored resolution", run["id"])
+        return resolve_settings(run["settings"], self.device, os.cpu_count() or 1)
+
+    def _record_checkpoint(self, run_id: int, resume_epoch: int | None) -> None:
+        try:
+            queue.record_checkpoint(self.engine, run_id, resume_epoch)
+        except OperationalError:
+            # A busy database must not kill a long training; the next checkpoint event retries.
+            logger.warning("Could not record the checkpoint of run %s", run_id, exc_info=True)
 
     # -- watching ---------------------------------------------------------
 
@@ -278,22 +318,62 @@ class Supervisor:
         process: subprocess.Popen,
         run_directory: Path,
         stop_event: threading.Event,
+        resuming: bool = False,
     ) -> tuple[str | None, dict]:
         """Tail the child's progress until it exits.
 
         Returns `(outcome, metrics)`: a non-None outcome ends the run early; `metrics` are the
-        final-validation metrics, or the last real epoch's when no final event arrived.
+        final-validation metrics, or the last real epoch's when no final event arrived. A resumed
+        segment starts reading at the end of the file: the earlier segments' events were handled
+        when they happened and must not be written to the database again.
         """
         tail = ProgressTail()
         progress_path = run_directory / layout.PROGRESS_FILE
+        if resuming:
+            try:
+                tail.offset = progress_path.stat().st_size
+            except OSError:
+                tail.offset = 0
         key = map50_key(run["task_type"])
         last_real: dict = {}
         final: dict = {}
         outcome: str | None = None
+        planned = run.get("epochs")
+        loop_over = False
         while True:
             exit_code = process.poll()
             for event in tail.read_new_events(progress_path):
-                if event.get("event") != EVENT_FIT_EPOCH_END:
+                kind = event.get("event")
+                if kind == EVENT_TRAIN_START:
+                    # A segment opens. A resumed one names the epoch the worker really loaded from
+                    # the checkpoint, which also corrects a derived or unknown value (Phase 4 rows).
+                    loop_over = False
+                    epochs = event.get("epochs")
+                    if isinstance(epochs, int) and not isinstance(epochs, bool):
+                        planned = epochs
+                    start = event.get("start_epoch")
+                    if (
+                        event.get("resumed") is True
+                        and isinstance(start, int)
+                        and not isinstance(start, bool)
+                        and start > 0
+                    ):
+                        self._record_checkpoint(run_id, start)
+                    continue
+                if kind == EVENT_MODEL_SAVE:
+                    # A save below the planned total is a checkpoint a resume can continue from;
+                    # the last epoch's is stripped by Ultralytics, and nothing counts once the loop
+                    # is over.
+                    saved = event.get("epoch")
+                    if (
+                        isinstance(saved, int)
+                        and not isinstance(saved, bool)
+                        and not loop_over
+                        and (planned is None or saved < planned)
+                    ):
+                        self._record_checkpoint(run_id, saved)
+                    continue
+                if kind != EVENT_FIT_EPOCH_END:
                     continue
                 metrics = event.get("metrics") or {}
                 if event.get("final_validation"):
@@ -301,6 +381,10 @@ class Supervisor:
                     final = metrics
                     continue
                 last_real = metrics
+                if event.get("last_epoch") is True:
+                    # The loop is over: final_eval is about to strip last.pt (Pitfall 3).
+                    loop_over = True
+                    self._record_checkpoint(run_id, None)
                 value = metrics.get(key)
                 try:
                     changed = queue.record_epoch(
