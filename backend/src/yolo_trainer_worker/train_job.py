@@ -51,7 +51,7 @@ class CheckpointError(RuntimeError):
 
 
 def check_resumable(ckpt: dict) -> None:
-    """Refuse a checkpoint `resume=True` could not really continue (Pitfalls 1 and 3).
+    """Refuse a checkpoint that a resume could not really continue (Pitfalls 1 and 3).
 
     Ultralytics does not fail on a stripped `last.pt` (`epoch` -1, no optimizer): it logs a
     warning and trains from epoch 1 with exit code 0, which would silently throw the run's
