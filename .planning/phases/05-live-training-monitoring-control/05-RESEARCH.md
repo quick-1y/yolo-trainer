@@ -425,7 +425,7 @@ Not a rename/refactor phase. One backward-compatibility inventory item: runs cre
 
 ### Pitfall 4: A kill can corrupt `last.pt` / `best.pt`
 **What goes wrong:** Ultralytics writes checkpoints with `Path.write_bytes` (`trainer.py:804`, not temp+rename). A cancel or SIGKILL during that call leaves a truncated file; `check_resume` then reports a misleading `FileNotFoundError("Resume checkpoint not found …")`. The window is small for `yolo26n` (a 20 MB write) and grows with model size and slow bind mounts.
-**How to avoid:** `YOLO(last)` load inside a try → `CheckpointError` with a plain message ("The saved checkpoint is damaged; start a new run from this run's interim model"); optionally keep one previous checkpoint copy (`last.prev.pt`, renamed in `on_model_save` before the next save) at the cost of a second checkpoint of disk per run. Decide with the user (Open Question 5). Interim `best.pt` download carries the same risk; refuse zero-size files.
+**How to avoid:** `YOLO(last)` load inside a try → `CheckpointError` with a plain message ("The saved checkpoint is damaged; start a new run from this run's interim model"); optionally keep one previous checkpoint copy (`last.prev.pt`, renamed in `on_model_save` before the next save) at the cost of a second checkpoint of disk per run. Decide with the user (Open Question 5; resolved 2026-10-11: no copy, user-confirmed). Interim `best.pt` download carries the same risk; refuse zero-size files.
 
 ### Pitfall 5: A partial last line in `progress.jsonl` corrupts the first event of the next segment
 **What goes wrong:** the child can be killed mid-`write`. The next segment appends to the same file; the first new record is glued to the partial fragment and both are dropped by the "undecodable line" rule, losing `train_start`.
@@ -578,27 +578,35 @@ def test_classify_exception(type_name, message, category): ...
 | A4 | `TerminateProcess` on Windows does not kill DataLoader worker grandchildren | Pitfall 8 | Orphan workers on native Windows with `workers > 0` (not the CPU path); only a README note |
 | A5 | `pgrep` is not present in the slim worker image, so the "no orphan" container check should scan `/proc` from Python | Validation Architecture | A shell one-liner in the smoke script fails; trivial to adapt |
 | A6 | Docker Desktop's OOM-killer kills only the training child (exit `-9`), leaving the worker alive | Pattern 11 | If the whole container is killed the run becomes `interrupted` instead of `failed/process_killed`; both are acceptable end states |
-| A7 | `last.pt` truncation risk is small for small models and grows with size; no field data on bind-mount timing for large models | Pitfall 4 | Resume of a cancelled large run may fail with `CheckpointError`; decision on a `last.prev.pt` copy is open |
+| A7 | `last.pt` truncation risk is small for small models and grows with size; no field data on bind-mount timing for large models | Pitfall 4 | Resume of a cancelled large run may fail with `CheckpointError`; decision on a `last.prev.pt` copy: resolved as no copy (Open Question 5, user-confirmed 2026-10-11) |
 | A8 | The baseline suite counts/time (not re-run this session) are those of the Phase 4 close | Validation Architecture | Wave 0 estimate only |
 
-## Open Questions
+## Open Questions (RESOLVED)
+
+All six questions were resolved before planning closed (2026-10-11). Each carries an inline `RESOLVED:` line with the decision, its source (user confirmation in the planning session, a locked CONTEXT decision, or an approved UI-SPEC default) and the plan that implements it.
 
 1. **What does "Remove from queue" do to a resumed queued run?**
    - What we know: `DELETE` on a `queued` row deletes the row and the run folder (Phase 4 D-11, `remove_queued_run`). A run with `resume_count > 0` that sits in the queue has history, charts, `last.pt` and possibly a model-less interim `best.pt`.
    - What's unclear: CONTEXT D-15 says a queued run is removed via the queue action, without distinguishing.
    - Recommendation: for `queued` rows with `resume_count > 0`, make the queue action "Cancel resume": a guarded `UPDATE … SET status='cancelled' WHERE status='queued'` (resume_count unchanged, `resume_epoch` kept) instead of a delete; plain first-time queued runs keep the hard delete. Needs a user confirmation because it changes what the existing button does.
+   - **RESOLVED (user-confirmed 2026-10-11): "Cancel resume".** For a `queued` run with `resume_count > 0` the queue action is "Cancel resume": one UPDATE guarded by `status = 'queued' AND resume_count > 0` sets `cancelled` and keeps `resume_count`, `resume_epoch`, `last.pt`, the charts and `progress.jsonl`; `DELETE` of such a run answers 409. First-time queued runs (`resume_count = 0`) keep the hard delete. Implemented in Plan 05-07 Task 2 (`cancel_run` queued-resume branch, `remove_queued_run` guard `resume_count == 0` with `RUN_RESUMED_DETAIL`, the run page "Cancel resume" action); Plan 05-09 keeps the guard in `delete_run`.
 
 2. **Should `preparing` be cancellable?** (CONTEXT: "if a run can be cancelled during weight download or setup")
    - What we know: weight download happens in `train_job` (status `running`), so the supervisor path covers it. `preparing` is only the api's file materialization.
    - Recommendation: `running` only. If the user wants more, the guarded `preparing → cancelled` UPDATE is a few lines and reuses the existing folder cleanup.
+   - **RESOLVED: `running` only** (approved UI-SPEC default 4, "Defaults to confirm"; CONTEXT allows `preparing` only "if a run can be cancelled during weight download or setup", and weight download already runs under `running`). `preparing` has no cancel action. Implemented in Plan 05-05 (`cancel_run` guarded by `status = 'running'`, 409 otherwise) and Plan 05-09 (run page action matrix: `preparing` shows no actions).
 
 3. **FIFO position of a resumed run.** `claim_next` picks the lowest `id` among `queued`, so a resumed old run jumps ahead of newer queued runs, contrary to D-12 ("end of the FIFO queue"). Recommendation: add `queued_at` (set on creation-to-queued and on resume) and order the claim and `queue_positions` by `(queued_at, id)`; otherwise document the deviation. Costs one more nullable column in `0006`.
+   - **RESOLVED: add `queued_at`, per locked D-12** ("end of the FIFO queue"), so no deviation is documented. `queued_at` is set whenever a run becomes `queued` (first time in `prepare_run_files` and on every resume); `claim_next` and `queue_positions` order by `coalesce(queued_at, created_at), id`. The column lands in migration `0008` (the plans number the migrations 0006 failure category, 0007 cancel flag, 0008 resume). Implemented in Plan 05-06 Task 1.
 
 4. **Backfill of `resume_epoch` for Phase 4 `interrupted` rows** (Runtime State Inventory). A Phase 4 `interrupted` run has a valid `last.pt` but `resume_epoch IS NULL`, so Resume is disabled. Options: leave as is (document), or a one-time worker-side check at the first resume attempt. Recommendation: leave as is (Phase 4 data is dev/UAT data). Phase 4 progress files do contain `model_save` events, so a one-off sweep could derive `resume_epoch` if the user has real interrupted Phase 4 runs worth resuming; ask before adding it.
+   - **RESOLVED: no backfill** (recommendation adopted; nothing is added, so the "ask before adding it" condition does not apply). Phase 4 rows keep `resume_epoch IS NULL`, so their Resume button stays disabled with "No checkpoint saved yet — start a new run." Implemented in Plan 05-06 (migration `0008` without backfill), Plan 05-07 (`resume_blocked = "no_checkpoint"`) and documented in Plan 05-10 (README: runs interrupted under Phase 4 cannot be resumed).
 
 5. **Keep a previous checkpoint (`last.prev.pt`) to survive a kill during `write_bytes`?** Costs one extra checkpoint per run on disk (≈ 20 MB for n, ≈ 250 MB for x). Recommendation: do not, v1 shows a clear `not_resumable`/damaged-checkpoint error and offers a new run from the interim model; revisit if it happens in practice.
+   - **RESOLVED (user-confirmed 2026-10-11): no `last.prev.pt`.** A checkpoint that a kill damaged during its write fails the resume with category `not_resumable` (`CheckpointError` "The saved checkpoint is damaged; start a new run from this run's interim model."); no previous checkpoint copy is kept. Implemented in Plan 05-06 Task 2 (train_job resume path) with the `CheckpointError -> not_resumable` rule from Plan 05-04.
 
 6. **Loss chart: sum of components vs per-component lines** (D-01 discretion). Recommendation: the sum with a tooltip breakdown (Pattern 9). A UI-SPEC from `/gsd-ui-phase 5` should confirm.
+   - **RESOLVED: the sum with a tooltip breakdown** (approved UI-SPEC default 1). The loss chart draws two lines (train and validation, each the sum of every loss component discovered in the events) and the tooltip adds the per-component grid. Implemented in Plan 05-02 (`foldProgress` loss sums and components, `ChartTooltip`).
 
 ## Environment Availability
 
