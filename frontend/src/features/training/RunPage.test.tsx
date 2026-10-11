@@ -1283,6 +1283,66 @@ describe("RunPage remove from queue", () => {
   });
 });
 
+describe("RunPage cancelling and cancelled states", () => {
+  it("reads Cancelling… in the status badge of the header and of the run list", async () => {
+    stubTrainingApi({
+      run: running({ cancelling: true }),
+      runs: [running({ cancelling: true })],
+    });
+    const view = renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+
+    const heading = await screen.findByRole("heading", { level: 2, name: "run-7" });
+    const badgeRow = heading.parentElement as HTMLElement;
+    expect(within(badgeRow).getByText("Cancelling…")).toBeInTheDocument();
+    // the running epoch label is replaced, not shown next to it
+    expect(within(badgeRow).queryByText("Epoch 12 of 100")).toBeNull();
+    view.unmount();
+
+    renderWithProviders(<AppRoutes />, { route: "/projects/1/training" });
+    const row = await screen.findByTestId("run-row");
+    expect(within(row).getByText("Cancelling…")).toBeInTheDocument();
+    expect(within(row).queryByText(/Epoch 12/)).toBeNull();
+  });
+
+  it("reads Cancelled in the badge of a cancelled run", async () => {
+    stubTrainingApi({
+      run: makeRun({ id: 7, name: "run-7", status: "cancelled", queue_position: null }),
+    });
+    renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+
+    const heading = await screen.findByRole("heading", { level: 2, name: "run-7" });
+    expect(within(heading.parentElement as HTMLElement).getByText("Cancelled")).toBeInTheDocument();
+  });
+
+  it("announces Run cancelled politely when a running run becomes cancelled", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    let current = running({ cancelling: true });
+    stubTrainingApi({ run: () => current });
+    renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+
+    expect((await screen.findAllByText("Cancelling…")).length).toBeGreaterThan(0);
+    const region = screen.getByTestId("run-live-region");
+    expect(region.textContent).toBe("");
+
+    current = makeRun({ id: 7, name: "run-7", status: "cancelled", queue_position: null, epoch: 12 });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3100);
+    });
+
+    await waitFor(() => expect(region).toHaveTextContent("Run cancelled"));
+  });
+
+  it("shows Отменяется… in Russian while a cancel waits for the worker", async () => {
+    stubTrainingApi({ run: running({ cancelling: true }) });
+    renderWithProviders(<AppRoutes />, { route: RUN_PATH, language: "ru" });
+
+    expect((await screen.findAllByText("Отменяется…")).length).toBeGreaterThan(0);
+    expect(
+      screen.getByText("Останавливаем процесс обучения. Это займёт несколько секунд."),
+    ).toBeInTheDocument();
+  });
+});
+
 describe("RunPage cancel training", () => {
   it("opens a confirmation with Keep training focused, sends the cancel and shows Cancelling…", async () => {
     let current = running({ epoch: 2, epochs: 10, settings: { epochs: 10, imgsz: 640, batch: -1, device: "auto" } });
@@ -1378,6 +1438,26 @@ describe("RunPage cancel training", () => {
 
     expect(await screen.findByTestId("run-row")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Cancel training/ })).toBeNull();
+  });
+
+  it("keeps the modal open on a 409 with the API message and re-fetches the run on close", async () => {
+    const stub = stubTrainingApi({ run: running(), cancelStatus: 409 });
+    const view = renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+
+    await view.user.click(await screen.findByRole("button", { name: "Cancel training" }));
+    const dialog = await screen.findByRole("dialog", { name: "Cancel training" });
+    await view.user.click(within(dialog).getByRole("button", { name: "Cancel training" }));
+
+    expect(
+      await within(dialog).findByText("Only a running run can be cancelled."),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "Cancel training" })).toBeInTheDocument();
+    const before = stub.count("GET /api/projects/1/runs/7");
+
+    await view.user.click(within(dialog).getByRole("button", { name: "Keep training" }));
+
+    await waitFor(() => expect(stub.count("GET /api/projects/1/runs/7")).toBe(before + 1));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   });
 
   it("words the confirmation in Russian", async () => {

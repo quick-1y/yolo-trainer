@@ -16,10 +16,10 @@ from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import Engine, delete, select
+from sqlalchemy import Engine, delete, select, update
 from sqlalchemy.orm import Session
 
-from yolo_trainer_api.models import TrainedModel, TrainingRun
+from yolo_trainer_api.models import TrainedModel, TrainingRun, utcnow
 from yolo_trainer_api.settings import Settings
 from yolo_trainer_common import layout
 from yolo_trainer_common.device import ComputeDevice
@@ -128,6 +128,100 @@ def test_a_stop_signal_interrupts_the_run_and_ends_the_child_within_the_grace_pe
     assert run["finished_at"] is not None
     assert spawned.all_exited()
     assert supervisor.active_run_id is None
+
+
+def _request_cancel(engine: Engine, run_id: int) -> None:
+    with engine.begin() as connection:
+        connection.execute(
+            update(TrainingRun).where(TrainingRun.id == run_id).values(cancel_requested_at=utcnow())
+        )
+
+
+class _ExitingProcess:
+    """A child that has already exited (or exits during the tick) when the flag is seen."""
+
+    pid = 0
+    returncode = 0
+
+    def __init__(self, polls: list[int | None]) -> None:
+        self._polls = polls
+
+    def poll(self) -> int | None:
+        return self._polls.pop(0) if len(self._polls) > 1 else self._polls[0]
+
+    def terminate(self) -> None:  # pragma: no cover - must never be reached
+        raise AssertionError("an exited child must not be signalled")
+
+    kill = terminate
+
+    def wait(self, timeout: float | None = None) -> int:  # pragma: no cover
+        raise AssertionError("an exited child must not be waited for")
+
+
+def test_a_child_that_already_exited_when_the_cancel_is_seen_is_finished_normally(
+    client: TestClient, settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    supervisor, engine, _, run_id = _claimed_run(client, settings, "success")
+    run = queue.load_run(engine, run_id)
+    _request_cancel(engine, run_id)
+
+    def never(*args: object, **kwargs: object) -> int:
+        raise AssertionError("mark_cancelled must not run for a child that already exited")
+
+    monkeypatch.setattr(queue, "mark_cancelled", never)
+    run_directory = layout.run_dir(settings.data_dir, run_id)
+
+    # poll() says 0 from the very first call: the normal finish decides, not the cancel flag
+    outcome, _ = supervisor._watch(
+        run_id, run, _ExitingProcess([0]), run_directory, threading.Event()
+    )
+    assert outcome is None
+
+    # poll() says "alive" at the top of the tick and "exited" when the cancel branch re-checks
+    outcome, _ = supervisor._watch(
+        run_id, run, _ExitingProcess([None, 0]), run_directory, threading.Event()
+    )
+    assert outcome is None
+
+
+def test_a_cancel_and_a_worker_stop_in_the_same_tick_end_as_cancelled(
+    client: TestClient, settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    spawned = _Spawned()
+    spawned.install(monkeypatch)
+    supervisor, engine, project_id, run_id = _claimed_run(client, settings, "sleep")
+    _request_cancel(engine, run_id)
+    stop_event = threading.Event()
+    stop_event.set()
+
+    assert supervisor.run_claimed(run_id, stop_event) == "cancelled"
+
+    run = client.get(f"/api/projects/{project_id}/runs/{run_id}").json()
+    assert run["status"] == "cancelled"
+    assert run["error_message"] is None
+    assert run["error_category"] is None
+    assert spawned.all_exited()
+
+
+def test_a_stop_before_any_cancel_interrupts_the_run_and_a_later_cancel_is_refused(
+    client: TestClient, settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    spawned = _Spawned()
+    spawned.install(monkeypatch)
+    supervisor, _, project_id, run_id = _claimed_run(client, settings, "sleep")
+    stop_event = threading.Event()
+    stop_event.set()
+
+    assert supervisor.run_claimed(run_id, stop_event) == "interrupted"
+
+    response = client.post(
+        f"/api/projects/{project_id}/runs/{run_id}/cancel",
+        headers={"X-Requested-With": "yolo-trainer"},
+    )
+    assert response.status_code == 409
+    assert response.json()["detail"] == "Only a running run can be cancelled."
+    assert client.get(f"/api/projects/{project_id}/runs/{run_id}").json()["status"] == "interrupted"
+    assert spawned.all_exited()
 
 
 def test_a_run_whose_row_disappears_stops_the_child_and_claims_nothing(

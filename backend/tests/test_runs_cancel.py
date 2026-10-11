@@ -10,7 +10,7 @@ from __future__ import annotations
 import threading
 
 from fastapi.testclient import TestClient
-from sqlalchemy import Engine, select
+from sqlalchemy import Engine, select, update
 from sqlalchemy.orm import Session
 
 from yolo_trainer_api.models import TrainedModel, TrainingRun
@@ -130,6 +130,104 @@ def test_the_cancel_flag_is_read_back_as_cancelling_in_the_summary_and_the_list(
     assert client.get(_url(project_id, run["id"])).json()["cancelling"] is True
     (listed,) = client.get(f"/api/projects/{project_id}/runs").json()
     assert listed["cancelling"] is True
+
+
+def _force_status(engine: Engine, run_id: int, status: str) -> None:
+    with Session(engine) as session, session.begin():
+        session.execute(update(TrainingRun).where(TrainingRun.id == run_id).values(status=status))
+
+
+def _requested_at(engine: Engine, run_id: int):
+    with Session(engine) as session:
+        return session.scalar(
+            select(TrainingRun.cancel_requested_at).where(TrainingRun.id == run_id)
+        )
+
+
+def test_cancelling_needs_the_xhr_header(client: TestClient, settings: Settings) -> None:
+    project_id, (run,) = _queued_runs(client, 1)
+    engine = queue.create_worker_engine(worker_settings(settings))
+    assert queue.claim_next(engine) == run["id"]
+
+    response = client.post(f"{_url(project_id, run['id'])}/cancel")
+
+    assert response.status_code == 403
+    assert _requested_at(engine, run["id"]) is None
+
+
+def test_only_a_running_run_can_be_cancelled_and_any_other_run_is_left_unchanged(
+    client: TestClient, settings: Settings
+) -> None:
+    project_id, runs = _queued_runs(client, 5)
+    queued, preparing, completed, failed, interrupted = runs
+    engine = queue.create_worker_engine(worker_settings(settings))
+    _force_status(engine, preparing["id"], "preparing")
+    _force_status(engine, completed["id"], "completed")
+    _force_status(engine, failed["id"], "failed")
+    _force_status(engine, interrupted["id"], "interrupted")
+
+    for run, status in (
+        (queued, "queued"),
+        (preparing, "preparing"),
+        (completed, "completed"),
+        (failed, "failed"),
+        (interrupted, "interrupted"),
+    ):
+        response = _cancel(client, project_id, run["id"])
+        assert response.status_code == 409, status
+        assert response.json()["detail"] == service.RUN_NOT_CANCELLABLE_DETAIL
+        assert client.get(_url(project_id, run["id"])).json()["status"] == status
+        assert _requested_at(engine, run["id"]) is None
+
+
+def test_a_cancelled_run_cannot_be_cancelled_again(client: TestClient, settings: Settings) -> None:
+    project_id, (run,) = _queued_runs(client, 1)
+    engine = queue.create_worker_engine(worker_settings(settings))
+    assert queue.claim_next(engine) == run["id"]
+    _cancel(client, project_id, run["id"])
+    assert queue.mark_cancelled(engine, run["id"], None) == 1
+
+    response = _cancel(client, project_id, run["id"])
+
+    assert response.status_code == 409
+    assert client.get(_url(project_id, run["id"])).json()["cancelling"] is False
+
+
+def test_a_run_of_another_project_or_an_unknown_run_answers_404_and_changes_nothing(
+    client: TestClient, settings: Settings
+) -> None:
+    project_id, (run,) = _queued_runs(client, 1)
+    other = setup_project(client, "Other", train=1, valid=1)
+    engine = queue.create_worker_engine(worker_settings(settings))
+    assert queue.claim_next(engine) == run["id"]
+
+    foreign = _cancel(client, other["project_id"], run["id"])
+    unknown = _cancel(client, project_id, 9999)
+    no_project = _cancel(client, 9999, run["id"])
+
+    assert foreign.status_code == 404
+    assert unknown.status_code == 404
+    assert unknown.json()["detail"] == service.RUN_NOT_FOUND_DETAIL
+    assert no_project.status_code == 404
+    assert _requested_at(engine, run["id"]) is None  # the foreign request flagged nothing
+
+
+def test_a_second_cancel_while_still_running_answers_200_and_keeps_the_first_timestamp(
+    client: TestClient, settings: Settings
+) -> None:
+    project_id, (run,) = _queued_runs(client, 1)
+    engine = queue.create_worker_engine(worker_settings(settings))
+    assert queue.claim_next(engine) == run["id"]
+
+    first = _cancel(client, project_id, run["id"])
+    stamp = _requested_at(engine, run["id"])
+    second = _cancel(client, project_id, run["id"])
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert second.json()["cancelling"] is True
+    assert stamp is not None
+    assert _requested_at(engine, run["id"]) == stamp
 
 
 def test_the_not_cancellable_message_is_the_one_the_modal_shows() -> None:

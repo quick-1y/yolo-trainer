@@ -12,7 +12,7 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy import update
 from sqlalchemy.orm import Session
 
-from yolo_trainer_api.models import TrainingRun
+from yolo_trainer_api.models import TrainingRun, utcnow
 from yolo_trainer_api.settings import Settings
 from yolo_trainer_api.training import reconcile
 from yolo_trainer_common import layout
@@ -112,6 +112,58 @@ def test_a_running_run_with_a_stale_heartbeat_is_interrupted_on_api_start(
         pass
 
     assert _row(settings, run_id).status == "interrupted"
+
+
+def _request_cancel(settings: Settings, run_id: int) -> None:
+    engine = queue.create_worker_engine(worker_settings(settings))
+    with engine.begin() as connection:
+        connection.execute(
+            update(TrainingRun).where(TrainingRun.id == run_id).values(cancel_requested_at=utcnow())
+        )
+    engine.dispose()
+
+
+def test_a_running_run_with_a_pending_cancel_and_a_stale_heartbeat_becomes_cancelled(
+    settings: Settings,
+) -> None:
+    _, run_id = _seed_run(settings, "running")
+    _request_cancel(settings, run_id)
+    _write_heartbeat(settings, age_seconds=120)
+
+    with make_client(settings):
+        pass
+
+    run = _row(settings, run_id)
+    assert run.status == "cancelled"
+    assert run.finished_at is not None
+    assert run.error_message is None
+
+
+def test_a_running_run_with_a_pending_cancel_and_no_heartbeat_becomes_cancelled(
+    settings: Settings,
+) -> None:
+    _, run_id = _seed_run(settings, "running")
+    _request_cancel(settings, run_id)
+
+    with make_client(settings):
+        pass
+
+    assert _row(settings, run_id).status == "cancelled"
+
+
+def test_a_pending_cancel_does_not_end_a_run_whose_worker_is_still_alive(
+    settings: Settings,
+) -> None:
+    _, run_id = _seed_run(settings, "running")
+    _request_cancel(settings, run_id)
+    _write_heartbeat(settings, age_seconds=5)
+
+    with make_client(settings):
+        pass
+
+    run = _row(settings, run_id)
+    assert run.status == "running"  # the live worker stops its own child
+    assert run.cancel_requested_at is not None
 
 
 def test_queued_and_completed_runs_are_left_alone_and_the_messages_are_shared(

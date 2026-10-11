@@ -14,7 +14,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import Engine, select, update
 from sqlalchemy.orm import Session
 
-from yolo_trainer_api.models import TrainingRun
+from yolo_trainer_api.models import TrainingRun, utcnow
 from yolo_trainer_api.settings import Settings
 from yolo_trainer_worker import queue
 
@@ -115,3 +115,69 @@ def test_reconcile_on_start_interrupts_running_runs_without_signalling_any_pid(
     assert _status(engine, waiting) == "queued"
     assert _status(engine, finished) == "completed"
     assert queue.claim_next(engine) == waiting  # queued runs are claimed in order afterwards
+
+
+def _request_cancel(engine: Engine, run_id: int) -> None:
+    with engine.begin() as connection:
+        connection.execute(
+            update(TrainingRun).where(TrainingRun.id == run_id).values(cancel_requested_at=utcnow())
+        )
+
+
+def test_reconcile_on_start_cancels_a_running_run_with_a_pending_cancel_and_interrupts_the_rest(
+    client: TestClient, settings: Settings
+) -> None:
+    cancelling, plain = _queued_runs(client, (0, 0))
+    engine = queue.create_worker_engine(worker_settings(settings))
+    _set_status(engine, cancelling, "running")
+    _set_status(engine, plain, "running")
+    _request_cancel(engine, cancelling)
+
+    assert queue.reconcile_on_start(engine) == 2
+
+    with Session(engine) as session:
+        cancelled = session.get(TrainingRun, cancelling)
+        assert cancelled.status == "cancelled"
+        assert cancelled.finished_at is not None
+        assert cancelled.error_message is None
+        assert cancelled.error_category is None
+        interrupted = session.get(TrainingRun, plain)
+        assert interrupted.status == "interrupted"
+        assert interrupted.error_message == "The service was restarted while this run was training."
+
+
+def test_run_control_reports_the_status_and_the_flag_and_none_for_a_missing_run(
+    client: TestClient, settings: Settings
+) -> None:
+    (run_id,) = _queued_runs(client, (0,))
+    engine = queue.create_worker_engine(worker_settings(settings))
+
+    assert queue.run_control(engine, run_id) == ("queued", None)
+    _set_status(engine, run_id, "running")
+    _request_cancel(engine, run_id)
+    status, requested_at = queue.run_control(engine, run_id)
+    assert status == "running"
+    assert requested_at is not None
+    assert queue.run_control(engine, 9999) == (None, None)
+
+
+def test_mark_cancelled_ends_only_a_running_run_without_error_fields(
+    client: TestClient, settings: Settings
+) -> None:
+    running, done = _queued_runs(client, (0, 0))
+    engine = queue.create_worker_engine(worker_settings(settings))
+    assert queue.claim_next(engine) == running
+    _set_status(engine, done, "completed")
+
+    assert queue.mark_cancelled(engine, done, "tail") == 0  # a finished run is never rewritten
+    assert queue.mark_cancelled(engine, running, "last lines") == 1
+
+    with Session(engine) as session:
+        assert session.get(TrainingRun, done).status == "completed"
+        cancelled = session.get(TrainingRun, running)
+        assert cancelled.status == "cancelled"
+        assert cancelled.finished_at is not None
+        assert cancelled.error_message is None
+        assert cancelled.error_category is None
+        assert cancelled.log_tail == "last lines"
+    assert queue.mark_cancelled(engine, running, "again") == 0  # idempotent: already cancelled
