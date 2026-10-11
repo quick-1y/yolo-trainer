@@ -240,6 +240,8 @@ function StatusAnnouncer({ status }: { status: RunStatus }) {
         setMessage(t("run.failed.title"));
       } else if (status === "interrupted") {
         setMessage(t("run.interrupted.title"));
+      } else if (status === "cancelled") {
+        setMessage(t("run.cancelled.title"));
       }
     }
     previous.current = status;

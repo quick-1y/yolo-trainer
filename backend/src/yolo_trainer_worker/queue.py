@@ -70,14 +70,22 @@ def claim_next(engine: Engine, now: datetime | None = None) -> int | None:
 
 
 def reconcile_on_start(engine: Engine, now: datetime | None = None) -> int:
-    """Every `running` run becomes `interrupted`; `queued` runs stay queued (D-13).
+    """Every `running` run ends; `queued` runs stay queued (D-13).
 
-    Deliberately never signals the PID recorded on a run: after a container restart the PID
-    namespace is new and that number may belong to an unrelated process.
+    A run with a pending cancel request becomes `cancelled` (the user already decided to stop it,
+    Pitfall 14); every other `running` run becomes `interrupted`. Both updates share one
+    transaction and return the total. Deliberately never signals the PID recorded on a run: after
+    a container restart the PID namespace is new and that number may belong to an unrelated
+    process.
     """
     stamp = now or utcnow()
     with engine.begin() as connection:
-        result = connection.execute(
+        cancelled = connection.execute(
+            update(TrainingRun)
+            .where(TrainingRun.status == "running", TrainingRun.cancel_requested_at.is_not(None))
+            .values(status="cancelled", finished_at=stamp, error_message=None)
+        )
+        interrupted = connection.execute(
             update(TrainingRun)
             .where(TrainingRun.status == "running")
             .values(
@@ -86,7 +94,7 @@ def reconcile_on_start(engine: Engine, now: datetime | None = None) -> int:
                 error_message=INTERRUPTED_ON_RESTART_MESSAGE,
             )
         )
-        return result.rowcount
+        return cancelled.rowcount + interrupted.rowcount
 
 
 def load_run(engine: Engine, run_id: int) -> dict | None:

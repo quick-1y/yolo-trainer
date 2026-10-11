@@ -178,7 +178,7 @@ class Supervisor:
                 stop_event.wait(poll)
                 continue
             if swept:
-                logger.warning("Marked %s run(s) as interrupted after a restart", swept)
+                logger.warning("Ended %s run(s) that a restart left running", swept)
             break
 
         while not stop_event.is_set():

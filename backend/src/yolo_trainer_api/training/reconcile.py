@@ -63,6 +63,16 @@ async def reconcile_runs_on_startup(
                 heartbeat_file(settings.data_dir), HEARTBEAT_MAX_AGE_SECONDS, now
             )
             if not worker_alive:
+                # A pending cancel was already decided by the user: it ends as cancelled, not
+                # interrupted (Pitfall 14). The rest of the running rows are interrupted.
+                await session.execute(
+                    update(TrainingRun)
+                    .where(
+                        TrainingRun.status == "running",
+                        TrainingRun.cancel_requested_at.is_not(None),
+                    )
+                    .values(status="cancelled", error_message=None, finished_at=stamp)
+                )
                 await session.execute(
                     update(TrainingRun)
                     .where(TrainingRun.status == "running")
