@@ -119,6 +119,13 @@
     "poor": "Needs more training",
     "basis": "Verdict is based on mAP50."
   },
+  "charts": {
+    "map": {
+      "title": "mAP"
+    },
+    "xAxis": "Epoch",
+    "latest": "Latest, epoch {{epoch}}: {{values}}"
+  },
   "model": {
     "file": "Model file: {{file}} · {{size}}",
     "usage": "Load it in Python with <code>{{code}}</code>.",

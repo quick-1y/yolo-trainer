@@ -9,6 +9,7 @@ import { notifications } from "@mantine/notifications";
 
 import { AppRoutes } from "../../app/routes";
 import { renderWithProviders } from "../../test/render";
+import { FakeEventSource, latestEventSource } from "../../test/fakeEventSource";
 import { makeRun, stubTrainingApi } from "../../test/trainingApi";
 
 const RUN_PATH = "/projects/1/training/7";
@@ -135,6 +136,71 @@ describe("RunPage progress", () => {
     renderWithProviders(<AppRoutes />, { route: RUN_PATH, language: "ru" });
 
     expect((await screen.findAllByText("Эпоха 12 из 100")).length).toBeGreaterThan(0);
+  });
+});
+
+function fitEpoch(epoch: number, map50: number, extra: Record<string, unknown> = {}) {
+  return {
+    event: "fit_epoch_end",
+    epoch,
+    epochs: 100,
+    final_validation: false,
+    primary: { precision: 0.8, recall: 0.7, map50, map50_95: map50 - 0.2 },
+    ...extra,
+  };
+}
+
+describe("RunPage live charts", () => {
+  it("grows the mAP chart from the event stream, ignores the final validation and closes on end", async () => {
+    stubTrainingApi({ run: running() });
+    renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+
+    expect((await screen.findAllByText("Epoch 12 of 100")).length).toBeGreaterThan(0);
+    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+    const source = latestEventSource();
+    expect(source.url).toBe("/api/projects/1/runs/7/stream");
+    expect(screen.queryByRole("group", { name: "mAP" })).toBeNull();
+
+    act(() => {
+      source.open();
+      source.emit("progress", fitEpoch(1, 0.5), "100");
+      source.emit("progress", fitEpoch(2, 0.6), "200");
+    });
+
+    expect(await screen.findByRole("group", { name: "mAP" })).toBeInTheDocument();
+    expect(screen.getByText("Latest, epoch 2: mAP50 0.600, mAP50-95 0.400")).toBeInTheDocument();
+
+    act(() => {
+      source.emit("progress", fitEpoch(2, 0.7, { final_validation: true }), "300");
+    });
+    expect(screen.getByText("Latest, epoch 2: mAP50 0.600, mAP50-95 0.400")).toBeInTheDocument();
+    expect(source.readyState).toBe(FakeEventSource.OPEN);
+
+    act(() => {
+      source.emit("end", { status: "completed" });
+    });
+    expect(source.readyState).toBe(FakeEventSource.CLOSED);
+  });
+
+  it("opens one stream per page and closes it on unmount", async () => {
+    stubTrainingApi({ run: running() });
+    const view = renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+
+    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+    view.unmount();
+
+    expect(latestEventSource().readyState).toBe(FakeEventSource.CLOSED);
+    expect(FakeEventSource.instances).toHaveLength(1);
+  });
+
+  it("opens no stream for a run that is still queued", async () => {
+    stubTrainingApi({
+      run: makeRun({ id: 7, name: "run-7", status: "queued", queue_position: 2 }),
+    });
+    renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+
+    expect(await screen.findByText("In queue: position 2")).toBeInTheDocument();
+    expect(FakeEventSource.instances).toHaveLength(0);
   });
 });
 

@@ -5,7 +5,10 @@ The router has the `/api` prefix and absolute sub-paths; `/training/active` (D-1
 
 from __future__ import annotations
 
+import functools
+
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response
+from fastapi.sse import EventSourceResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,6 +19,12 @@ from yolo_trainer_api.schemas import ActiveRun, RunCreate, RunRead, RunSummary, 
 from yolo_trainer_api.security import require_xhr
 from yolo_trainer_api.training import service
 from yolo_trainer_api.training.options import build_options, ensure_device_available
+from yolo_trainer_api.training.stream import (
+    StreamTarget,
+    progress_frames,
+    read_run_status,
+    stream_target,
+)
 
 router = APIRouter(prefix="/api", tags=["training"])
 
@@ -121,3 +130,17 @@ async def get_run(
     if run is None:
         raise HTTPException(status_code=404, detail=service.RUN_NOT_FOUND_DETAIL)
     return await service.run_read(session, run)
+
+
+@router.get("/projects/{project_id}/runs/{run_id}/stream", response_class=EventSourceResponse)
+async def stream_run(request: Request, target: StreamTarget = Depends(stream_target)):
+    """Progress of a run as Server-Sent Events: the replay of `progress.jsonl`, then live lines.
+
+    No request-scoped database session here: FastAPI would keep it open for the whole stream
+    (see `training.stream`).
+    """
+    status_reader = functools.partial(
+        read_run_status, request.app.state.sessionmaker, target.run_id
+    )
+    async for frame in progress_frames(target.progress_path, 0, target.task_type, status_reader):
+        yield frame

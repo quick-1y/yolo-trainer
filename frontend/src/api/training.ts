@@ -300,3 +300,8 @@ export function useRemoveQueuedRun(projectId: number) {
 export function modelDownloadUrl(modelId: number): string {
   return `/api/models/${modelId}/download`;
 }
+
+/** The Server-Sent Events stream of one run's progress (`EventSource`, same origin). */
+export function runStreamUrl(projectId: number, runId: number): string {
+  return `/api/projects/${projectId}/runs/${runId}/stream`;
+}

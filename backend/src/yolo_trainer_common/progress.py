@@ -73,6 +73,14 @@ class ProgressTail:
         self.offset = 0
 
     def read_new_events(self, path: Path) -> list[dict]:
+        return [event for _, event in self.read_new_lines(path)]
+
+    def read_new_lines(self, path: Path) -> list[tuple[int, dict]]:
+        """Like `read_new_events`, with the byte offset just after each line's newline.
+
+        The offsets are absolute positions in the file, so a client can resume a stream at
+        any of them (`Last-Event-ID`).
+        """
         try:
             with path.open("rb") as handle:
                 handle.seek(self.offset)
@@ -82,9 +90,12 @@ class ProgressTail:
         end = chunk.rfind(b"\n")
         if end < 0:
             return []
+        start = self.offset
         self.offset += end + 1
-        events: list[dict] = []
+        lines: list[tuple[int, dict]] = []
+        position = 0
         for raw in chunk[:end].split(b"\n"):
+            position += len(raw) + 1
             if not raw.strip():
                 continue
             try:
@@ -93,8 +104,8 @@ class ProgressTail:
                 logger.warning("Skipping an undecodable progress line in %s", path)
                 continue
             if isinstance(event, dict):
-                events.append(event)
-        return events
+                lines.append((start + position, event))
+        return lines
 
 
 def _suffix(task_type: str) -> str:
@@ -126,6 +137,21 @@ def primary_metrics(task_type: str, metrics: dict | None) -> dict[str, float | N
         "map50": _number(source.get(f"metrics/mAP50({suffix})")),
         "map50_95": _number(source.get(f"metrics/mAP50-95({suffix})")),
     }
+
+
+def enrich_event(task_type: str, event: dict) -> dict:
+    """A shallow copy of `event`; a `fit_epoch_end` also carries its `primary` headline numbers.
+
+    The `(B)`/`(M)` metric key mapping stays in Python, so the browser never reads
+    `metrics/mAP50(B)` by name.
+    """
+    enriched = dict(event)
+    if event.get("event") == EVENT_FIT_EPOCH_END:
+        metrics = event.get("metrics")
+        enriched["primary"] = primary_metrics(
+            task_type, metrics if isinstance(metrics, dict) else None
+        )
+    return enriched
 
 
 def clean_log_tail(text: str, max_lines: int = LOG_TAIL_LINES) -> str:

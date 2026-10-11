@@ -21,6 +21,8 @@ import { ApiError } from "../../api/client";
 import type { Project } from "../../api/projects";
 import { modelDownloadUrl, useRun } from "../../api/training";
 import type { RunDetail, RunStatus } from "../../api/training";
+import { RunCharts } from "./progress/RunCharts";
+import { useRunStream } from "./progress/useRunStream";
 import { RemoveFromQueueModal } from "./RemoveFromQueueModal";
 import { RunFailureLog } from "./RunFailureLog";
 import { RunMetrics } from "./RunMetrics";
@@ -72,6 +74,17 @@ export function RunPage() {
   const query = useRun(project.id, runId);
   const [removeOpened, setRemoveOpened] = useState(false);
   const listPath = `/projects/${project.id}/training`;
+  // A hook, so it runs before the early returns below. The stream opens once the run has left
+  // the preparing and queued states and closes itself when the server sends `end`.
+  const streamStatus = query.data?.status;
+  const { progress } = useRunStream(project.id, runId ?? 0, {
+    enabled:
+      runId !== null &&
+      streamStatus !== undefined &&
+      streamStatus !== "preparing" &&
+      streamStatus !== "queued",
+    resumeKey: 0,
+  });
 
   const isNotFound =
     runId === null || (query.error instanceof ApiError && query.error.status === 404);
@@ -149,6 +162,7 @@ export function RunPage() {
         ) : null}
       </Group>
       <StatusCard run={run} />
+      {progress.rows.length > 0 ? <RunCharts progress={progress} /> : null}
       <RunSettingsCard run={run} />
       <StatusAnnouncer status={run.status} />
       {run.status === "queued" ? (
