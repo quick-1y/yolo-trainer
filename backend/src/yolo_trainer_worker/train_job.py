@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import sys
 import time
 import traceback
@@ -41,6 +42,38 @@ class WeightsDownloadError(RuntimeError):
     """The official weights are not cached and could not be downloaded."""
 
 
+class NotResumableError(RuntimeError):
+    """The saved checkpoint cannot continue training (finished, stripped, nothing left)."""
+
+
+class CheckpointError(RuntimeError):
+    """The saved checkpoint is missing or cannot be read."""
+
+
+def check_resumable(ckpt: dict) -> None:
+    """Refuse a checkpoint `resume=True` could not really continue (Pitfalls 1 and 3).
+
+    Ultralytics does not fail on a stripped `last.pt` (`epoch` -1, no optimizer): it logs a
+    warning and trains from epoch 1 with exit code 0, which would silently throw the run's
+    history away. So the checkpoint is judged here, before `train()` is called.
+    """
+    epoch = ckpt.get("epoch")
+    epochs = (ckpt.get("train_args") or {}).get("epochs")
+    if (
+        not isinstance(epoch, int)
+        or isinstance(epoch, bool)
+        or epoch < 0
+        or ckpt.get("optimizer") is None
+        or not isinstance(epochs, int)
+        or isinstance(epochs, bool)
+    ):
+        raise NotResumableError(
+            "The checkpoint has no training state (training had already finished)."
+        )
+    if epoch + 1 >= epochs:
+        raise NotResumableError("All epochs were already trained; nothing is left to resume.")
+
+
 def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="yolo_trainer_worker.train_job")
     parser.add_argument("--run-dir", required=True, type=Path)
@@ -53,6 +86,8 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     )
     parser.add_argument("--batch", required=True, type=int)
     parser.add_argument("--workers", required=True, type=int)
+    # Continue from the run's own last.pt instead of starting from the base weights (D-09).
+    parser.add_argument("--resume", action="store_true")
     return parser.parse_args(argv)
 
 
@@ -66,6 +101,30 @@ def _sha256(path: Path) -> str:
         while chunk := handle.read(_HASH_CHUNK):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _write_base_record(run_directory: Path, job: dict, weights: Path) -> dict:
+    """Remember the base weights' name and hash in `base.json` (first segment only).
+
+    A resumed segment reads it instead of the base file, which may be gone by then (a deleted
+    base model must not break a resume).
+    """
+    record = {"name": job["base"]["name"], "sha256": _sha256(weights)}
+    layout.write_json_atomic(run_directory / layout.BASE_FILE, record)
+    return record
+
+
+def _read_base_record(run_directory: Path, job: dict) -> dict:
+    """The record of `_write_base_record`, or the name without a hash when it is absent or bad."""
+    fallback = {"name": job["base"]["name"], "sha256": None}
+    try:
+        record = json.loads((run_directory / layout.BASE_FILE).read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return fallback
+    if not isinstance(record, dict) or not isinstance(record.get("name"), str):
+        return fallback
+    digest = record.get("sha256")
+    return {"name": record["name"], "sha256": digest if isinstance(digest, str) else None}
 
 
 def _resolve_weights(data_dir: Path, base: dict) -> Path:
@@ -126,6 +185,27 @@ class ProgressWriter:
         with self.path.open("a", encoding="utf-8") as handle:
             handle.write(line + "\n")
             handle.flush()
+
+    def ensure_line_boundary(self) -> None:
+        """End a half-written last line with a newline before a resumed segment appends (Pitfall 5).
+
+        A killed child can leave a partial line; the next record would be glued to it and both
+        would be dropped as undecodable, losing the segment's `train_start`. A clean, empty or
+        missing file is left alone (the file is never created here).
+        """
+        try:
+            with self.path.open("rb") as handle:
+                handle.seek(0, os.SEEK_END)
+                if handle.tell() == 0:
+                    return
+                handle.seek(-1, os.SEEK_END)
+                last_byte = handle.read(1)
+        except FileNotFoundError:
+            return
+        if last_byte != b"\n":
+            with self.path.open("a", encoding="utf-8") as handle:
+                handle.write("\n")
+                handle.flush()
 
 
 class TrainCallbacks(dict[str, Callable[[object], None]]):
@@ -245,11 +325,32 @@ def make_callbacks(
     return callbacks
 
 
+def _load_checkpoint(run_directory: Path):  # noqa: ANN202 - the YOLO class is imported lazily
+    """Load the run's `last.pt` and refuse it when it cannot continue (Pitfalls 1, 3 and 4).
+
+    No fallback to a fresh training exists: a missing, unreadable, stripped or finished
+    checkpoint fails the run with category `not_resumable` (user-confirmed, no `last.prev.pt`).
+    """
+    from ultralytics import YOLO
+
+    try:
+        model = YOLO(str(layout.last_weights(run_directory)))
+    except Exception as exc:
+        raise CheckpointError(
+            "The saved checkpoint is damaged; start a new run from this run's interim model."
+        ) from exc
+    ckpt = getattr(model, "ckpt", None)
+    check_resumable(ckpt if isinstance(ckpt, dict) else {})
+    return model
+
+
 def _train(args: argparse.Namespace) -> None:
     run_directory: Path = args.run_dir
     data_dir: Path = args.data_dir
     job = json.loads((run_directory / layout.JOB_FILE).read_text(encoding="utf-8"))
     settings = job["settings"]
+    if args.resume and not layout.last_weights(run_directory).is_file():
+        raise CheckpointError("The saved checkpoint is missing.")
 
     configure_ultralytics(data_dir)
 
@@ -262,27 +363,52 @@ def _train(args: argparse.Namespace) -> None:
     # are off, and a run's only outbound access is the official weights download.
     ultralytics_data_utils.check_font = lambda font="Arial.ttf": font
 
-    weights = _resolve_weights(data_dir, job["base"])
-    model = YOLO(str(weights))
+    data_yaml = str(layout.dataset_dir(data_dir, job["run_id"]) / layout.DATA_YAML)
+    writer = ProgressWriter(run_directory / layout.PROGRESS_FILE)
+    if args.resume:
+        # The base weights are not needed: last.pt is the only weights input (Pattern 5).
+        model = _load_checkpoint(run_directory)
+        base_record = _read_base_record(run_directory, job)
+        writer.ensure_line_boundary()
+    else:
+        weights = _resolve_weights(data_dir, job["base"])
+        base_record = _write_base_record(run_directory, job, weights)
+        model = YOLO(str(weights))
 
-    callbacks = make_callbacks(ProgressWriter(run_directory / layout.PROGRESS_FILE))
+    callbacks = make_callbacks(writer)
     for name, callback in callbacks.items():
         model.add_callback(name, callback)
     state = callbacks.state
 
-    model.train(
-        data=str(layout.dataset_dir(data_dir, job["run_id"]) / layout.DATA_YAML),
-        epochs=int(settings["epochs"]),
-        imgsz=int(settings["imgsz"]),
-        batch=args.batch,
-        device=args.device,
-        workers=args.workers,
-        project=str(run_directory / "out"),
-        name="train",
-        exist_ok=True,
-        plots=False,
-        verbose=False,
-    )
+    if args.resume:
+        # Epochs and hyperparameters come from the checkpoint (D-11). `save_dir` is always pinned:
+        # last.pt stores an absolute one, and a relocated run folder would otherwise be written
+        # to (and its old last.pt stripped) at the old location (Pitfall 2).
+        model.train(
+            data=data_yaml,
+            resume=True,
+            save_dir=str(run_directory / "out" / "train"),
+            imgsz=int(settings["imgsz"]),
+            batch=args.batch,
+            device=args.device,
+            workers=args.workers,
+            plots=False,
+            verbose=False,
+        )
+    else:
+        model.train(
+            data=data_yaml,
+            epochs=int(settings["epochs"]),
+            imgsz=int(settings["imgsz"]),
+            batch=args.batch,
+            device=args.device,
+            workers=args.workers,
+            project=str(run_directory / "out"),
+            name="train",
+            exist_ok=True,
+            plots=False,
+            verbose=False,
+        )
 
     names = model.names
     layout.write_json_atomic(
@@ -297,7 +423,7 @@ def _train(args: argparse.Namespace) -> None:
             "epochs_completed": state["last_epoch"],
             "ultralytics_version": ultralytics.__version__,
             "torch_version": torch.__version__,
-            "base_weights": {"name": job["base"]["name"], "sha256": _sha256(weights)},
+            "base_weights": base_record,
         },
     )
 
