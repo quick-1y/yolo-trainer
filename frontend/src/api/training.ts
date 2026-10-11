@@ -190,12 +190,21 @@ export const RUN_POLL_INTERVAL_MS = 3000;
 /** Slow poll of a running run whose event stream is healthy (a proxy can swallow a stream silently). */
 export const RUN_SAFETY_POLL_INTERVAL_MS = 15000;
 
-// Signature stub of the RED commit; the GREEN commit implements it.
+/**
+ * How often the run page refetches the run: a slow safety poll while it is running and the event
+ * stream is healthy, the Phase 4 rate for any other active run (or a down stream), never for a
+ * finished run or before the first answer.
+ */
 export function runPollInterval(
-  _run: { status: RunStatus } | undefined,
-  _streamHealthy: boolean,
+  run: { status: RunStatus } | undefined,
+  streamHealthy: boolean,
 ): number | false {
-  return false;
+  if (run === undefined || !isActiveRunStatus(run.status)) {
+    return false;
+  }
+  return run.status === "running" && streamHealthy
+    ? RUN_SAFETY_POLL_INTERVAL_MS
+    : RUN_POLL_INTERVAL_MS;
 }
 
 /** The run that is training right now (`GET /training/active`, D-14). */
@@ -231,20 +240,20 @@ export function useRuns(projectId: number) {
   });
 }
 
-export function useRun(projectId: number, runId: number | null) {
+export function useRun(
+  projectId: number,
+  runId: number | null,
+  options: { streamHealthy?: boolean } = {},
+) {
+  const streamHealthy = options.streamHealthy ?? false;
   return useQuery({
     queryKey: trainingKeys.run(projectId, runId ?? 0),
     queryFn: () => apiRequest<RunDetail>(`/projects/${projectId}/runs/${runId}`),
     enabled: runId !== null,
     // A missing run will not appear by retrying; show "Run not found" at once.
     retry: (failureCount, error) => !isNotFound(error) && failureCount < 2,
-    refetchInterval: (query) => {
-      if (isNotFound(query.state.error)) {
-        return false;
-      }
-      const run = query.state.data;
-      return run !== undefined && isActiveRunStatus(run.status) ? RUN_POLL_INTERVAL_MS : false;
-    },
+    refetchInterval: (query) =>
+      isNotFound(query.state.error) ? false : runPollInterval(query.state.data, streamHealthy),
   });
 }
 

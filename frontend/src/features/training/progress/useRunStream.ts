@@ -1,12 +1,16 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { useEffect, useReducer, useState } from "react";
+import { useCallback, useEffect, useReducer, useState } from "react";
 
 import { runStreamUrl, trainingKeys } from "../../../api/training";
 import type { RunDetail } from "../../../api/training";
 import { foldProgress, initialProgressState } from "./foldProgress";
 import type { ProgressFrame, ProgressState } from "./foldProgress";
 
-export type StreamConnection = "connecting" | "open" | "ended";
+/**
+ * `reconnecting`: the connection broke and the browser retries on its own (with `Last-Event-ID`,
+ * so nothing is replayed twice). `unavailable`: the browser gave up; `retry()` opens a new source.
+ */
+export type StreamConnection = "connecting" | "open" | "reconnecting" | "unavailable" | "ended";
 
 export interface UseRunStreamOptions {
   /** The stream is opened only while this is true (not for a preparing or queued run). */
@@ -38,10 +42,12 @@ export function useRunStream(
   projectId: number,
   runId: number,
   { enabled, resumeKey }: UseRunStreamOptions,
-): { progress: ProgressState; connection: StreamConnection } {
+): { progress: ProgressState; connection: StreamConnection; retry: () => void } {
   const queryClient = useQueryClient();
   const [progress, dispatch] = useReducer(reduce, initialProgressState);
   const [connection, setConnection] = useState<StreamConnection>("connecting");
+  const [attempt, setAttempt] = useState(0);
+  const retry = useCallback(() => setAttempt((current) => current + 1), []);
 
   useEffect(() => {
     dispatch({ kind: "reset" });
@@ -52,6 +58,10 @@ export function useRunStream(
     const source = new EventSource(runStreamUrl(projectId, runId));
 
     source.addEventListener("open", () => setConnection("open"));
+    source.addEventListener("error", () => {
+      // CLOSED: the browser will not retry (a non-200 answer); CONNECTING: it is retrying.
+      setConnection(source.readyState === EventSource.CLOSED ? "unavailable" : "reconnecting");
+    });
     source.addEventListener("progress", (event) => {
       const frame = parse(event);
       if (frame !== null && typeof frame === "object") {
@@ -76,7 +86,7 @@ export function useRunStream(
     });
 
     return () => source.close();
-  }, [projectId, runId, enabled, resumeKey, queryClient]);
+  }, [projectId, runId, enabled, resumeKey, attempt, queryClient]);
 
-  return { progress, connection };
+  return { progress, connection, retry };
 }

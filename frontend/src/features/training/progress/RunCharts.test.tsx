@@ -76,6 +76,11 @@ function renderCharts({ progress, connection = "open", running = true, onRetry }
   );
 }
 
+/** What a component rendered, without the style tags MantineProvider puts next to it. */
+function rendered(container: HTMLElement): Element[] {
+  return Array.from(container.children).filter((element) => element.tagName !== "STYLE");
+}
+
 function tooltipRow(key: string): HTMLElement {
   return screen.getByTestId(`tooltip-row-${key}`);
 }
@@ -166,14 +171,16 @@ describe("ChartTooltip", () => {
 
   it("says Best epoch only when the hovered epoch is the best one", () => {
     const payload = [{ payload: row(3, { map50: 0.5, map50_95: 0.4 }) }];
-    const view = renderWithProviders(
+    const best = renderWithProviders(
       <ChartTooltip active label={3} kind="map" series={MAP_SERIES} payload={payload} bestEpoch={3} />,
     );
     expect(screen.getByText("Best epoch")).toBeInTheDocument();
+    best.unmount();
 
-    view.rerender(
+    renderWithProviders(
       <ChartTooltip active label={3} kind="map" series={MAP_SERIES} payload={payload} bestEpoch={2} />,
     );
+    expect(screen.getByText("Epoch 3")).toBeInTheDocument();
     expect(screen.queryByText("Best epoch")).toBeNull();
   });
 
@@ -181,7 +188,7 @@ describe("ChartTooltip", () => {
     const view = renderWithProviders(
       <ChartTooltip active={false} label={1} kind="map" series={MAP_SERIES} payload={[]} />,
     );
-    expect(view.container.textContent).toBe("");
+    expect(rendered(view.container)).toHaveLength(0);
   });
 
   it("renders component names as text only", () => {
@@ -308,7 +315,7 @@ describe("RunCharts stream states", () => {
   it("renders no chart section for a finished run with zero epochs", () => {
     const view = renderCharts({ progress: initialProgressState, connection: "ended", running: false });
 
-    expect(view.container.textContent).toBe("");
+    expect(rendered(view.container)).toHaveLength(0);
   });
 
   it("keeps the charts and shows a small Reconnecting line while the browser retries", () => {

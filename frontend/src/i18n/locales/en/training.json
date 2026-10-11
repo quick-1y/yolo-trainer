@@ -125,14 +125,25 @@
       "caption": "Sum of all loss components. Hover for the breakdown."
     },
     "map": {
-      "title": "mAP"
+      "title": "mAP",
+      "best": "Best epoch: {{epoch}} (mAP50-95 {{value}})"
     },
     "pr": {
       "title": "Precision and recall"
     },
     "legend": {
       "train": "Train",
-      "val": "Validation"
+      "val": "Validation",
+      "resumed": "Resumed"
+    },
+    "tooltip": {
+      "epoch": "Epoch {{epoch}}",
+      "best": "Best epoch"
+    },
+    "waiting": "Charts appear after the first epoch finishes.",
+    "stream": {
+      "reconnecting": "Reconnecting…",
+      "unavailable": "Live updates are unavailable. Charts show data up to the last update."
     },
     "xAxis": "Epoch",
     "latest": "Latest, epoch {{epoch}}: {{values}}"
