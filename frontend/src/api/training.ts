@@ -102,6 +102,8 @@ export interface RunSummary {
   model: RunModelRef | null;
   /** Failure code of a failed run (D-16); null for other runs and for runs from before codes. */
   error_category: string | null;
+  /** True while a cancel of this running run waits for the worker to stop it (D-07). */
+  cancelling: boolean;
   /** Verdict on mAP50 computed by the server (null while there is no final mAP50). */
   quality: QualityLevel | null;
 }
@@ -339,6 +341,24 @@ export function useRemoveQueuedRun(projectId: number) {
       queryClient.removeQueries({ queryKey: trainingKeys.run(projectId, runId) });
       void queryClient.invalidateQueries({ queryKey: trainingKeys.runs(projectId) });
       void queryClient.invalidateQueries({ queryKey: projectKeys.detail(projectId) });
+    },
+  });
+}
+
+/**
+ * Ask for a running run to be cancelled (D-06). The api only sets a flag; the worker stops the
+ * process within seconds, so the response is a still-running run with `cancelling: true`. A 409
+ * means the run already finished or was not running.
+ */
+export function useCancelRun(projectId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (runId: number) =>
+      apiRequest<RunDetail>(`/projects/${projectId}/runs/${runId}/cancel`, { method: "POST" }),
+    onSuccess: (data, runId) => {
+      queryClient.setQueryData(trainingKeys.run(projectId, runId), data);
+      void queryClient.invalidateQueries({ queryKey: trainingKeys.runs(projectId) });
+      void queryClient.invalidateQueries({ queryKey: trainingKeys.active() });
     },
   });
 }

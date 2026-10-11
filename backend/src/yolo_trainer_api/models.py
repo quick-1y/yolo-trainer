@@ -238,6 +238,11 @@ class TrainingRun(Base):
     progress_updated_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # Set by the api when a user cancels a `running` run; the worker supervisor reads it each
+    # tick, stops its own child and writes `cancelled` (D-07). The api never signals a process.
+    cancel_requested_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     __table_args__ = (
         CheckConstraint(

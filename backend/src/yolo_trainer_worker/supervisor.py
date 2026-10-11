@@ -18,6 +18,7 @@ import sys
 import threading
 from collections.abc import Callable
 from dataclasses import asdict, dataclass
+from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -57,6 +58,9 @@ STOPPED_MESSAGE = "The worker was stopped while this run was in progress."
 # Returned by `run_claimed` when the run row was deleted (or is no longer `running`) while
 # the child trained: the child is stopped and nothing is written to the database.
 VANISHED = "vanished"
+
+# Returned by `run_claimed` when the user cancelled the run and the child was stopped (D-07).
+CANCELLED = "cancelled"
 
 
 @dataclass(frozen=True)
@@ -174,7 +178,7 @@ class Supervisor:
                 stop_event.wait(poll)
                 continue
             if swept:
-                logger.warning("Marked %s run(s) as interrupted after a restart", swept)
+                logger.warning("Ended %s run(s) that a restart left running", swept)
             break
 
         while not stop_event.is_set():
@@ -314,10 +318,23 @@ class Supervisor:
                     # The run row is gone or no longer running: stop the child.
                     self._terminate(process)
                     outcome = VANISHED
-            if outcome is None and exit_code is None and not self._still_running(run_id):
-                # The row can disappear between epochs (project deleted): no event reveals it.
-                self._terminate(process)
-                outcome = VANISHED
+            if outcome is None and exit_code is None:
+                status, cancel_requested_at = self._control(run_id)
+                if status != "running":
+                    # The row can disappear between epochs (project deleted): no event reveals it.
+                    self._terminate(process)
+                    outcome = VANISHED
+                elif cancel_requested_at is not None and process.poll() is None:
+                    # The user asked for a cancel (D-07). This is only reached while the child is
+                    # alive: a child that already exited on its own is finished normally below.
+                    # `_terminate` returns once the child is dead, so the serve loop can never
+                    # claim the next run while this trainer is still dying. A cancel is not a
+                    # failure: the exit code is not classified and no model is registered (D-08).
+                    self._terminate(process)
+                    changed = queue.mark_cancelled(
+                        self.engine, run_id, _read_log_tail(run_directory / layout.LOG_FILE)
+                    )
+                    outcome = CANCELLED if changed else VANISHED
             if outcome is not None or exit_code is not None:
                 break
             if stop_event.is_set():
@@ -331,17 +348,17 @@ class Supervisor:
                 outcome = "interrupted"
                 break
             stop_event.wait(self.tick_seconds)
-        if outcome is None and not self._still_running(run_id):
+        if outcome is None and self._control(run_id)[0] != "running":
             outcome = VANISHED
         return outcome, final or last_real
 
-    def _still_running(self, run_id: int) -> bool:
-        """False only if the row is gone or not `running`; a busy database counts as alive."""
+    def _control(self, run_id: int) -> tuple[str | None, datetime | None]:
+        """`(status, cancel_requested_at)` of the run; a busy database counts as still running."""
         try:
-            return queue.run_status(self.engine, run_id) == "running"
+            return queue.run_control(self.engine, run_id)
         except OperationalError:
             logger.warning("Could not check run %s; assuming it is still running", run_id)
-            return True
+            return "running", None
 
     @staticmethod
     def _terminate(process: subprocess.Popen) -> None:

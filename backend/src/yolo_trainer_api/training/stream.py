@@ -34,6 +34,7 @@ STATUS_COLUMNS = (
     TrainingRun.epoch,
     TrainingRun.epochs,
     TrainingRun.error_category,
+    TrainingRun.cancel_requested_at,
 )
 
 ReadStatus = Callable[[], Awaitable[dict | None]]
@@ -91,6 +92,8 @@ def status_payload(row) -> dict:
         "epoch": row.epoch,
         "epochs": row.epochs,
         "error_category": row.error_category,
+        # The timestamp stays server side; the page only needs to know a cancel is pending.
+        "cancelling": row.status == "running" and row.cancel_requested_at is not None,
     }
 
 

@@ -27,6 +27,7 @@ import type { ProgressState } from "./progress/foldProgress";
 import { RunCharts } from "./progress/RunCharts";
 import { useRunStream } from "./progress/useRunStream";
 import { FailureAlert } from "./FailureAlert";
+import { CancelRunModal } from "./CancelRunModal";
 import { FinalResultsCard } from "./FinalResultsCard";
 import { RemoveFromQueueModal } from "./RemoveFromQueueModal";
 import { RunSettingsCard } from "./RunSettingsCard";
@@ -79,6 +80,7 @@ export function RunPage() {
   const [streamHealthy, setStreamHealthy] = useState(false);
   const query = useRun(project.id, runId, { streamHealthy });
   const [removeOpened, setRemoveOpened] = useState(false);
+  const [cancelOpened, setCancelOpened] = useState(false);
   const listPath = `/projects/${project.id}/training`;
   const streamStatus = query.data?.status;
   const streamEnabled =
@@ -167,6 +169,21 @@ export function RunPage() {
             {t("training:run.remove.open")}
           </Button>
         ) : null}
+        {run.status === "running" && !run.cancelling ? (
+          <Button variant="light" color="red" onClick={() => setCancelOpened(true)}>
+            {t("training:run.cancel.open")}
+          </Button>
+        ) : null}
+        {run.status === "running" && run.cancelling ? (
+          <Button
+            variant="light"
+            color="red"
+            disabled
+            leftSection={<Loader size={16} color="gray" aria-hidden="true" />}
+          >
+            {t("training:status.cancelling")}
+          </Button>
+        ) : null}
       </Group>
       <StatusCard run={run} progress={progress} />
       <FinalResultsCard run={run} finalMetrics={progress.finalMetrics} />
@@ -193,6 +210,18 @@ export function RunPage() {
           }}
         />
       ) : null}
+      {run.status === "running" ? (
+        <CancelRunModal
+          projectId={project.id}
+          run={run}
+          opened={cancelOpened}
+          onClose={() => {
+            setCancelOpened(false);
+            // The run may have finished while the modal was open, or the cancel was accepted.
+            void query.refetch();
+          }}
+        />
+      ) : null}
     </Stack>
   );
 }
@@ -211,6 +240,8 @@ function StatusAnnouncer({ status }: { status: RunStatus }) {
         setMessage(t("run.failed.title"));
       } else if (status === "interrupted") {
         setMessage(t("run.interrupted.title"));
+      } else if (status === "cancelled") {
+        setMessage(t("run.cancelled.title"));
       }
     }
     previous.current = status;
@@ -345,6 +376,23 @@ function RunningBody({ run, progress }: { run: RunDetail; progress: ProgressStat
   ]
     .filter((part): part is string => part !== null)
     .join(" · ");
+
+  if (run.cancelling) {
+    // A cancel is waiting for the worker: no bars, no ETA, no batch caption (charts stay on screen).
+    return (
+      <>
+        <Group gap={8}>
+          <Loader size={16} />
+          <Text fz={16} fw={600}>
+            {t("run.cancelling.title")}
+          </Text>
+        </Group>
+        <Text size="sm" c="dark.1">
+          {t("run.cancelling.body")}
+        </Text>
+      </>
+    );
+  }
 
   return (
     <>

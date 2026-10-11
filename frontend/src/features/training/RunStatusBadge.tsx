@@ -25,15 +25,22 @@ const LOOK: Record<RunStatus, StatusLook> = {
 export const STATUS_BADGE_WIDTH = 128;
 
 interface RunStatusBadgeProps {
-  run: Pick<RunSummary, "status" | "queue_position" | "epoch" | "epochs">;
+  run: Pick<RunSummary, "status" | "queue_position" | "epoch" | "epochs"> &
+    Partial<Pick<RunSummary, "cancelling">>;
 }
+
+// A running run with a pending cancel waits for the worker to stop it: gray, a small Loader.
+const CANCELLING_LOOK: StatusLook = { color: "gray", glyph: null };
 
 export function RunStatusBadge({ run }: RunStatusBadgeProps) {
   const { t } = useTranslation("training");
-  const look = LOOK[run.status];
+  const cancelling = run.status === "running" && run.cancelling === true;
+  const look = cancelling ? CANCELLING_LOOK : LOOK[run.status];
 
   let label: string;
-  if (run.status === "queued" && run.queue_position !== null) {
+  if (cancelling) {
+    label = t("status.cancelling");
+  } else if (run.status === "queued" && run.queue_position !== null) {
     label = t("status.queuedPosition", { position: run.queue_position });
   } else if (run.status === "running" && run.epoch !== null && run.epochs !== null) {
     // The extra final-validation event is never shown as epoch Y+1 (D-12).
@@ -50,7 +57,7 @@ export function RunStatusBadge({ run }: RunStatusBadgeProps) {
       {look.glyph === null ? (
         <Loader
           size={12}
-          color="cyan"
+          color={cancelling ? "gray" : "cyan"}
           aria-hidden="true"
           mr={4}
           style={{ verticalAlign: "middle" }}

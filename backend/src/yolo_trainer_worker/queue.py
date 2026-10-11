@@ -70,14 +70,22 @@ def claim_next(engine: Engine, now: datetime | None = None) -> int | None:
 
 
 def reconcile_on_start(engine: Engine, now: datetime | None = None) -> int:
-    """Every `running` run becomes `interrupted`; `queued` runs stay queued (D-13).
+    """Every `running` run ends; `queued` runs stay queued (D-13).
 
-    Deliberately never signals the PID recorded on a run: after a container restart the PID
-    namespace is new and that number may belong to an unrelated process.
+    A run with a pending cancel request becomes `cancelled` (the user already decided to stop it,
+    Pitfall 14); every other `running` run becomes `interrupted`. Both updates share one
+    transaction and return the total. Deliberately never signals the PID recorded on a run: after
+    a container restart the PID namespace is new and that number may belong to an unrelated
+    process.
     """
     stamp = now or utcnow()
     with engine.begin() as connection:
-        result = connection.execute(
+        cancelled = connection.execute(
+            update(TrainingRun)
+            .where(TrainingRun.status == "running", TrainingRun.cancel_requested_at.is_not(None))
+            .values(status="cancelled", finished_at=stamp, error_message=None)
+        )
+        interrupted = connection.execute(
             update(TrainingRun)
             .where(TrainingRun.status == "running")
             .values(
@@ -86,7 +94,7 @@ def reconcile_on_start(engine: Engine, now: datetime | None = None) -> int:
                 error_message=INTERRUPTED_ON_RESTART_MESSAGE,
             )
         )
-        return result.rowcount
+        return cancelled.rowcount + interrupted.rowcount
 
 
 def load_run(engine: Engine, run_id: int) -> dict | None:
@@ -110,6 +118,21 @@ def run_status(engine: Engine, run_id: int) -> str | None:
         return connection.execute(
             select(TrainingRun.status).where(TrainingRun.id == run_id)
         ).scalar_one_or_none()
+
+
+def run_control(engine: Engine, run_id: int) -> tuple[str | None, datetime | None]:
+    """`(status, cancel_requested_at)` of a run, or `(None, None)` when its row is gone.
+
+    One tiny SELECT per supervisor tick: the cancel flag set by the api is the only way a
+    user-requested cancel reaches the worker (D-07).
+    """
+    with engine.connect() as connection:
+        row = connection.execute(
+            select(TrainingRun.status, TrainingRun.cancel_requested_at).where(
+                TrainingRun.id == run_id
+            )
+        ).first()
+    return (None, None) if row is None else (row.status, row.cancel_requested_at)
 
 
 def _update_running(engine: Engine, run_id: int, **values: object) -> int:
@@ -167,6 +190,23 @@ def mark_interrupted(engine: Engine, run_id: int, message: str, log_tail: str | 
         error_message=message,
         log_tail=log_tail,
         finished_at=utcnow(),
+    )
+
+
+def mark_cancelled(engine: Engine, run_id: int, log_tail: str | None = None) -> int:
+    """End a running run as `cancelled`: no error message, no category, no model (D-08).
+
+    A user-requested cancel is not a failure, so nothing about the stopped child is classified.
+    Guarded by `status = 'running'`, so a run that already finished changes 0 rows.
+    """
+    return _update_running(
+        engine,
+        run_id,
+        status="cancelled",
+        finished_at=utcnow(),
+        error_message=None,
+        error_category=None,
+        log_tail=log_tail,
     )
 
 

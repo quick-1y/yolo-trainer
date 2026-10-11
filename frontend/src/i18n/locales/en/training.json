@@ -27,7 +27,8 @@
     "interrupted": "Interrupted",
     "cancelled": "Cancelled",
     "queuedPosition": "In queue: {{position}}",
-    "runningEpoch": "Epoch {{epoch}} of {{epochs}}"
+    "runningEpoch": "Epoch {{epoch}} of {{epochs}}",
+    "cancelling": "Cancelling…"
   },
   "run": {
     "back": "Training",
@@ -85,6 +86,18 @@
     "cancelled": {
       "title": "Run cancelled",
       "body": "This run was cancelled before it finished."
+    },
+    "cancelling": {
+      "title": "Cancelling…",
+      "body": "Stopping the training process. This takes a few seconds."
+    },
+    "cancel": {
+      "open": "Cancel training",
+      "title": "Cancel training",
+      "confirm": "Cancel training",
+      "keep": "Keep training",
+      "body": "Training will stop at epoch {{epoch}}. You can resume it from the last checkpoint.",
+      "note": "The epoch in progress is not saved."
     },
     "remove": {
       "open": "Remove from queue",

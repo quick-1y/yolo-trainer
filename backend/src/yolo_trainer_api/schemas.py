@@ -562,6 +562,8 @@ class RunSummary(BaseModel):
     # A stable failure code (D-16) for a failed run; NULL for runs that did not fail and for
     # runs that failed before categories existed. The UI maps an unknown code to "unknown".
     error_category: str | None = None
+    # True while a user-requested cancel of a `running` run is waiting for the worker to stop it.
+    cancelling: bool = False
 
     @computed_field  # type: ignore[prop-decorator]
     @property

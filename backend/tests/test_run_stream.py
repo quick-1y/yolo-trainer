@@ -11,14 +11,22 @@ import asyncio
 import json
 import threading
 from collections.abc import AsyncIterator
+from datetime import UTC, datetime
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from fastapi.sse import ServerSentEvent
 from fastapi.testclient import TestClient
 
+from yolo_trainer_api.models import TrainingRun
 from yolo_trainer_api.settings import Settings
-from yolo_trainer_api.training.stream import parse_last_event_id, progress_frames
+from yolo_trainer_api.training.stream import (
+    STATUS_COLUMNS,
+    parse_last_event_id,
+    progress_frames,
+    status_payload,
+)
 from yolo_trainer_common import layout
 from yolo_trainer_common.device import ComputeDevice
 from yolo_trainer_worker import queue
@@ -410,6 +418,50 @@ def test_the_status_frame_of_a_failed_run_carries_its_error_category(
     status = json.loads([frame for frame in frames if frame["event"] == "status"][-1]["data"])
     assert status["status"] == "failed"
     assert status["error_category"] == "out_of_memory"
+    assert frames[-1]["event"] == "end"
+
+
+def test_the_status_frame_says_cancelling_only_for_a_running_run_with_a_pending_cancel() -> None:
+    stamp = datetime(2026, 10, 11, 12, 0, tzinfo=UTC)
+
+    def row(status: str, requested_at: datetime | None) -> SimpleNamespace:
+        return SimpleNamespace(
+            status=status,
+            epoch=3,
+            epochs=10,
+            error_category=None,
+            cancel_requested_at=requested_at,
+        )
+
+    assert status_payload(row("running", stamp))["cancelling"] is True
+    assert status_payload(row("running", None))["cancelling"] is False
+    assert status_payload(row("cancelled", stamp))["cancelling"] is False
+    assert status_payload(row("completed", stamp))["cancelling"] is False
+    # the timestamp itself never reaches the browser
+    assert "cancel_requested_at" not in status_payload(row("running", stamp))
+    assert TrainingRun.cancel_requested_at in STATUS_COLUMNS
+
+
+def test_the_status_frame_of_a_cancelled_run_reads_cancelled_without_a_category(
+    client: TestClient, settings: Settings
+) -> None:
+    ids = setup_project(client, "Cancelled", train=2, valid=1)
+    run = start_run(client, ids["project_id"])
+    wait_status(client, ids["project_id"], run["id"], {"queued"})
+    engine = queue.create_worker_engine(worker_settings(settings))
+    try:
+        assert queue.claim_next(engine) == run["id"]
+        assert queue.mark_cancelled(engine, run["id"], None) == 1
+    finally:
+        engine.dispose()
+
+    response = client.get(f"/api/projects/{ids['project_id']}/runs/{run['id']}/stream")
+
+    frames = _frames_of(response.text)
+    status = json.loads([frame for frame in frames if frame["event"] == "status"][-1]["data"])
+    assert status["status"] == "cancelled"
+    assert status["cancelling"] is False
+    assert status["error_category"] is None
     assert frames[-1]["event"] == "end"
 
 
