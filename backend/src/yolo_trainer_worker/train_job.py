@@ -14,18 +14,26 @@ import json
 import sys
 import time
 import traceback
+from collections.abc import Callable
 from pathlib import Path
 
 from yolo_trainer_common import layout
 from yolo_trainer_common.progress import (
+    EVENT_BATCH_PROGRESS,
     EVENT_FIT_EPOCH_END,
     EVENT_MODEL_SAVE,
     EVENT_TRAIN_END,
     EVENT_TRAIN_EPOCH_END,
+    EVENT_TRAIN_START,
+    SCHEMA_VERSION,
     jsonable,
 )
 
 _HASH_CHUNK = 1024 * 1024
+
+# At most one `batch_progress` line per this many seconds (plus the first and the last batch of
+# every epoch): a CPU epoch has hundreds of batches and the file is never rewritten (D-03, T-05-08).
+BATCH_EVENT_MIN_INTERVAL = 2.0
 
 
 def _parse_args(argv: list[str] | None) -> argparse.Namespace:
@@ -108,11 +116,128 @@ class ProgressWriter:
         self.path = path
 
     def emit(self, event: str, **fields: object) -> None:
-        record = jsonable({"event": event, "time": time.time(), **fields})
+        record = jsonable({"event": event, "time": time.time(), "v": SCHEMA_VERSION, **fields})
         line = json.dumps(record, ensure_ascii=False, allow_nan=False)
         with self.path.open("a", encoding="utf-8") as handle:
             handle.write(line + "\n")
             handle.flush()
+
+
+class TrainCallbacks(dict[str, Callable[[object], None]]):
+    """The Ultralytics callbacks of one run, keyed by callback name, plus the state they share."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.state: dict = {
+            "pending": False,
+            "last_epoch": 0,
+            "final_metrics": None,
+            "batch": 0,
+            "last_batch_emit": float("-inf"),
+        }
+
+
+def make_callbacks(
+    writer: ProgressWriter, clock: Callable[[], float] = time.monotonic
+) -> TrainCallbacks:
+    """Build the progress callbacks: one JSONL event per Ultralytics hook (schema v2, D-05).
+
+    `clock` is injectable so the batch throttle can be tested without sleeping. The returned
+    mapping's `state` carries what `result.json` needs (`final_metrics`, `last_epoch`).
+    """
+    callbacks = TrainCallbacks()
+    state = callbacks.state
+
+    def on_train_start(trainer) -> None:  # noqa: ANN001
+        writer.emit(
+            EVENT_TRAIN_START,
+            epochs=trainer.epochs,
+            start_epoch=trainer.start_epoch,
+            resumed=bool(trainer.resume),
+            nb=len(trainer.train_loader),
+        )
+
+    def on_train_epoch_start(trainer) -> None:  # noqa: ANN001
+        # `on_train_batch_end` receives only the trainer, so the batch index is counted here.
+        # The first batch of every epoch is reported at once, so the bar restarts promptly.
+        state["batch"] = 0
+        state["last_batch_emit"] = float("-inf")
+
+    def on_train_batch_end(trainer) -> None:  # noqa: ANN001
+        state["batch"] += 1
+        now = clock()
+        nb = len(trainer.train_loader)
+        if state["batch"] >= nb or now - state["last_batch_emit"] >= BATCH_EVENT_MIN_INTERVAL:
+            state["last_batch_emit"] = now
+            # No loss payload: reading it would force a GPU sync on every batch (D-03).
+            writer.emit(
+                EVENT_BATCH_PROGRESS,
+                epoch=trainer.epoch + 1,
+                epochs=trainer.epochs,
+                batch=state["batch"],
+                nb=nb,
+            )
+
+    def on_train_epoch_end(trainer) -> None:  # noqa: ANN001
+        state["pending"] = True
+        state["last_epoch"] = trainer.epoch + 1
+        writer.emit(
+            EVENT_TRAIN_EPOCH_END,
+            epoch=trainer.epoch + 1,
+            epochs=trainer.epochs,
+            tloss=trainer.tloss,
+        )
+
+    def on_fit_epoch_end(trainer) -> None:  # noqa: ANN001
+        # Ultralytics fires this once more after training, with the validation of best.pt;
+        # it follows no on_train_epoch_end, so the pending flag tells it apart (D-12).
+        final = not state["pending"]
+        state["pending"] = False
+        metrics = dict(trainer.metrics)
+        if final:
+            state["final_metrics"] = metrics
+        if final:
+            writer.emit(
+                EVENT_FIT_EPOCH_END,
+                epoch=state["last_epoch"],
+                epochs=trainer.epochs,
+                final_validation=True,
+                metrics=metrics,
+            )
+            return
+        # `trainer.stop` is already True on the last real epoch (final or early stop), so the UI
+        # can say "Final validation" before the final event arrives (D-04).
+        writer.emit(
+            EVENT_FIT_EPOCH_END,
+            epoch=trainer.epoch + 1,
+            epochs=trainer.epochs,
+            final_validation=False,
+            metrics=metrics,
+            last_epoch=bool(trainer.stop),
+            fitness=trainer.fitness,
+        )
+
+    def on_model_save(trainer) -> None:  # noqa: ANN001
+        writer.emit(
+            EVENT_MODEL_SAVE,
+            epoch=trainer.epoch + 1,
+            last=str(trainer.last),
+            best=str(trainer.best),
+        )
+
+    def on_train_end(trainer) -> None:  # noqa: ANN001
+        writer.emit(EVENT_TRAIN_END, best=str(trainer.best), last=str(trainer.last))
+
+    callbacks.update(
+        on_train_start=on_train_start,
+        on_train_epoch_start=on_train_epoch_start,
+        on_train_batch_end=on_train_batch_end,
+        on_train_epoch_end=on_train_epoch_end,
+        on_fit_epoch_end=on_fit_epoch_end,
+        on_model_save=on_model_save,
+        on_train_end=on_train_end,
+    )
+    return callbacks
 
 
 def _train(args: argparse.Namespace) -> None:
@@ -135,50 +260,10 @@ def _train(args: argparse.Namespace) -> None:
     weights = _resolve_weights(data_dir, job["base"])
     model = YOLO(str(weights))
 
-    writer = ProgressWriter(run_directory / layout.PROGRESS_FILE)
-    state: dict = {"pending": False, "last_epoch": 0, "final_metrics": None}
-
-    def on_train_epoch_end(trainer) -> None:  # noqa: ANN001
-        state["pending"] = True
-        state["last_epoch"] = trainer.epoch + 1
-        writer.emit(
-            EVENT_TRAIN_EPOCH_END,
-            epoch=trainer.epoch + 1,
-            epochs=trainer.epochs,
-            tloss=trainer.tloss,
-        )
-
-    def on_fit_epoch_end(trainer) -> None:  # noqa: ANN001
-        # Ultralytics fires this once more after training, with the validation of best.pt;
-        # it follows no on_train_epoch_end, so the pending flag tells it apart (D-12).
-        final = not state["pending"]
-        state["pending"] = False
-        metrics = dict(trainer.metrics)
-        if final:
-            state["final_metrics"] = metrics
-        writer.emit(
-            EVENT_FIT_EPOCH_END,
-            epoch=state["last_epoch"] if final else trainer.epoch + 1,
-            epochs=trainer.epochs,
-            final_validation=final,
-            metrics=metrics,
-        )
-
-    def on_model_save(trainer) -> None:  # noqa: ANN001
-        writer.emit(
-            EVENT_MODEL_SAVE,
-            epoch=trainer.epoch + 1,
-            last=str(trainer.last),
-            best=str(trainer.best),
-        )
-
-    def on_train_end(trainer) -> None:  # noqa: ANN001
-        writer.emit(EVENT_TRAIN_END, best=str(trainer.best), last=str(trainer.last))
-
-    model.add_callback("on_train_epoch_end", on_train_epoch_end)
-    model.add_callback("on_fit_epoch_end", on_fit_epoch_end)
-    model.add_callback("on_model_save", on_model_save)
-    model.add_callback("on_train_end", on_train_end)
+    callbacks = make_callbacks(ProgressWriter(run_directory / layout.PROGRESS_FILE))
+    for name, callback in callbacks.items():
+        model.add_callback(name, callback)
+    state = callbacks.state
 
     model.train(
         data=str(layout.dataset_dir(data_dir, job["run_id"]) / layout.DATA_YAML),

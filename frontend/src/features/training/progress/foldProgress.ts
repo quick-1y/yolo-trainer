@@ -31,6 +31,22 @@ export interface PrimaryMetrics {
   map50_95?: number | null;
 }
 
+/** The latest in-epoch progress: the batch counter of one epoch and when it was reported. */
+export interface BatchState {
+  epoch: number;
+  batch: number;
+  nb: number;
+  /** Event time, seconds since the Unix epoch; null when the frame carried none. */
+  time: number | null;
+}
+
+export interface SegmentEpochEnd {
+  epoch: number;
+  time: number;
+}
+
+export type RunPhase = "training" | "final_validation";
+
 export interface ProgressState {
   /** One row per finished epoch, sorted by epoch; the final validation is never a row. */
   rows: ChartRow[];
@@ -42,6 +58,16 @@ export interface ProgressState {
   finalMetrics: PrimaryMetrics | null;
   /** The latest planned total of epochs seen in the events. */
   epochs: number | null;
+  /** `final_validation` from the last real epoch (or a legacy run at its last epoch) onward. */
+  phase: RunPhase;
+  /** The newest `batch_progress` of the current segment; null before the first one. */
+  batch: BatchState | null;
+  /** Event time of the current segment's `train_start` (seconds), null when unknown. */
+  segmentStart: number | null;
+  /** The epochs finished inside the current segment, in order, with their event times. */
+  segmentEpochEnds: SegmentEpochEnd[];
+  /** `start_epoch` of the current segment when it is a resume, else null. */
+  resumedFrom: number | null;
 }
 
 /** The parsed `data` of a `progress` frame: one line of progress.jsonl, enriched. */
@@ -50,6 +76,13 @@ export interface ProgressFrame {
   epoch?: number;
   epochs?: number;
   final_validation?: boolean;
+  last_epoch?: boolean;
+  /** Schema version; absent on files written before Phase 5. */
+  v?: number;
+  /** Event time in seconds since the Unix epoch. */
+  time?: number;
+  batch?: number;
+  nb?: number;
   start_epoch?: number;
   resumed?: boolean;
   fitness?: number;
@@ -65,6 +98,11 @@ export const initialProgressState: ProgressState = {
   resumeBoundaries: [],
   finalMetrics: null,
   epochs: null,
+  phase: "training",
+  batch: null,
+  segmentStart: null,
+  segmentEpochEnds: [],
+  resumedFrom: null,
 };
 
 function numberOrNull(value: unknown): number | null {
@@ -147,26 +185,51 @@ export function foldProgress(state: ProgressState, frame: ProgressFrame): Progre
 
   if (frame.event === "train_start") {
     const start = numberOrNull(frame.start_epoch);
+    // Every train_start opens a new segment: the batch bar, the ETA window and the phase restart.
+    const segment = {
+      phase: "training" as const,
+      batch: null,
+      segmentStart: numberOrNull(frame.time),
+      segmentEpochEnds: [],
+    };
     if (start === null) {
-      return epochs === state.epochs ? state : { ...state, epochs };
+      return { ...state, ...segment, resumedFrom: null, epochs };
     }
     // Rows above the checkpoint epoch belong to an interrupted attempt; the resume redoes them.
+    const resumed = frame.resumed === true;
     const resumeBoundaries =
-      frame.resumed === true && !state.resumeBoundaries.includes(start)
+      resumed && !state.resumeBoundaries.includes(start)
         ? [...state.resumeBoundaries, start].sort((a, b) => a - b)
         : state.resumeBoundaries;
     return {
       ...state,
+      ...segment,
       rows: state.rows.filter((row) => row.epoch <= start),
       resumeBoundaries,
+      resumedFrom: resumed ? start : null,
       epochs,
     };
   }
 
+  if (frame.event === "batch_progress") {
+    const { epoch, batch, nb } = frame;
+    if (!validEpoch(epoch) || !validEpoch(batch) || !validEpoch(nb)) {
+      return epochs === state.epochs ? state : { ...state, epochs };
+    }
+    // Only the newest report counts; a new epoch number replaces it, so the bar restarts at 0.
+    return { ...state, batch: { epoch, batch, nb, time: numberOrNull(frame.time) }, epochs };
+  }
+
   if (frame.event === "train_epoch_end" && validEpoch(frame.epoch)) {
     const trainParts = parts(frame.tloss, null);
+    const epoch = frame.epoch;
+    const time = numberOrNull(frame.time);
     return {
       ...state,
+      segmentEpochEnds:
+        time === null
+          ? state.segmentEpochEnds
+          : [...state.segmentEpochEnds.filter((end) => end.epoch !== epoch), { epoch, time }],
       rows: upsert(state.rows, frame.epoch, (row) => ({
         ...row,
         trainParts,
@@ -182,6 +245,7 @@ export function foldProgress(state: ProgressState, frame: ProgressFrame): Progre
     if (frame.final_validation === true) {
       return {
         ...state,
+        phase: "final_validation",
         finalMetrics: {
           precision: numberOrNull(primary.precision),
           recall: numberOrNull(primary.recall),
@@ -195,8 +259,14 @@ export function foldProgress(state: ProgressState, frame: ProgressFrame): Progre
       return state;
     }
     const valParts = parts(frame.metrics, "val/");
+    // The last real epoch (final or early stop) is followed by the final validation, never by
+    // another epoch (D-04). A Phase 4 file has no `last_epoch`: its last planned epoch says it.
+    const lastReal =
+      frame.last_epoch === true ||
+      (frame.v === undefined && epochs !== null && frame.epoch >= epochs);
     return {
       ...state,
+      phase: lastReal ? "final_validation" : state.phase,
       rows: upsert(state.rows, frame.epoch, (row) => ({
         ...row,
         valParts,

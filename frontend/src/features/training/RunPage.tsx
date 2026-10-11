@@ -13,7 +13,7 @@ import {
   Title,
   VisuallyHidden,
 } from "@mantine/core";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Trans, useTranslation } from "react-i18next";
 import { Link, useOutletContext, useParams } from "react-router-dom";
 
@@ -21,11 +21,14 @@ import { ApiError } from "../../api/client";
 import type { Project } from "../../api/projects";
 import { modelDownloadUrl, useRun } from "../../api/training";
 import type { RunDetail, RunStatus } from "../../api/training";
+import { BatchProgress } from "./progress/BatchProgress";
+import { estimateRemainingSeconds } from "./progress/eta";
+import type { ProgressState } from "./progress/foldProgress";
 import { RunCharts } from "./progress/RunCharts";
 import { useRunStream } from "./progress/useRunStream";
+import { FinalResultsCard } from "./FinalResultsCard";
 import { RemoveFromQueueModal } from "./RemoveFromQueueModal";
 import { RunFailureLog } from "./RunFailureLog";
-import { RunMetrics } from "./RunMetrics";
 import { RunSettingsCard } from "./RunSettingsCard";
 import { RunStatusBadge } from "./RunStatusBadge";
 
@@ -94,7 +97,7 @@ export function RunPage() {
     runId === null || (query.error instanceof ApiError && query.error.status === 404);
   if (isNotFound) {
     return (
-      <Stack gap="sm" align="flex-start" maw={960}>
+      <Stack gap={8} align="flex-start" maw={960}>
         <Title order={2}>{t("training:run.notFound.title")}</Title>
         <Text size="sm" c="dark.1">
           {t("training:run.notFound.body")}
@@ -165,7 +168,8 @@ export function RunPage() {
           </Button>
         ) : null}
       </Group>
-      <StatusCard run={run} />
+      <StatusCard run={run} progress={progress} />
+      <FinalResultsCard run={run} finalMetrics={progress.finalMetrics} />
       {streamEnabled ? (
         <RunCharts
           progress={progress}
@@ -267,7 +271,7 @@ function CancelledAlert() {
   );
 }
 
-function StatusCard({ run }: { run: RunDetail }) {
+function StatusCard({ run, progress }: { run: RunDetail; progress: ProgressState }) {
   if (run.status === "failed") {
     return <FailedAlert run={run} />;
   }
@@ -282,7 +286,7 @@ function StatusCard({ run }: { run: RunDetail }) {
       <Stack gap={16}>
         {run.status === "preparing" ? <PreparingBody /> : null}
         {run.status === "queued" ? <QueuedBody run={run} /> : null}
-        {run.status === "running" ? <RunningBody run={run} /> : null}
+        {run.status === "running" ? <RunningBody run={run} progress={progress} /> : null}
         {run.status === "completed" ? <CompletedBody run={run} /> : null}
       </Stack>
     </Paper>
@@ -318,13 +322,20 @@ function QueuedBody({ run }: { run: RunDetail }) {
   );
 }
 
-function RunningBody({ run }: { run: RunDetail }) {
+function RunningBody({ run, progress }: { run: RunDetail; progress: ProgressState }) {
   const { t, i18n } = useTranslation("training");
   const elapsed = useElapsedSeconds(run.started_at, true);
   const epochs = run.epochs;
   const hasEpoch = run.epoch !== null && epochs !== null && epochs > 0;
-  // The final validation emits one more event than there are epochs; never show Y+1 (D-12).
-  const shown = hasEpoch ? Math.min(run.epoch as number, epochs as number) : 0;
+  const lastRowEpoch = progress.rows.length > 0 ? progress.rows[progress.rows.length - 1].epoch : 0;
+  // The run query is polled slowly while the stream is healthy: once the stream says the last
+  // real epoch is done, trust its epoch. The final validation emits one more event than there
+  // are epochs; never show Y+1 (D-12).
+  const reached =
+    progress.phase === "final_validation"
+      ? Math.max(run.epoch ?? 0, lastRowEpoch)
+      : (run.epoch ?? 0);
+  const shown = hasEpoch ? Math.min(reached, epochs as number) : 0;
   const map50 =
     run.last_map50 === null
       ? "—"
@@ -332,6 +343,27 @@ function RunningBody({ run }: { run: RunDetail }) {
           minimumFractionDigits: 3,
           maximumFractionDigits: 3,
         }).format(run.last_map50);
+  // Recomputed only when a batch or epoch event changes `progress`; the clock tick above
+  // re-renders every second but never changes the estimate (D-03).
+  const eta = useMemo(() => estimateRemainingSeconds(progress), [progress]);
+  const batch = progress.batch;
+  // After the last real epoch (or, for a Phase 4 run, at epoch = epochs) the run only validates
+  // best.pt: no batch bar, no ETA, the epoch bar stays full (D-04).
+  const finalPhase = progress.phase === "final_validation" || (hasEpoch && shown >= (epochs as number));
+  // "Time left: —" is only meaningful next to an epoch headline; Starting shows an ETA once known.
+  const etaText = finalPhase
+    ? null
+    : eta !== null
+      ? t("run.running.eta", { time: formatClock(eta) })
+      : hasEpoch
+        ? t("run.running.etaUnknown")
+        : null;
+  const headlineRight = [
+    elapsed !== null ? t("run.running.elapsed", { time: formatClock(elapsed) }) : null,
+    etaText,
+  ]
+    .filter((part): part is string => part !== null)
+    .join(" · ");
 
   return (
     <>
@@ -346,14 +378,19 @@ function RunningBody({ run }: { run: RunDetail }) {
             <Text fw={600}>{t("run.running.starting")}</Text>
           </Group>
         )}
-        {elapsed !== null ? (
-          <Text size="sm" c="dark.1" style={TABULAR}>
-            {t("run.running.elapsed", { time: formatClock(elapsed) })}
+        {headlineRight !== "" ? (
+          <Text size="sm" c="dark.1" style={{ ...TABULAR, ...ONE_LINE, flexShrink: 0 }}>
+            {headlineRight}
           </Text>
         ) : null}
       </Group>
-      {hasEpoch ? (
-        <Stack gap={4}>
+      {!hasEpoch ? (
+        <Text size="sm" c="dark.1">
+          {t("run.running.startingHint")}
+        </Text>
+      ) : null}
+      <Stack gap={8}>
+        {hasEpoch ? (
           <Progress.Root
             size={8}
             role="progressbar"
@@ -362,32 +399,40 @@ function RunningBody({ run }: { run: RunDetail }) {
             aria-valuenow={shown}
             aria-live="off"
           >
-            <Progress.Section value={(shown / (epochs as number)) * 100} withAria={false} />
+            <Progress.Section
+              value={finalPhase ? 100 : (shown / (epochs as number)) * 100}
+              withAria={false}
+            />
           </Progress.Root>
-          <Group justify="space-between" wrap="nowrap">
-            <Text size="xs" c="dark.1" style={TABULAR}>
-              {t("run.running.map50", { value: map50 })}
-            </Text>
+        ) : null}
+        {finalPhase ? (
+          <Stack gap={4}>
+            <Group gap={8} wrap="nowrap">
+              <Loader size={12} />
+              <Text fz={14} fw={600}>
+                {t("run.running.finalValidation")}
+              </Text>
+            </Group>
             <Text size="xs" c="dark.1">
-              {t("run.running.closeHint")}
+              {t("run.running.finalValidationHint")}
             </Text>
-          </Group>
-          {shown >= (epochs as number) ? (
-            <Text size="sm" c="dark.1">
-              {t("run.running.finishing")}
-            </Text>
-          ) : null}
-        </Stack>
-      ) : (
-        <>
-          <Text size="sm" c="dark.1">
-            {t("run.running.startingHint")}
+          </Stack>
+        ) : batch !== null ? (
+          <BatchProgress batch={batch} map50={map50} />
+        ) : hasEpoch ? (
+          <Text size="xs" c="dark.1" style={TABULAR}>
+            {t("run.running.map50", { value: map50 })}
           </Text>
-          <Text size="xs" c="dark.1">
-            {t("run.running.closeHint")}
+        ) : null}
+        <Text size="xs" c="dark.1">
+          {t("run.running.closeHint")}
+        </Text>
+        {progress.resumedFrom !== null ? (
+          <Text size="xs" c="dark.1" style={TABULAR}>
+            {t("run.running.resumedNote", { epoch: progress.resumedFrom })}
           </Text>
-        </>
-      )}
+        ) : null}
+      </Stack>
     </>
   );
 }
@@ -418,7 +463,11 @@ function CompletedBody({ run }: { run: RunDetail }) {
           </Text>
         ) : null}
       </Group>
-      <RunMetrics run={run} />
+      {run.epoch !== null && run.epochs !== null && run.epoch < run.epochs ? (
+        <Text size="sm" c="dark.1" style={TABULAR}>
+          {t("run.completed.earlyStop", { epoch: run.epoch, epochs: run.epochs })}
+        </Text>
+      ) : null}
       {model !== null ? (
         <>
           <Divider />

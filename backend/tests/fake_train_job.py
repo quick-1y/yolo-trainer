@@ -18,16 +18,26 @@ from pathlib import Path
 
 BEST_BYTES = b"fake-best-weights"
 LAST_BYTES = b"fake-last-weights-differ"
+BATCHES_PER_EPOCH = 4
 
 
 def _emit(run_dir: Path, event: str, **fields: object) -> None:
-    line = json.dumps({"event": event, "time": time.time(), **fields})
+    line = json.dumps({"event": event, "time": time.time(), "v": 2, **fields})
     with (run_dir / "progress.jsonl").open("a", encoding="utf-8") as handle:
         handle.write(line + "\n")
         handle.flush()
 
 
 def _real_epoch(run_dir: Path, epoch: int, epochs: int, map50: float) -> None:
+    for batch in range(1, BATCHES_PER_EPOCH + 1):
+        _emit(
+            run_dir,
+            "batch_progress",
+            epoch=epoch,
+            epochs=epochs,
+            batch=batch,
+            nb=BATCHES_PER_EPOCH,
+        )
     _emit(run_dir, "train_epoch_end", epoch=epoch, epochs=epochs, tloss={"box_loss": 1.0})
     _emit(
         run_dir,
@@ -35,6 +45,8 @@ def _real_epoch(run_dir: Path, epoch: int, epochs: int, map50: float) -> None:
         epoch=epoch,
         epochs=epochs,
         final_validation=False,
+        last_epoch=epoch == epochs,
+        fitness=map50 - 0.2,
         metrics={"metrics/mAP50(B)": map50, "val/box_loss": 1.5},
     )
 
@@ -62,6 +74,14 @@ def main() -> int:
         return 1
 
     epochs = 2
+    _emit(
+        run_dir,
+        "train_start",
+        epochs=epochs,
+        start_epoch=0,
+        resumed=False,
+        nb=BATCHES_PER_EPOCH,
+    )
     _real_epoch(run_dir, 1, epochs, 0.5)
     if args.mode == "sleep":
         time.sleep(60)

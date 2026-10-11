@@ -50,13 +50,19 @@
       "startingHint": "The first use of an official model downloads its weights.",
       "epoch": "Epoch {{epoch}} of {{epochs}}",
       "elapsed": "Elapsed: {{time}}",
+      "eta": "Time left: ~{{time}}",
+      "etaUnknown": "Time left: —",
+      "batch": "Batch {{batch}} of {{total}}",
+      "resumedNote": "Resumed from epoch {{epoch}}.",
       "map50": "Latest mAP50: {{value}}",
-      "finishing": "Finishing: validating the best model and registering it.",
+      "finalValidation": "Final validation…",
+      "finalValidationHint": "Checking the best model on the validation images. The model is registered right after.",
       "closeHint": "You can close this page. Training continues in the background."
     },
     "completed": {
       "title": "Training complete",
-      "duration": "Duration: {{time}}"
+      "duration": "Duration: {{time}}",
+      "earlyStop": "Training stopped early at epoch {{epoch}} of {{epochs}} because the metrics stopped improving."
     },
     "failed": {
       "title": "Training failed",
@@ -246,5 +252,9 @@
     "full": "Training: {{project}} / {{run}}, epoch {{epoch}}/{{epochs}}",
     "starting": "Training: {{project}} / {{run}}, starting",
     "short": "{{epoch}}/{{epochs}}"
+  },
+  "finalResults": {
+    "title": "Final results (best.pt)",
+    "caption": "Final validation of the best checkpoint on the validation images."
   }
 }
