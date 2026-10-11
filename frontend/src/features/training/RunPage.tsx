@@ -162,7 +162,9 @@ export function RunPage() {
         ) : null}
       </Group>
       <StatusCard run={run} />
-      {progress.rows.length > 0 ? <RunCharts progress={progress} /> : null}
+      {progress.rows.length > 0 ? (
+        <RunCharts progress={progress} epochs={run.epochs ?? run.settings.epochs} />
+      ) : null}
       <RunSettingsCard run={run} />
       <StatusAnnouncer status={run.status} />
       {run.status === "queued" ? (
