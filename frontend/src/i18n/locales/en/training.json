@@ -99,6 +99,10 @@
       "body": "Training will stop at epoch {{epoch}}. You can resume it from the last checkpoint.",
       "note": "The epoch in progress is not saved."
     },
+    "resume": {
+      "open": "Resume training",
+      "done": "Run \"{{name}}\" was queued to resume."
+    },
     "remove": {
       "open": "Remove from queue",
       "title": "Remove from queue",

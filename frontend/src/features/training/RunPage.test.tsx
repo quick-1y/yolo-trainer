@@ -1078,7 +1078,7 @@ describe("RunPage failed run", () => {
 });
 
 describe("RunPage interrupted and cancelled runs", () => {
-  it("explains a restart, the last epoch and offers a new run (no resume)", async () => {
+  it("explains a restart, the last epoch and offers a new run", async () => {
     stubTrainingApi({
       run: makeRun({
         id: 7,
@@ -1102,7 +1102,6 @@ describe("RunPage interrupted and cancelled runs", () => {
       "href",
       "/projects/1/training/new",
     );
-    expect(screen.queryByRole("button", { name: /resume/i })).toBeNull();
   });
 
   it("omits the epoch line when the epoch is unknown", async () => {
@@ -1473,5 +1472,201 @@ describe("RunPage cancel training", () => {
       ),
     ).toBeInTheDocument();
     expect(within(dialog).getByRole("button", { name: "Продолжить обучение" })).toBeInTheDocument();
+  });
+});
+
+function resumable(status: "interrupted" | "cancelled" | "failed", overrides = {}) {
+  return makeRun({
+    id: 7,
+    name: "run-7",
+    status,
+    queue_position: null,
+    epoch: 3,
+    epochs: 10,
+    started_at: STARTED_AT,
+    finished_at: "2026-01-15T10:20:00Z",
+    can_resume: true,
+    resume_epoch: 3,
+    ...(status === "failed"
+      ? { error_message: "CUDA out of memory.", error_category: "out_of_memory" }
+      : {}),
+    ...overrides,
+  });
+}
+
+describe("RunPage resume training", () => {
+  it.each(["interrupted", "cancelled"] as const)(
+    "shows a filled Resume training button for a %s run",
+    async (status) => {
+      stubTrainingApi({ run: resumable(status) });
+      renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+
+      const button = await screen.findByRole("button", { name: "Resume training" });
+      expect(button).toBeEnabled();
+      expect(button).toHaveAttribute("data-variant", "filled");
+    },
+  );
+
+  it("shows Resume training with the default variant for a failed run", async () => {
+    stubTrainingApi({ run: resumable("failed") });
+    renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+
+    const button = await screen.findByRole("button", { name: "Resume training" });
+    expect(button).toBeEnabled();
+    expect(button).toHaveAttribute("data-variant", "default");
+  });
+
+  it("disables the button, but keeps it, when the run cannot be resumed", async () => {
+    stubTrainingApi({ run: resumable("cancelled", { can_resume: false }) });
+    renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+
+    expect(await screen.findByRole("button", { name: "Resume training" })).toBeDisabled();
+  });
+
+  it("offers no Resume training for preparing, queued, running or completed runs", async () => {
+    for (const status of ["preparing", "queued", "running", "completed"] as const) {
+      stubTrainingApi({
+        run: makeRun({ id: 7, name: "run-7", status, queue_position: null, can_resume: false }),
+      });
+      const view = renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+      await screen.findByText("Settings used");
+      expect(screen.queryByRole("button", { name: "Resume training" })).toBeNull();
+      view.unmount();
+    }
+  });
+
+  it("queues the run, shows a loader while it waits and a green notification afterwards", async () => {
+    let release: () => void = () => undefined;
+    const resumeGate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const stub = stubTrainingApi({
+      run: resumable("cancelled"),
+      resumeGate,
+      resumeResult: makeRun({
+        id: 7,
+        name: "run-7",
+        status: "queued",
+        queue_position: 1,
+        epoch: 3,
+        epochs: 10,
+        resume_count: 1,
+        resume_epoch: 3,
+        started_at: STARTED_AT,
+      }),
+    });
+    const view = renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+
+    const button = await screen.findByRole("button", { name: "Resume training" });
+    await view.user.click(button);
+
+    expect(stub.resumes).toEqual(["/api/projects/1/runs/7/resume"]);
+    await waitFor(() => expect(button).toHaveAttribute("data-loading", "true"));
+    // a second click while the request is in flight sends nothing more
+    await view.user.click(button);
+    expect(stub.resumes).toHaveLength(1);
+    expect(notifications.show).not.toHaveBeenCalled();
+
+    release();
+
+    expect(await screen.findByText("In queue: position 1")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Resume training" })).toBeNull();
+    expect(notifications.show).toHaveBeenCalledTimes(1);
+    expect(notifications.show).toHaveBeenCalledWith(
+      expect.objectContaining({
+        color: "green",
+        message: 'Run "run-7" was queued to resume.',
+      }),
+    );
+  });
+
+  it("shows a red notification with the API message on a rejection and leaves the page unchanged", async () => {
+    const stub = stubTrainingApi({
+      run: resumable("interrupted"),
+      resumeStatus: 422,
+      resumeDetail: "No GPU is available.",
+    });
+    const view = renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+
+    await view.user.click(await screen.findByRole("button", { name: "Resume training" }));
+
+    await waitFor(() =>
+      expect(notifications.show).toHaveBeenCalledWith(
+        expect.objectContaining({
+          color: "red",
+          title: "Error",
+          message: "No GPU is available.",
+        }),
+      ),
+    );
+    expect(stub.resumes).toHaveLength(1);
+    expect(screen.getByText("Run interrupted")).toBeInTheDocument();
+    // the button is usable again for another try
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Resume training" })).not.toHaveAttribute(
+        "data-loading",
+      ),
+    );
+    expect(screen.getByRole("button", { name: "Resume training" })).toBeEnabled();
+    expect(notifications.show).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not wrap the header actions: the run name shrinks, the Russian label keeps its width", async () => {
+    stubTrainingApi({ run: resumable("cancelled", { name: "a-very-long-run-name".repeat(6) }) });
+    renderWithProviders(<AppRoutes />, { route: RUN_PATH, language: "ru" });
+
+    const button = await screen.findByRole("button", { name: "Возобновить обучение" });
+    expect(button).toHaveStyle({ flexShrink: "0" });
+    const header = button.parentElement as HTMLElement;
+    expect(header).toHaveStyle({ flexWrap: "nowrap" });
+    expect(screen.getByRole("heading", { level: 2 })).toHaveStyle({ textOverflow: "ellipsis" });
+  });
+
+  it("reopens the event stream from the start once the run is resumed", async () => {
+    let current = resumable("cancelled");
+    stubTrainingApi({
+      run: () => current,
+      resumeResult: makeRun({
+        id: 7,
+        name: "run-7",
+        status: "queued",
+        queue_position: 1,
+        epoch: 3,
+        epochs: 10,
+        resume_count: 1,
+        resume_epoch: 3,
+        started_at: STARTED_AT,
+      }),
+    });
+    const view = renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+    await act(async () => {
+      latestEventSource().open();
+      latestEventSource().emit("end", { status: "cancelled" });
+    });
+    current = makeRun({
+      id: 7,
+      name: "run-7",
+      status: "queued",
+      queue_position: 1,
+      resume_count: 1,
+      resume_epoch: 3,
+      started_at: STARTED_AT,
+    });
+
+    await view.user.click(await screen.findByRole("button", { name: "Resume training" }));
+
+    // the queued, resumed run keeps its charts: a second source replays the history
+    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(2));
+    expect(FakeEventSource.instances[0].readyState).toBe(FakeEventSource.CLOSED);
+    expect(latestEventSource().url).toBe("/api/projects/1/runs/7/stream");
+  });
+
+  it("opens no stream for a queued run that was never resumed", async () => {
+    stubTrainingApi({ run: queued() });
+    renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+
+    await screen.findByText("In queue: position 2");
+    expect(FakeEventSource.instances).toHaveLength(0);
   });
 });
