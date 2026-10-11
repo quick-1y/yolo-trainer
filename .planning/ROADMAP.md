@@ -18,7 +18,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 1: Runnable Skeleton & Projects** - Clean reproducible repo plus a `docker compose up` web app where the user creates and manages detect/segment projects (completed 2026-09-29)
 - [x] **Phase 2: Image Upload & Classes** - User uploads images from the browser, browses them in a fast grid, and defines the project's classes (completed 2026-10-03)
 - [x] **Phase 3: Box Annotation Editor** - User annotates images one by one with bounding boxes, autosave, undo/redo, shortcuts, and image status (completed 2026-10-04)
-- [ ] **Phase 4: Train & Download** - User splits the dataset, trains from the browser in a background worker, and downloads a working `.pt` (core loop complete)
+- [x] **Phase 4: Train & Download** - User splits the dataset, trains from the browser in a background worker, and downloads a working `.pt` (core loop complete) (completed 2026-10-11)
 - [ ] **Phase 5: Live Training Monitoring & Control** - User watches live metrics charts, cancels/resumes runs, sees run history and understandable failures
 - [ ] **Phase 6: Polygons & Segmentation Projects** - User annotates with polygons and click-to-segment, and segment projects train end-to-end
 - [ ] **Phase 7: Model Library** - User uploads their own `.pt`, manages models, gets task-type protection, and test-predicts on an image
@@ -220,7 +220,7 @@ Plans:
   4. When the run finishes, its model is registered automatically with metrics, classes, task type, and source run; the user downloads the `.pt`, and it loads and predicts via `YOLO(path)` in a plain Python script, the same way the downstream project uses `trained_models/best.pt`
   5. Each run stores a snapshot of its settings and the exact dataset (images, labels, splits, classes) it trained on; later annotation edits do not change what the run records it was trained with
 
-**Plans:** 11/11 plans executed
+**Plans:** 11/11 plans complete
 
 Plans:
 **Wave 1**
@@ -449,7 +449,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 1. Runnable Skeleton & Projects | 10/10 | Complete    | 2026-09-29 |
 | 2. Image Upload & Classes | 13/13 | Complete    | 2026-10-03 |
 | 3. Box Annotation Editor | 13/13 | Complete    | 2026-10-04 |
-| 4. Train & Download | 11/11 | In Progress | - |
+| 4. Train & Download | 11/11 | Complete    | 2026-10-11 |
 | 5. Live Training Monitoring & Control | 0/TBD | Not started | - |
 | 6. Polygons & Segmentation Projects | 0/TBD | Not started | - |
 | 7. Model Library | 0/TBD | Not started | - |

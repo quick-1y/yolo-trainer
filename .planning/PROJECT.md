@@ -29,6 +29,10 @@ The full loop works end-to-end in the browser: **upload images → annotate them
 - ✓ User can open images one by one from the grid in an annotation canvas, with grid-order prev/next, next-unannotated and per-image status (unannotated / annotated / background / reviewed) — Phase 3
 - ✓ User can draw, move, resize, reclassify and delete bounding boxes, with zoom/pan — Phase 3
 - ✓ Annotations autosave reliably (compare-and-swap versioning, retry with backoff, conflict detection), with per-image undo/redo and layout-independent keyboard shortcuts — Phase 3
+- ✓ Web UI backed by an API service; training runs in a separate DB-polled worker container, survives closing the browser and api restarts, worker restart marks the run interrupted — Phase 4
+- ✓ User can assign train/valid/test splits by hand (bulk or in the editor) or by a seeded, preview-then-confirm auto-split — Phase 4
+- ✓ User can start training from the browser with basic settings (base model, epochs, image size, batch, device) from an official auto-downloaded pretrained model or a model trained in the service — Phase 4
+- ✓ Finished runs register their model automatically (metrics, classes, task, source run); user downloads a `.pt` that loads and predicts via `YOLO(path)` in the downstream project — Phase 4
 
 ### Active
 
@@ -36,7 +40,6 @@ The full loop works end-to-end in the browser: **upload images → annotate them
 
 **Foundation & deployment**
 - [ ] Runs via `docker compose up` on Windows/Linux/macOS; CPU image works everywhere, GPU image uses NVIDIA GPU when present
-- [ ] Web UI (browser SPA) backed by an API service; training runs in a separate worker process/container so the UI stays responsive
 
 **Projects, classes, tags**
 - [ ] User can tag images (e.g. `night`, `rain`) and filter the image list by tags; tags are workflow metadata, never exported into label files
@@ -45,7 +48,6 @@ The full loop works end-to-end in the browser: **upload images → annotate them
 - [ ] User can import an existing YOLO-format dataset (e.g. a Roboflow export like `example_ready_dataset/`) including its labels and splits
 - [ ] User can point a project at a folder on disk (mounted into Docker) without uploading through the browser
 - [ ] Import validates label format and surfaces mixed box/polygon rows as an actionable warning (Phase 0 finding)
-- [ ] User can manage train/valid/test splits, with an explicit user-confirmed auto-split option
 - [ ] User can export the annotated dataset as a YOLO-format zip
 
 **Manual annotation**
@@ -58,14 +60,12 @@ The full loop works end-to-end in the browser: **upload images → annotate them
 - [ ] Optional iterative loop: annotate a subset → train → use that model to pre-annotate the rest → retrain
 
 **Models**
-- [ ] User can pick an official Ultralytics pretrained model (e.g. yolo11n/s/m, yolo26n) as a training base, auto-downloaded
 - [ ] User can upload their own `.pt` (e.g. existing `trained_models/best.pt`)
-- [ ] Models trained in the service are registered automatically and reusable for further fine-tuning and AI annotation
+- [ ] Models trained in the service are reusable for AI annotation (auto-registration and reuse for fine-tuning shipped in Phase 4)
 - [ ] Model task type is validated against project task type
-- [ ] User can download any trained `.pt`
 
 **Training**
-- [ ] User can start training from the browser with basic settings (base model, epochs, image size, batch, device) plus an "Advanced" section (lr0/lrf, patience, optimizer, augmentations, etc.)
+- [ ] User can tune training via an "Advanced" section (basic settings shipped in Phase 4) (lr0/lrf, patience, optimizer, augmentations, etc.)
 - [ ] User sees live progress (epoch, losses, mAP) with charts while training runs
 - [ ] User can cancel a running training job cleanly
 - [ ] Training history persists: past runs, their settings, final metrics, and resulting model
@@ -118,6 +118,8 @@ The full loop works end-to-end in the browser: **upload images → annotate them
 | Bulk image delete chunked client-side (1000 ids per request), backend cap kept | Keeps request-size limit while allowing arbitrary selections (UAT gap G-02-5) | ✓ Good (Phase 2) |
 | Annotation save = whole-set replace guarded by compare-and-swap `annotation_version`; status/box_count derived, never stored | Idempotent retries, stale tabs get 409 instead of overwriting; class delete re-versions affected images | ✓ Good (Phase 3) |
 | Unannotated and background stay distinct statuses | An unannotated image must never become an empty-label negative example | ✓ Good (Phase 3) |
+| Job queue = worker polls SQLite with an atomic claim; supervisor is the single writer of run state | No Redis/Celery; API container cannot spawn into the worker container; one run at a time | ✓ Good (Phase 4 UAT: api/worker restart mid-run) |
+| Each run trains on an immutable dataset snapshot; only annotated images with a split are used | Later edits never change what a run recorded; unannotated images never become negatives | ✓ Good (Phase 4) |
 | Existing `docs/roadmap.md` retained as detailed technical reference | Avoid losing research; GSD ROADMAP.md becomes the execution plan | — Pending |
 
 ## Evolution
@@ -138,4 +140,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-10-04 after Phase 3*
+*Last updated: 2026-10-11 after Phase 4*

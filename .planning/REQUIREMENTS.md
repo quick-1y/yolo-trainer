@@ -35,7 +35,7 @@ Detailed technical background for every category: `docs/roadmap.md`, `docs/phase
 - [ ] **DATA-02**: User can import an existing YOLO-format dataset (images + labels + `data.yaml`, e.g. a Roboflow export) including classes and splits
 - [ ] **DATA-03**: User can add images from a folder on disk mounted into the container without uploading through the browser
 - [ ] **DATA-04**: On import, user sees a validation report; mixed box/polygon label rows are surfaced as an actionable warning explaining what happens under `detect` vs `segment`
-- [ ] **DATA-05**: User can assign images to train/valid/test manually and run a user-confirmed automatic split by ratio
+- [x] **DATA-05**: User can assign images to train/valid/test manually and run a user-confirmed automatic split by ratio
 - [ ] **DATA-06**: User can see dataset statistics: image counts per split/status and object counts per class
 - [ ] **DATA-07**: User can export the project's dataset as a YOLO-format zip (images, labels, `data.yaml`) that trains directly with Ultralytics
 
@@ -63,20 +63,20 @@ Detailed technical background for every category: `docs/roadmap.md`, `docs/phase
 
 ### Models
 
-- [ ] **MODL-01**: User can choose an official Ultralytics pretrained model (detect/segment, multiple sizes) as a training base; weights download automatically on first use
+- [x] **MODL-01**: User can choose an official Ultralytics pretrained model (detect/segment, multiple sizes) as a training base; weights download automatically on first use
 - [ ] **MODL-02**: User can upload their own `.pt` file (e.g. existing `trained_models/best.pt`); its task type and class names are read and shown
-- [ ] **MODL-03**: Models produced by training are registered automatically with their metrics, classes, task type, and source run
-- [ ] **MODL-04**: User can download any registered model's `.pt`
+- [x] **MODL-03**: Models produced by training are registered automatically with their metrics, classes, task type, and source run
+- [x] **MODL-04**: User can download any registered model's `.pt`
 - [ ] **MODL-05**: The service prevents using a model whose task type doesn't match the project (for training base or AI assist) with a clear message
 - [ ] **MODL-06**: User can rename and delete registered models
 - [ ] **MODL-07**: User can upload a test image to any model and see its predictions drawn on the image
 
 ### Training
 
-- [ ] **TRAN-01**: User can start training for a project from the browser, choosing a base model and basic settings (epochs, image size, batch, device)
+- [x] **TRAN-01**: User can start training for a project from the browser, choosing a base model and basic settings (epochs, image size, batch, device)
 - [ ] **TRAN-02**: User can open an "Advanced" section to set further hyperparameters (lr0/lrf, patience, optimizer, augmentation parameters, etc.) with sensible defaults shown
-- [ ] **TRAN-03**: Each training run records a snapshot of the dataset state and settings it used, so it's reproducible
-- [ ] **TRAN-04**: Training runs in the background; the UI stays responsive and the job keeps running if the browser is closed
+- [x] **TRAN-03**: Each training run records a snapshot of the dataset state and settings it used, so it's reproducible
+- [x] **TRAN-04**: Training runs in the background; the UI stays responsive and the job keeps running if the browser is closed
 - [ ] **TRAN-05**: User sees live progress: current epoch, losses, and mAP metrics with charts updating in real time (final-validation event labeled correctly)
 - [ ] **TRAN-06**: User can cancel a running training job; the process stops cleanly and frees resources
 - [ ] **TRAN-07**: User can resume an interrupted/cancelled training run from its last checkpoint
@@ -148,7 +148,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | DATA-02 | Phase 9 | Pending |
 | DATA-03 | Phase 9 | Pending |
 | DATA-04 | Phase 9 | Pending |
-| DATA-05 | Phase 4 | Pending |
+| DATA-05 | Phase 4 | Complete |
 | DATA-06 | Phase 10 | Pending |
 | DATA-07 | Phase 9 | Pending |
 | ANNO-01 | Phase 2 | Complete |
@@ -167,17 +167,17 @@ Which phases cover which requirements. Updated during roadmap creation.
 | AI-03 | Phase 8 | Pending |
 | AI-04 | Phase 8 | Pending |
 | AI-05 | Phase 8 | Pending |
-| MODL-01 | Phase 4 | Pending |
+| MODL-01 | Phase 4 | Complete |
 | MODL-02 | Phase 7 | Pending |
-| MODL-03 | Phase 4 | Pending |
-| MODL-04 | Phase 4 | Pending |
+| MODL-03 | Phase 4 | Complete |
+| MODL-04 | Phase 4 | Complete |
 | MODL-05 | Phase 7 | Pending |
 | MODL-06 | Phase 7 | Pending |
 | MODL-07 | Phase 7 | Pending |
-| TRAN-01 | Phase 4 | Pending |
+| TRAN-01 | Phase 4 | Complete |
 | TRAN-02 | Phase 11 | Pending |
-| TRAN-03 | Phase 4 | Pending |
-| TRAN-04 | Phase 4 | Pending |
+| TRAN-03 | Phase 4 | Complete |
+| TRAN-04 | Phase 4 | Complete |
 | TRAN-05 | Phase 5 | Pending |
 | TRAN-06 | Phase 5 | Pending |
 | TRAN-07 | Phase 5 | Pending |

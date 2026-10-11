@@ -1,44 +1,44 @@
 ---
 gsd_state_version: "1.0"
-current_phase: 04
-current_phase_name: Train & Download
-status: executing
-stopped_at: Completed 04-01-PLAN.md
-last_updated: "2026-10-10T15:49:36.090Z"
-last_activity: 2026-10-10
-last_activity_desc: Phase 04 execution resumed (wave continue)
-state_head: c3f46925865ba87f03d9fa6c14046ef3e191c41d
+current_phase: 5
+current_phase_name: Live Training Monitoring & Control
+status: planning
+stopped_at: Phase 04 complete, ready to plan Phase 5
+last_updated: "2026-10-11T07:58:21.990Z"
+last_activity: 2026-10-11
+last_activity_desc: Phase 04 complete, transitioned to Phase 5
+state_head: 6dfcdf3fcfd79df1cf011daa1138956b236b0d6b
 progress:
   total_phases: 12
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 47
-  completed_plans: 41
-  percent: 25
+  completed_plans: 47
+  percent: 33
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-10-04)
+See: .planning/PROJECT.md (updated 2026-10-11)
 
 **Core value:** The full loop works end-to-end in the browser: upload images → annotate → train with configurable settings → download a working `.pt`
-**Current focus:** Phase 04 — Train & Download
+**Current focus:** Phase 5 — Live Training Monitoring & Control
 
 ## Current Position
 
-Phase: 04 (Train & Download) — EXECUTING
-Plan: 1 of 11
-Status: Executing Phase 04
-Last activity: 2026-10-10 — Phase 04 execution resumed (wave continue)
+Phase: 5 — Live Training Monitoring & Control
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-10-11 — Phase 04 complete, transitioned to Phase 5
 
-Progress: [███░░░░░░░] 25%
+Progress: [███░░░░░░░] 33%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 36
+- Total plans completed: 47
 - Average duration: -
 - Total execution time: 0.0 hours
 
@@ -49,6 +49,7 @@ Progress: [███░░░░░░░] 25%
 | 01 | 10 | - | - |
 | 02 | 13 | - | - |
 | 3 | 13 | - | - |
+| 04 | 11 | - | - |
 
 **Recent Trend:**
 
@@ -116,7 +117,7 @@ Recent decisions affecting current work:
 - [Phase 01]: check_cli_run_git_clean.py cleans up via rglob('hygiene-check') under runs/, not a fixed path — Ultralytics nests output as runs/<task>/<project>/<name>/ when project is already a relative runs/... path, matching the pre-existing runs/detect/runs/train/... nesting pattern
 - [Phase 01]: WorkerSettings.heartbeat_interval_seconds uses a pydantic validation_alias (WORKER_HEARTBEAT_INTERVAL_SECONDS) plus populate_by_name=True so both the env var and direct keyword construction work.
 - [Phase 01]: MSYS_NO_PATHCONV=1 must be scoped per-command in compose_smoke_test.sh, not exported globally - a global export broke the pre-existing curl -o /dev/null burst-write stage on Git Bash/Windows. Bug found and fixed while wiring the new worker torch/ultralytics-version and torch-free-api assertions (Rule 1).
-- [Phase 4 follow-up]: Ultralytics usage analytics must be disabled in the worker (settings.update sync=False or equivalent) before it runs real training/inference jobs - not yet live in Phase 1 since the worker only imports torch/ultralytics and heartbeats.
+- [Phase 1 → resolved in Phase 4]: Ultralytics usage analytics must be disabled in the worker (settings.update sync=False or equivalent) before it runs real training/inference jobs - not yet live in Phase 1 since the worker only imports torch/ultralytics and heartbeats.
 - [Phase 01]: Phase 01: changeAppLanguage uses a dynamic import of ./index inside language.ts to avoid a static circular dependency with index.ts (which imports resolveInitialLanguage/getStoredLanguage from language.ts).
 - [Phase 01]: Phase 01: T-07-02 threat mitigation (localStorage access resilience) required guarding BOTH the read (index.ts init) and write (changeAppLanguage) paths; only the write was guarded initially - fixed via getStoredLanguage().
 - [Phase 01]: pageNotFound.* keys added to the project i18n namespace (not common) for the generic 404 page, and both not-found views reuse project:notFound.back — avoids touching Plan 07's common locale files. — Plan 08 interface note: put new strings in the new project namespace; do not touch Plan 07's common files.
@@ -174,7 +175,6 @@ None yet.
 ### Blockers/Concerns
 
 - [Phase 12]: GPU-path acceptance (DEPL-02 and GPU memory freed after cancel) needs separate NVIDIA hardware, because the dev machine has none. It does not block Phases 1-11.
-- [Phase 4]: How jobs cross from the API container to the worker is undecided. The API cannot `Popen` into another container; resolve this during planning.
 - [Phase 6]: Prior research does not cover click-to-segment (SAM). It needs phase research on model choice and CPU latency.
 - [Phase 03 known limitations, accepted in UAT 2026-10-04]: a store-registry entry in conflict state counts as not dirty and can be evicted past MAX_ENTRIES = 30 (03-REVIEW WR-02); 408/429 on save are treated as rejections and resync instead of retrying (WR-03).
 - [Phase 03 UI review]: minor spacing follow-ups (ZoomOverlay gap 4 vs 8, background button icon gap, ClassPanel add-form spacing) — see 03-UI-REVIEW.md, 23/24.
@@ -197,6 +197,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-10-06T06:12:34.290Z
-Stopped at: Completed 04-01-PLAN.md
+Last session: 2026-10-11T08:00:00Z
+Stopped at: Phase 04 complete, ready to plan Phase 5
 Resume file: None
