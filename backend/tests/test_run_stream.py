@@ -431,6 +431,8 @@ def test_the_status_frame_says_cancelling_only_for_a_running_run_with_a_pending_
             epochs=10,
             error_category=None,
             cancel_requested_at=requested_at,
+            resume_count=0,
+            resume_epoch=None,
         )
 
     assert status_payload(row("running", stamp))["cancelling"] is True
@@ -440,6 +442,24 @@ def test_the_status_frame_says_cancelling_only_for_a_running_run_with_a_pending_
     # the timestamp itself never reaches the browser
     assert "cancel_requested_at" not in status_payload(row("running", stamp))
     assert TrainingRun.cancel_requested_at in STATUS_COLUMNS
+
+
+def test_the_status_frame_carries_the_resume_count_and_the_stored_resume_epoch() -> None:
+    row = SimpleNamespace(
+        status="queued",
+        epoch=2,
+        epochs=10,
+        error_category=None,
+        cancel_requested_at=None,
+        resume_count=2,
+        resume_epoch=2,
+    )
+
+    payload = status_payload(row)
+
+    assert (payload["resume_count"], payload["resume_epoch"]) == (2, 2)
+    assert TrainingRun.resume_count in STATUS_COLUMNS
+    assert TrainingRun.resume_epoch in STATUS_COLUMNS
 
 
 def test_the_status_frame_of_a_cancelled_run_reads_cancelled_without_a_category(

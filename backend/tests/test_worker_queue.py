@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import os
 import threading
+from datetime import UTC, datetime
 
 import pytest
 from fastapi.testclient import TestClient
@@ -181,3 +182,74 @@ def test_mark_cancelled_ends_only_a_running_run_without_error_fields(
         assert cancelled.error_category is None
         assert cancelled.log_tail == "last lines"
     assert queue.mark_cancelled(engine, running, "again") == 0  # idempotent: already cancelled
+
+
+def _set_queued_at(engine: Engine, run_id: int, stamp: datetime | None) -> None:
+    with engine.begin() as connection:
+        connection.execute(
+            update(TrainingRun).where(TrainingRun.id == run_id).values(queued_at=stamp)
+        )
+
+
+def test_claim_next_orders_by_when_a_run_became_queued_then_by_id(
+    client: TestClient, settings: Settings
+) -> None:
+    resumed, first, second = _queued_runs(client, (0, 0, 0))  # ids ascend in this order
+    engine = queue.create_worker_engine(worker_settings(settings))
+    day = datetime(2026, 10, 11, tzinfo=UTC)
+    _set_queued_at(engine, first, day.replace(hour=10, minute=0))
+    _set_queued_at(engine, second, day.replace(hour=10, minute=5))
+    _set_queued_at(engine, resumed, day.replace(hour=10, minute=10))  # oldest id, resumed last
+
+    claimed = []
+    for _ in range(3):
+        run_id = queue.claim_next(engine)
+        claimed.append(run_id)
+        _set_status(engine, run_id, "completed")
+
+    assert claimed == [first, second, resumed]
+
+
+def test_claim_next_falls_back_to_created_at_for_rows_without_queued_at(
+    client: TestClient, settings: Settings
+) -> None:
+    older, newer = _queued_runs(client, (0, 0))
+    engine = queue.create_worker_engine(worker_settings(settings))
+    _set_queued_at(engine, older, None)
+    _set_queued_at(engine, newer, None)
+
+    assert queue.claim_next(engine) == older
+    _set_status(engine, older, "completed")
+    assert queue.claim_next(engine) == newer
+
+
+def test_record_checkpoint_sets_and_clears_the_resume_epoch_of_a_running_run_only(
+    client: TestClient, settings: Settings
+) -> None:
+    running, waiting = _queued_runs(client, (0, 0))
+    engine = queue.create_worker_engine(worker_settings(settings))
+    assert queue.claim_next(engine) == running
+
+    assert queue.record_checkpoint(engine, running, 3) == 1
+    with Session(engine) as session:
+        assert session.get(TrainingRun, running).resume_epoch == 3
+    assert queue.record_checkpoint(engine, running, None) == 1
+    assert queue.record_checkpoint(engine, waiting, 1) == 0  # a queued run is never written
+    with Session(engine) as session:
+        assert session.get(TrainingRun, running).resume_epoch is None
+        assert session.get(TrainingRun, waiting).resume_epoch is None
+
+
+def test_load_run_reports_the_resume_count_the_stored_resolution_and_the_active_seconds(
+    client: TestClient, settings: Settings
+) -> None:
+    (run_id,) = _queued_runs(client, (0,))
+    engine = queue.create_worker_engine(worker_settings(settings))
+
+    fresh = queue.load_run(engine, run_id)
+    assert (fresh["resume_count"], fresh["resolved"], fresh["active_seconds"]) == (0, None, 0)
+
+    assert queue.claim_next(engine) == run_id
+    queue.record_start(engine, run_id, {"device": "cpu", "batch": 2, "workers": 0}, 123)
+    stored = queue.load_run(engine, run_id)
+    assert stored["resolved"] == {"device": "cpu", "batch": 2, "workers": 0}

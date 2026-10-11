@@ -71,6 +71,9 @@ export function makeRun(overrides: Json = {}): Json {
     error_message: null,
     error_category: null,
     cancelling: false,
+    resume_count: 0,
+    resume_epoch: null,
+    can_resume: false,
     log_tail: null,
     ...overrides,
   };
@@ -166,6 +169,14 @@ export interface StubTrainingOptions {
   cancelDetail?: string;
   /** The cancel answers only after this promise settles, so a test can look at the pending state. */
   cancelGate?: Promise<void>;
+  /** Status of POST /api/projects/1/runs/:id/resume (default 200); anything else answers `resumeDetail` as the error. */
+  resumeStatus?: number;
+  /** Body of a successful resume (default: the same run, queued, resumed once). */
+  resumeResult?: Json;
+  /** `detail` of a failed resume (default: the API's 409 message). */
+  resumeDetail?: string;
+  /** The resume answers only after this promise settles, so a test can look at the pending state. */
+  resumeGate?: Promise<void>;
   /** Body of POST /splits/auto/preview (default: 4 unassigned images -> Train 3, Valid 1). */
   splitPreview?: Json;
   /** Called when POST /splits/auto is applied, so a test can change what the options answer next. */
@@ -183,6 +194,8 @@ export interface StubTrainingApi {
   deletes: string[];
   /** Paths of every POST /api/projects/1/runs/:id/cancel, in order. */
   cancels: string[];
+  /** Paths of every POST /api/projects/1/runs/:id/resume, in order. */
+  resumes: string[];
   /** Parsed JSON bodies of every POST /api/projects/1/splits/auto (the apply call), in order. */
   splitApplies: Json[];
   /** "METHOD /path" of every request, in order. */
@@ -200,6 +213,7 @@ export function stubTrainingApi(stub: StubTrainingOptions = {}): StubTrainingApi
   const posts: Json[] = [];
   const deletes: string[] = [];
   const cancels: string[] = [];
+  const resumes: string[] = [];
   const splitApplies: Json[] = [];
   const requests: string[] = [];
 
@@ -239,6 +253,26 @@ export function stubTrainingApi(stub: StubTrainingOptions = {}): StubTrainingApi
         );
       }
       return json({ detail: stub.cancelDetail ?? "Only a running run can be cancelled." }, status);
+    }
+    if (method === "POST" && /^\/api\/projects\/1\/runs\/\d+\/resume$/.test(path)) {
+      resumes.push(path);
+      if (stub.resumeGate !== undefined) {
+        await stub.resumeGate;
+      }
+      const status = stub.resumeStatus ?? 200;
+      if (status === 200) {
+        return json(
+          stub.resumeResult ??
+            makeRun({ id: 7, name: "run-7", status: "queued", queue_position: 1, resume_count: 1 }),
+        );
+      }
+      return json(
+        {
+          detail:
+            stub.resumeDetail ?? "Only an interrupted, cancelled or failed run can be resumed.",
+        },
+        status,
+      );
     }
     const runMatch = /^\/api\/projects\/1\/runs\/(\d+)$/.exec(path);
     if (method === "DELETE" && runMatch !== null) {
@@ -308,6 +342,7 @@ export function stubTrainingApi(stub: StubTrainingOptions = {}): StubTrainingApi
     posts,
     deletes,
     cancels,
+    resumes,
     splitApplies,
     requests,
     count: (request) => requests.filter((entry) => entry === request).length,

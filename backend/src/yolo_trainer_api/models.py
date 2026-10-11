@@ -243,6 +243,22 @@ class TrainingRun(Base):
     cancel_requested_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # Resume bookkeeping (D-09..D-12). One row is reused across attempts: `resume_count` counts the
+    # resumes, `resume_epoch` is the epoch of the checkpoint `last.pt` holds (NULL when it is not
+    # known from the database), `queued_at` is when the run last became `queued` (the FIFO key, so
+    # a resumed run joins the END of the queue), `active_seconds` sums the finished running
+    # segments and `segment_started_at` opens the current one. `started_at` stays the first start.
+    resume_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0"
+    )
+    resume_epoch: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    queued_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    active_seconds: Mapped[float] = mapped_column(
+        Float, nullable=False, default=0.0, server_default="0"
+    )
+    segment_started_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     __table_args__ = (
         CheckConstraint(

@@ -28,6 +28,7 @@ import { RunCharts } from "./progress/RunCharts";
 import { useRunStream } from "./progress/useRunStream";
 import { FailureAlert } from "./FailureAlert";
 import { CancelRunModal } from "./CancelRunModal";
+import { ResumeButton } from "./ResumeButton";
 import { FinalResultsCard } from "./FinalResultsCard";
 import { RemoveFromQueueModal } from "./RemoveFromQueueModal";
 import { RunSettingsCard } from "./RunSettingsCard";
@@ -83,14 +84,17 @@ export function RunPage() {
   const [cancelOpened, setCancelOpened] = useState(false);
   const listPath = `/projects/${project.id}/training`;
   const streamStatus = query.data?.status;
+  const resumeCount = query.data?.resume_count ?? 0;
+  // A run that was never started has no history to show; a resumed one keeps its charts while it
+  // waits in the queue, and the stream reopens from the start whenever the run is resumed again.
   const streamEnabled =
     runId !== null &&
     streamStatus !== undefined &&
     streamStatus !== "preparing" &&
-    streamStatus !== "queued";
+    !(streamStatus === "queued" && resumeCount === 0);
   const { progress, connection, retry } = useRunStream(project.id, runId ?? 0, {
     enabled: streamEnabled,
-    resumeKey: 0,
+    resumeKey: resumeCount,
   });
   // The page polls slowly only while the stream is healthy; any other state falls back to 3 s.
   useEffect(() => setStreamHealthy(connection === "open"), [connection]);
@@ -168,6 +172,9 @@ export function RunPage() {
           <Button variant="light" color="red" onClick={() => setRemoveOpened(true)}>
             {t("training:run.remove.open")}
           </Button>
+        ) : null}
+        {run.status === "interrupted" || run.status === "cancelled" || run.status === "failed" ? (
+          <ResumeButton projectId={project.id} run={run} />
         ) : null}
         {run.status === "running" && !run.cancelling ? (
           <Button variant="light" color="red" onClick={() => setCancelOpened(true)}>

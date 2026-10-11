@@ -27,6 +27,9 @@ RESULT_FILE = "result.json"
 ERROR_FILE = "error.json"
 RESOLVED_FILE = "resolved.json"
 MANIFEST_FILE = "manifest.json"
+# The base weights of a run (`{"name", "sha256"}`), written by the first segment so a resumed
+# segment never needs the base model file again.
+BASE_FILE = "base.json"
 DATA_YAML = "data.yaml"
 
 

@@ -9,6 +9,12 @@ error.json), `oom` (exit 1, error.json with the out-of-memory category), `badcat
 error.json with a category outside the allow-list), `exit137` (exit 137, no error.json), `sleep`
 (one real epoch, then sleeps for a minute so a test can stop the worker). Every real epoch writes
 `weights/last.pt` and `weights/best.pt` and a `model_save` event, like Ultralytics does.
+
+`--resume` models a resumed segment of a 2-epoch run that had saved epoch 1: it refuses to start
+without `weights/last.pt` (error.json, category `not_resumable`, exit 1, like the real job), writes
+a `train_start` with `resumed` true and `start_epoch` 1, runs epoch 2 (the last one), the
+final-validation event, the weights and `result.json`, and exits 0. Mode `resume_hold` stops right
+after the `train_start` and sleeps, so a test can look at the run while a resumed segment is up.
 """
 
 from __future__ import annotations
@@ -73,6 +79,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--run-dir", required=True, type=Path)
     parser.add_argument("--mode", required=True)
+    parser.add_argument("--resume", action="store_true")
     args = parser.parse_args()
     run_dir: Path = args.run_dir
 
@@ -129,18 +136,32 @@ def main() -> int:
         return 137
 
     epochs = 2
+    if args.resume and not (run_dir / "out" / "train" / "weights" / "last.pt").is_file():
+        message = "The saved checkpoint is missing."
+        (run_dir / "error.json").write_text(
+            json.dumps(
+                {"type": "CheckpointError", "message": message, "category": "not_resumable"}
+            ),
+            encoding="utf-8",
+        )
+        return 1
     _emit(
         run_dir,
         "train_start",
         epochs=epochs,
-        start_epoch=0,
-        resumed=False,
+        start_epoch=1 if args.resume else 0,
+        resumed=args.resume,
         nb=BATCHES_PER_EPOCH,
     )
-    _real_epoch(run_dir, 1, epochs, 0.5)
-    if args.mode == "sleep":
-        time.sleep(60)
-        return 0
+    if args.resume:
+        if args.mode == "resume_hold":
+            time.sleep(60)
+            return 0
+    else:
+        _real_epoch(run_dir, 1, epochs, 0.5)
+        if args.mode == "sleep":
+            time.sleep(60)
+            return 0
 
     _real_epoch(run_dir, 2, epochs, 0.6)
     _emit(

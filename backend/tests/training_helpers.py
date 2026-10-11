@@ -198,8 +198,13 @@ def worker_settings(settings: Settings) -> WorkerSettings:
 def fake_command(mode: str) -> CommandBuilder:
     script = Path(__file__).with_name("fake_train_job.py")
 
-    def build(run_dir: Path, data_dir: Path, resolved: Resolved) -> list[str]:
-        return [sys.executable, str(script), "--run-dir", str(run_dir), "--mode", mode]
+    def build(
+        run_dir: Path, data_dir: Path, resolved: Resolved, *, resume: bool = False
+    ) -> list[str]:
+        command = [sys.executable, str(script), "--run-dir", str(run_dir), "--mode", mode]
+        if resume:
+            command.append("--resume")
+        return command
 
     return build
 

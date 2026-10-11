@@ -104,6 +104,10 @@ export interface RunSummary {
   error_category: string | null;
   /** True while a cancel of this running run waits for the worker to stop it (D-07). */
   cancelling: boolean;
+  /** How many times the run was resumed (D-09). */
+  resume_count: number;
+  /** The epoch of the checkpoint a resume continues from; null while it is not known. */
+  resume_epoch: number | null;
   /** Verdict on mAP50 computed by the server (null while there is no final mAP50). */
   quality: QualityLevel | null;
 }
@@ -116,6 +120,8 @@ export interface RunDetail extends RunSummary {
   metrics: RunMetrics | null;
   error_message: string | null;
   log_tail: string | null;
+  /** Detail only: the run is resumable and its checkpoint is not known to be finished or refused. */
+  can_resume: boolean;
 }
 
 export interface OfficialModelOption {
@@ -355,6 +361,23 @@ export function useCancelRun(projectId: number) {
   return useMutation({
     mutationFn: (runId: number) =>
       apiRequest<RunDetail>(`/projects/${projectId}/runs/${runId}/cancel`, { method: "POST" }),
+    onSuccess: (data, runId) => {
+      queryClient.setQueryData(trainingKeys.run(projectId, runId), data);
+      void queryClient.invalidateQueries({ queryKey: trainingKeys.runs(projectId) });
+      void queryClient.invalidateQueries({ queryKey: trainingKeys.active() });
+    },
+  });
+}
+
+/**
+ * Put an interrupted, cancelled or failed run back in the queue (D-09..D-12). The same run is
+ * reused, so the answer replaces the cached run; a 409 or 422 carries the reason in plain English.
+ */
+export function useResumeRun(projectId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (runId: number) =>
+      apiRequest<RunDetail>(`/projects/${projectId}/runs/${runId}/resume`, { method: "POST" }),
     onSuccess: (data, runId) => {
       queryClient.setQueryData(trainingKeys.run(projectId, runId), data);
       void queryClient.invalidateQueries({ queryKey: trainingKeys.runs(projectId) });

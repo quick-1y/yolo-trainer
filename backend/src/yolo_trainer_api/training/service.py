@@ -12,9 +12,11 @@ import asyncio
 import logging
 import re
 import unicodedata
+from pathlib import Path
+from typing import NamedTuple
 
 from fastapi import HTTPException
-from sqlalchemy import delete, select, update
+from sqlalchemy import delete, func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
@@ -47,14 +49,30 @@ from yolo_trainer_api.training.snapshot import (
     materialize,
 )
 from yolo_trainer_common import layout
-from yolo_trainer_common.failures import INVALID_DATASET, classify_exception, normalize_category
-from yolo_trainer_common.progress import primary_metrics
+from yolo_trainer_common.failures import (
+    INVALID_DATASET,
+    NOT_RESUMABLE,
+    classify_exception,
+    normalize_category,
+)
+from yolo_trainer_common.progress import (
+    CHECKPOINT_ENDED,
+    CHECKPOINT_RESUMABLE,
+    primary_metrics,
+    read_checkpoint_state,
+)
 
 logger = logging.getLogger(__name__)
 
 RUN_NOT_FOUND_DETAIL = "Run not found."
 RUN_NOT_QUEUED_DETAIL = "This run has already started and can no longer be removed from the queue."
 RUN_NOT_CANCELLABLE_DETAIL = "Only a running run can be cancelled."
+RUN_NOT_RESUMABLE_STATUS_DETAIL = "Only an interrupted, cancelled or failed run can be resumed."
+RUN_NO_CHECKPOINT_DETAIL = "No checkpoint was saved for this run yet. Start a new run instead."
+RUN_CHECKPOINT_NOT_RESUMABLE_DETAIL = (
+    "The saved checkpoint cannot be resumed: training had already finished or the checkpoint "
+    "was refused. Start a new run instead."
+)
 NO_CLASSES_DETAIL = "Add at least one class before training."
 TRAIN_EMPTY_DETAIL = "No annotated images are assigned to Train."
 VALID_EMPTY_DETAIL = "No annotated images are assigned to Valid."
@@ -65,6 +83,9 @@ MODEL_FILE_MISSING_DETAIL = "The model file is missing."
 PREPARE_SOURCE_MISSING_DETAIL = (
     "An image was deleted while the dataset was being prepared. Start the run again."
 )
+
+# The statuses a run can be resumed from (D-10). Resume additionally needs a last.pt on disk.
+RESUMABLE_STATUSES = ("interrupted", "cancelled", "failed")
 
 _DOWNLOAD_NAME_MAX = 120
 _DOWNLOAD_SUFFIX = "_best.pt"
@@ -261,7 +282,7 @@ async def prepare_run_files(
         result = await session.execute(
             update(TrainingRun)
             .where(TrainingRun.id == run_id, TrainingRun.status == "preparing")
-            .values(status="queued")
+            .values(status="queued", queued_at=utcnow())
         )
         await session.commit()
     if result.rowcount == 0:
@@ -270,10 +291,17 @@ async def prepare_run_files(
 
 
 async def queue_positions(session: AsyncSession) -> dict[int, int]:
-    """1-based FIFO position of every queued run, across all projects (D-11)."""
+    """1-based FIFO position of every queued run, across all projects (D-11, D-12).
+
+    Ordered by when the run last became queued (`created_at` for rows from before `queued_at`
+    existed), then id, so a resumed run stands at the END of the queue. The worker's claim uses
+    the same key.
+    """
     ids = (
         await session.execute(
-            select(TrainingRun.id).where(TrainingRun.status == "queued").order_by(TrainingRun.id)
+            select(TrainingRun.id)
+            .where(TrainingRun.status == "queued")
+            .order_by(func.coalesce(TrainingRun.queued_at, TrainingRun.created_at), TrainingRun.id)
         )
     ).scalars()
     return {run_id: position for position, run_id in enumerate(ids, start=1)}
@@ -343,6 +371,106 @@ async def cancel_run(session: AsyncSession, project_id: int, run_id: int) -> Tra
     return run
 
 
+class ResumeState(NamedTuple):
+    """Whether a run can be resumed and, when not, why; `epoch` is the checkpoint epoch if known."""
+
+    can_resume: bool
+    blocked: str | None
+    epoch: int | None
+
+
+def resume_state(data_dir: Path, run: TrainingRun) -> ResumeState:
+    """The resumability of a run (D-10). Sync and touching the disk: call it through a thread.
+
+    Decided in this order. A run outside the resumable statuses is not resumable and costs no
+    disk access. Without `last.pt` the answer is `no_checkpoint`, the only way to that code. A
+    checkpoint the worker already refused (`not_resumable`) stays refused, so Resume cannot loop.
+    A stored `resume_epoch` needs no further look. Otherwise (a Phase 4 row, or nothing recorded)
+    the run's own progress events decide: the loop ended means `finished`; a known checkpoint
+    epoch is reported; with no readable save the state is unknown, which stays resumable because
+    only the worker can load the checkpoint (train_job's check_resumable is the final guard) and
+    no epoch is guessed, the database `epoch` included.
+    """
+    if run.status not in RESUMABLE_STATUSES:
+        return ResumeState(False, None, run.resume_epoch)
+    run_directory = layout.run_dir(data_dir, run.id)
+    if not layout.last_weights(run_directory).is_file():
+        return ResumeState(False, "no_checkpoint", None)
+    if run.error_category == NOT_RESUMABLE:
+        return ResumeState(False, "not_resumable", run.resume_epoch)
+    if run.resume_epoch is not None:
+        return ResumeState(True, None, run.resume_epoch)
+    state, epoch = read_checkpoint_state(run_directory / layout.PROGRESS_FILE, run.epochs)
+    if state == CHECKPOINT_ENDED:
+        return ResumeState(False, "finished", None)
+    if state == CHECKPOINT_RESUMABLE:
+        return ResumeState(True, None, epoch)
+    return ResumeState(True, None, None)
+
+
+async def _find_run(session: AsyncSession, project_id: int, run_id: int) -> TrainingRun | None:
+    return (
+        await session.execute(
+            select(TrainingRun)
+            .where(TrainingRun.id == run_id, TrainingRun.project_id == project_id)
+            .execution_options(populate_existing=True)
+        )
+    ).scalar_one_or_none()
+
+
+async def resume_run(
+    session: AsyncSession, settings: Settings, project_id: int, run_id: int
+) -> TrainingRun:
+    """Put an interrupted, cancelled or failed run with a resumable checkpoint back in the queue.
+
+    The same row, snapshot, folder and charts are reused (D-09). The read-only checks run first
+    (status, then `resume_state` in a thread); the change itself is ONE UPDATE guarded by the
+    resumable statuses, so racing a delete or another resume gives rowcount 0 and a re-select
+    decides 404 or 409. The guard has no condition on `resume_epoch`: a Phase 4 row's NULL must
+    not block (D-10). Settings cannot change: the worker reuses the stored device, batch and
+    workers (D-11). The row stands at the end of the FIFO queue through a fresh `queued_at` (D-12).
+    """
+    run = await _find_run(session, project_id, run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail=RUN_NOT_FOUND_DETAIL)
+    if run.status not in RESUMABLE_STATUSES:
+        raise HTTPException(status_code=409, detail=RUN_NOT_RESUMABLE_STATUS_DETAIL)
+    state = await asyncio.to_thread(resume_state, settings.data_dir, run)
+    if state.blocked == "no_checkpoint":
+        raise HTTPException(status_code=409, detail=RUN_NO_CHECKPOINT_DETAIL)
+    if state.blocked is not None:
+        raise HTTPException(status_code=409, detail=RUN_CHECKPOINT_NOT_RESUMABLE_DETAIL)
+
+    values: dict[str, object] = {
+        "status": "queued",
+        "resume_count": TrainingRun.resume_count + 1,
+        "queued_at": utcnow(),
+        "finished_at": None,
+        "cancel_requested_at": None,
+        "error_message": None,
+        "error_category": None,
+        "log_tail": None,
+    }
+    if state.epoch is not None:
+        values["resume_epoch"] = func.coalesce(TrainingRun.resume_epoch, state.epoch)
+    result = await session.execute(
+        update(TrainingRun)
+        .where(
+            TrainingRun.id == run_id,
+            TrainingRun.project_id == project_id,
+            TrainingRun.status.in_(RESUMABLE_STATUSES),
+        )
+        .values(**values)
+    )
+    await session.commit()
+    run = await _find_run(session, project_id, run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail=RUN_NOT_FOUND_DETAIL)
+    if result.rowcount == 0:
+        raise HTTPException(status_code=409, detail=RUN_NOT_RESUMABLE_STATUS_DETAIL)
+    return run
+
+
 def model_download_name(project_name: str | None, model_name: str) -> str:
     """`<project>_<run>_best.pt` reduced to safe filename characters (D-18, Pattern 8).
 
@@ -388,6 +516,8 @@ def _summary_fields(
         "model": model,
         "error_category": run.error_category,
         "cancelling": run.status == "running" and run.cancel_requested_at is not None,
+        "resume_count": run.resume_count,
+        "resume_epoch": run.resume_epoch,
     }
 
 
@@ -428,8 +558,18 @@ async def run_summaries(session: AsyncSession, project_id: int) -> list[RunSumma
     ]
 
 
-async def run_read(session: AsyncSession, run: TrainingRun) -> RunRead:
-    """The full read model of one run."""
+async def run_read(session: AsyncSession, run: TrainingRun, data_dir: Path) -> RunRead:
+    """The full read model of one run.
+
+    Only a run in a resumable status touches the filesystem (in a thread): it reports
+    `can_resume` and, when no epoch is stored, the checkpoint epoch derived from its progress
+    events for display (null while that is unknown). The list has no such field on purpose.
+    """
+    resume = (
+        await asyncio.to_thread(resume_state, data_dir, run)
+        if run.status in RESUMABLE_STATUSES
+        else None
+    )
     positions = await queue_positions(session) if run.status == "queued" else {}
     project_name = (
         await session.execute(select(Project.name).where(Project.id == run.project_id))
@@ -438,12 +578,16 @@ async def run_read(session: AsyncSession, run: TrainingRun) -> RunRead:
         await session.execute(select(TrainedModel).where(TrainedModel.source_run_id == run.id))
     ).scalar_one_or_none()
     metrics = RunMetrics(**primary_metrics(run.task_type, run.metrics)) if run.metrics else None
+    fields = _summary_fields(
+        run,
+        positions.get(run.id),
+        _model_ref(model, project_name) if model is not None else None,
+    )
+    if resume is not None and run.resume_epoch is None:
+        fields["resume_epoch"] = resume.epoch
     return RunRead(
-        **_summary_fields(
-            run,
-            positions.get(run.id),
-            _model_ref(model, project_name) if model is not None else None,
-        ),
+        **fields,
+        can_resume=resume.can_resume if resume is not None else False,
         settings=RunSettings(**run.settings),
         resolved=RunResolved(**run.resolved) if run.resolved else None,
         dataset_counts=DatasetCounts(**run.dataset_counts) if run.dataset_counts else None,

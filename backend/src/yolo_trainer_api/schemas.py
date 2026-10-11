@@ -564,6 +564,10 @@ class RunSummary(BaseModel):
     error_category: str | None = None
     # True while a user-requested cancel of a `running` run is waiting for the worker to stop it.
     cancelling: bool = False
+    # How many times the run was resumed, and the epoch of the checkpoint it resumes from (D-09).
+    # `resume_epoch` is null while the checkpoint state is unknown; the UI never guesses one.
+    resume_count: int = 0
+    resume_epoch: int | None = None
 
     @computed_field  # type: ignore[prop-decorator]
     @property
@@ -602,6 +606,9 @@ class RunRead(RunSummary):
     metrics: RunMetrics | None = None
     error_message: str | None = None
     log_tail: str | None = None
+    # Single-run read only (the history list never touches the filesystem per row): the run is in
+    # a resumable status, its last.pt exists and its checkpoint is not known to be finished/refused.
+    can_resume: bool = False
 
 
 # --------------------------------------------------------------------------
