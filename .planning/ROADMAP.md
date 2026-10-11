@@ -274,7 +274,49 @@ Plans:
   4. User sees a history of all runs in a project with status, settings, duration, and final metrics
   5. A failing run (e.g. out of memory, invalid dataset) ends in a failed state with an understandable error message in the UI, not a silent stop
 
-**Plans**: TBD
+**Plans:** 10 plans
+
+Plans:
+**Wave 1**
+
+- [ ] 05-01-PLAN.md — Tracer: live mAP chart over SSE (progress.jsonl tail with byte-offset ids, Last-Event-ID, compaction, status/end frames, no DB session held), useRunStream + Recharts, nginx smoke stage, graceful-shutdown timeout (wave 1)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 05-02-PLAN.md — Three charts (loss sums, mAP, precision/recall) live and for every past run; tooltip, best epoch, resume markers, skeleton/reconnecting/unavailable states, safety polling (wave 2)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 05-03-PLAN.md — Progress events v2 (train_start, throttled batch_progress, last_epoch, fitness); batch bar + ETA; "Final validation…" and the "Final results (best.pt)" card (wave 3)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [ ] 05-04-PLAN.md — Categorized failures: migration 0006, shared classifier, category in error.json and the supervisor, localized FailureAlert (wave 4)
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
+- [ ] 05-05-PLAN.md — Cancel: migration 0007, DB-flag cancel read by the supervisor tick, races and restart sweeps, Cancel dialog and "Cancelling…", native-Windows note (wave 5)
+
+**Wave 6** *(blocked on Wave 5 completion)*
+
+- [ ] 05-06-PLAN.md — Resume in place: migration 0008, resume route, claim/FIFO by queued_at, --resume with validated checkpoint and pinned save_dir, real CPU cancel-then-resume test (wave 6)
+
+**Wave 7** *(blocked on Wave 6 completion)*
+
+- [ ] 05-07-PLAN.md — Active-time durations across segments, resume gates and reasons, device re-check, "Cancel resume" for queued resumed runs (wave 7)
+
+**Wave 8** *(blocked on Wave 7 completion)*
+
+- [ ] 05-08-PLAN.md — History table: migration 0009 (last mAP50-95), 11 columns, sort and status filter in the URL (wave 8)
+
+**Wave 9** *(blocked on Wave 8 completion)*
+
+- [ ] 05-09-PLAN.md — One-way decision checkpoint, then run delete with folder and model (shared removal helper, base-in-use guard) and the interim best.pt download (wave 9)
+
+**Wave 10** *(blocked on Wave 9 completion)*
+
+- [ ] 05-10-PLAN.md — Real-stack smoke: cancel, no orphan, next run, resume; README en/ru; full gate with real CPU training; end-of-phase UAT list (wave 10)
+
 **UI hint**: yes
 **Notes**:
 
@@ -450,7 +492,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 2. Image Upload & Classes | 13/13 | Complete    | 2026-10-03 |
 | 3. Box Annotation Editor | 13/13 | Complete    | 2026-10-04 |
 | 4. Train & Download | 11/11 | Complete    | 2026-10-11 |
-| 5. Live Training Monitoring & Control | 0/TBD | Not started | - |
+| 5. Live Training Monitoring & Control | 0/10 | Planned | - |
 | 6. Polygons & Segmentation Projects | 0/TBD | Not started | - |
 | 7. Model Library | 0/TBD | Not started | - |
 | 8. AI-Assisted Annotation | 0/TBD | Not started | - |
