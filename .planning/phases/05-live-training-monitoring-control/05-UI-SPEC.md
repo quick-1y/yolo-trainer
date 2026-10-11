@@ -1,7 +1,8 @@
 ---
 phase: "05"
 slug: "live-training-monitoring-control"
-status: draft
+status: approved
+reviewed_at: "2026-10-11"
 shadcn_initialized: false
 preset: none
 created: "2026-10-11"
@@ -429,11 +430,11 @@ Gap between columns 8, row padding 0 16, header row 32 (12px `dark-1`), data row
 
 ## UI Considerations
 
-Authored by gsd-ui-researcher. The ui-phase UI-consideration probe (Step 9.5) reconciles this section and replaces rows idempotently on re-run; the author's own element classification is below and has not yet been confirmed by the user.
+Authored by gsd-ui-researcher; reconciled by the ui-phase UI-consideration probe (Step 9.5) on 2026-10-11. The user chose batch resolution: the 52 author rows below stand as written, and the probe-raised categories not already covered are resolved in "Probe reconciliation" after the table. Re-runs replace this whole section.
 
 Status legend: ✅ covered — the Resolution column is the truth to lift into `must_haves.truths`; 🧪 backstop — lift as `{ statement: <Resolution>, verification: backstop }`; ➖ dismissed — not applicable, reason given, not lifted. Empty/error COPY lives in the Copywriting Contract; rows below reference it.
 
-Applicable state considerations resolved: 47 covered, 3 backstop, 0 unresolved
+Applicable state considerations resolved: 47 covered, 3 backstop, 0 unresolved (author table); probe reconciliation adds 15 covered, 2 backstop, 20 dismissed, 0 unresolved
 
 | Category | Element | Status | Resolution / Reason |
 |----------|---------|--------|---------------------|
@@ -490,6 +491,50 @@ Applicable state considerations resolved: 47 covered, 3 backstop, 0 unresolved
 | loading | RunPage | ➖ dismissed | Unchanged from Phase 4 (header and card Skeletons) |
 | long-text | RunStatusBadge | ➖ dismissed | Fixed translated labels; the longest fit 128px in en and ru |
 
+### Probe reconciliation (Step 9.5, 2026-10-11)
+
+Probe run over 16 elements: 65 applicable categories, 6 elements unclassified by the prose heuristic. Kinds assigned manually for the unclassified ones: RunCharts = data display/list (all 7 data-state categories, already in the table); BatchProgress = progress indicator (empty, partial, zero-one-many, in the table); RunStatusBadge = status display (populated in the table, long-text dismissed in the table); InterimDownload = action link (empty and populated in the table; error below); StreamStatus = transient indicator (loading in the table); StatusAnnouncer = live region (populated in the table). Categories the probe raised that the author table does not already hold:
+
+| Category | Element | Status | Resolution / Reason |
+|----------|---------|--------|---------------------|
+| populated | ChartTooltip | ✅ covered | First line "Epoch N" (600), one row per series with swatch, label and three-decimal value; the loss tooltip adds the component grid |
+| partial | ChartTooltip | ✅ covered | A series missing at the hovered epoch shows "—" in its row; the row is never dropped |
+| overflow | ChartTooltip | ✅ covered | The tooltip has no max width and grows with its content (see the long-text row); with at most 10 components it stays within the plot height |
+| zero-one-many | ChartTooltip | ✅ covered | One loss component renders one grid row; up to 10 (segment) render one row each |
+| empty | ChartTooltip | ➖ dismissed | The tooltip only exists while hovering an epoch row that has data |
+| loading | ChartTooltip | ➖ dismissed | No fetch; it reads already-rendered chart rows |
+| error | ChartTooltip | ➖ dismissed | No fetch; stream errors are owned by StreamStatus/RunCharts |
+| empty | RunningStatusCard | ✅ covered | Before the first epoch the card shows the Phase 4 "Starting…" state (Loader, hint, no bars, no ETA) |
+| loading | RunningStatusCard | ✅ covered | Same "Starting…" state; the batch bar may appear in it from the first batch event |
+| overflow | RunningStatusCard | 🧪 backstop | The headline row (epoch left; training time · ETA right, `nowrap`) fits one line at 1024 in en and ru with a 3-digit epoch count and `h:mm:ss` values; held-out visual check |
+| long-text | RunningStatusCard | 🧪 backstop | The ru final-validation title and hint wrap inside the card without pushing the bars; held-out visual check at 1024 in ru |
+| error | RunningStatusCard | ➖ dismissed | A failing run leaves `running` and renders FailureAlert instead; the card has no error variant |
+| zero-one-many | RunningStatusCard | ➖ dismissed | A 1-epoch run reads "Epoch 1 of 1" with the same layout; the shown epoch is capped at the total |
+| loading | FinalResultsCard | ✅ covered | Tiles render from the final-validation event; the verdict badge appears only after the run query refreshes |
+| overflow | FinalResultsCard | ✅ covered | Tiles use `SimpleGrid cols={{ base: 2, md: 4 }}` and reflow at narrow widths (unchanged `RunMetrics`) |
+| error | FinalResultsCard | ➖ dismissed | No own fetch; it renders only when final metrics exist |
+| zero-one-many | FinalResultsCard | ➖ dismissed | Always exactly four tiles; missing values show "—" (partial row) |
+| long-text | CancelRunModal | ✅ covered | Body and note are wrapping `Text` in a 440px modal; the epoch number is the only variable part |
+| empty | CancelRunModal | ➖ dismissed | Static confirmation content; there is no empty variant |
+| long-text | ResumeButton | ✅ covered | The action group never wraps and the run name shrinks first (RunPageHeader overflow row), so the ru label keeps its full width |
+| loading | FailureAlert | ➖ dismissed | Terminal state rendered from the already-loaded run; the log toggle reuses the Phase 4 `RunFailureLog` behavior |
+| error | FailureAlert | ➖ dismissed | FailureAlert is itself the error presentation (see its populated and partial rows) |
+| overflow | FailureAlert | ✅ covered | Raw message uses `pre-wrap` + `overflow-wrap: anywhere`; the log is capped at 320px with its own scroll (see the long-text backstop row) |
+| long-text | DeleteRunModal | ✅ covered | Body and the 600-weight model sentence wrap in the 440px modal; no run name is interpolated into the title |
+| error | InterimDownload | ➖ dismissed | A plain anchor with `download`; a failed transfer is reported by the browser's download UI, and the link is offered only when `interim_best` is true |
+| empty | RunPageActions | ✅ covered | `preparing` shows no actions (matrix row) |
+| loading | RunPageActions | ✅ covered | Resume, Cancel-confirm and Delete-confirm show `loading`; "Cancelling…" replaces the Cancel button without layout shift |
+| error | RunPageActions | ✅ covered | Errors surface through ResumeButton notifications and the modal 409 Alerts (rows above) |
+| partial | RunPageActions | ➖ dismissed | Covered by ResumeButton partial (disabled Resume with visible reason) |
+| zero-one-many | RunPageActions | ➖ dismissed | Zero to two buttons per the matrix, at most one filled (populated row) |
+| long-text | RunPageActions | ➖ dismissed | Covered by RunPageHeader overflow (name truncates, actions never wrap) |
+| empty | SettingsCard resume row | ➖ dismissed | Row omitted at zero resumes (zero-one-many row) |
+| loading | SettingsCard resume row | ➖ dismissed | Part of the already-loaded settings card; no own fetch |
+| error | SettingsCard resume row | ➖ dismissed | No own fetch |
+| populated | SettingsCard resume row | ➖ dismissed | Single tabular number; nothing beyond the zero-one-many row |
+| partial | SettingsCard resume row | ➖ dismissed | `resume_count` is always present on the detail payload |
+| overflow | SettingsCard resume row | ➖ dismissed | A small integer in an existing two-column row |
+
 ---
 
 ## Registry Safety
@@ -497,7 +542,7 @@ Applicable state considerations resolved: 47 covered, 3 backstop, 0 unresolved
 | Registry | Blocks Used | Safety Gate |
 |----------|-------------|-------------|
 | shadcn official | none (shadcn not used, `Tool: none`) | not applicable |
-| Mantine (npm, first-party, already installed) | listed in Component Inventory | not applicable (covered by the P1 supply-chain posture) |
+| Mantine (npm, third-party, already installed and vetted in Phase 1) | listed in Component Inventory | not applicable (covered by the P1 supply-chain posture) |
 | npm: `recharts` 3.10.1 and peer `react-is` (new in this phase, locked by D-01) | listed in Component Inventory | `gsd_run query package-legitimacy check --ecosystem npm recharts react-is` verdict OK for both, no `postinstall` script (05-RESEARCH.md, 2026-10-11); tarball export names re-confirmed by this spec on 2026-10-11 |
 
 No third-party shadcn registries are declared, so the registry view/vetting gate does not apply. `@mantine/charts` was considered and rejected (peer pin).
@@ -561,12 +606,12 @@ Route shapes are Claude's discretion in 05-CONTEXT.md; the contract above needs 
 
 ## Checker Sign-Off
 
-- [ ] Dimension 1 Copywriting: PASS
-- [ ] Dimension 2 Visuals: PASS
-- [ ] Dimension 3 Color: PASS
-- [ ] Dimension 4 Typography: PASS
-- [ ] Dimension 5 Spacing: PASS
-- [ ] Dimension 6 Registry Safety: PASS
-- [ ] Dimension 7 Inventory Provenance: PASS
+- [x] Dimension 1 Copywriting: PASS
+- [x] Dimension 2 Visuals: PASS
+- [x] Dimension 3 Color: PASS
+- [x] Dimension 4 Typography: PASS
+- [x] Dimension 5 Spacing: PASS
+- [x] Dimension 6 Registry Safety: PASS (FLAG accepted)
+- [x] Dimension 7 Inventory Provenance: PASS (FLAG accepted)
 
-**Approval:** pending
+**Approval:** approved 2026-10-11 (gsd-ui-checker, iteration 2; non-blocking FLAGs on Registry Safety and Inventory Provenance accepted)
