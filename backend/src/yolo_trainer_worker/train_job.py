@@ -37,6 +37,10 @@ _HASH_CHUNK = 1024 * 1024
 BATCH_EVENT_MIN_INTERVAL = 2.0
 
 
+class WeightsDownloadError(RuntimeError):
+    """The official weights are not cached and could not be downloaded."""
+
+
 def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="yolo_trainer_worker.train_job")
     parser.add_argument("--run-dir", required=True, type=Path)
@@ -91,7 +95,7 @@ def _resolve_weights(data_dir: Path, base: dict) -> Path:
 
         attempt_download_asset(str(path))
     if not path.exists():
-        raise RuntimeError(
+        raise WeightsDownloadError(
             f"Could not download {name}.pt. Check the internet access of the worker container, "
             f"or place the file in {layout.weights_root(data_dir)}/."
         )

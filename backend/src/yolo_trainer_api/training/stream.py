@@ -27,8 +27,14 @@ from yolo_trainer_common.progress import ProgressTail, compact_replay, enrich_ev
 
 TERMINAL_STATUSES = frozenset({"completed", "failed", "interrupted", "cancelled"})
 
-# The TrainingRun columns a `status` frame carries; later plans add keys here.
-STATUS_COLUMNS = (TrainingRun.status, TrainingRun.epoch, TrainingRun.epochs)
+# The TrainingRun columns a `status` frame carries; later plans add keys here. The failure
+# category lets a page that is open when its run fails show the categorized alert at once.
+STATUS_COLUMNS = (
+    TrainingRun.status,
+    TrainingRun.epoch,
+    TrainingRun.epochs,
+    TrainingRun.error_category,
+)
 
 ReadStatus = Callable[[], Awaitable[dict | None]]
 
@@ -80,7 +86,12 @@ def parse_last_event_id(raw: str | None, size: int) -> int:
 
 
 def status_payload(row) -> dict:
-    return {"status": row.status, "epoch": row.epoch, "epochs": row.epochs}
+    return {
+        "status": row.status,
+        "epoch": row.epoch,
+        "epochs": row.epochs,
+        "error_category": row.error_category,
+    }
 
 
 async def read_run_status(sessionmaker: async_sessionmaker, run_id: int) -> dict | None:

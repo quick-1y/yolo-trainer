@@ -47,6 +47,7 @@ from yolo_trainer_api.training.snapshot import (
     materialize,
 )
 from yolo_trainer_common import layout
+from yolo_trainer_common.failures import INVALID_DATASET, classify_exception, normalize_category
 from yolo_trainer_common.progress import primary_metrics
 
 logger = logging.getLogger(__name__)
@@ -206,13 +207,18 @@ async def create_run(
 
 
 async def _set_failed(
-    sessionmaker: async_sessionmaker[AsyncSession], run_id: int, message: str
+    sessionmaker: async_sessionmaker[AsyncSession], run_id: int, message: str, category: str
 ) -> None:
     async with sessionmaker() as session:
         await session.execute(
             update(TrainingRun)
             .where(TrainingRun.id == run_id, TrainingRun.status == "preparing")
-            .values(status="failed", error_message=message, finished_at=utcnow())
+            .values(
+                status="failed",
+                error_message=message,
+                error_category=normalize_category(category),
+                finished_at=utcnow(),
+            )
         )
         await session.commit()
 
@@ -236,12 +242,17 @@ async def prepare_run_files(
     try:
         await asyncio.to_thread(materialize, settings.data_dir, snapshot)
     except SnapshotSourceMissing:
-        await _set_failed(sessionmaker, run_id, PREPARE_SOURCE_MISSING_DETAIL)
+        await _set_failed(sessionmaker, run_id, PREPARE_SOURCE_MISSING_DETAIL, INVALID_DATASET)
         await _remove_folder(settings, run_id)
         return
     except Exception as exc:
         logger.exception("Could not prepare the dataset of run %s", run_id)
-        await _set_failed(sessionmaker, run_id, f"Could not prepare the dataset: {exc}")
+        await _set_failed(
+            sessionmaker,
+            run_id,
+            f"Could not prepare the dataset: {exc}",
+            classify_exception(type(exc).__name__, str(exc), getattr(exc, "errno", None)),
+        )
         await _remove_folder(settings, run_id)
         return
 

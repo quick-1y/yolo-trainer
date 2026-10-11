@@ -190,6 +190,20 @@ describe("RunPage live charts", () => {
     expect(source.readyState).toBe(FakeEventSource.CLOSED);
   });
 
+  it("shows the categorized failure at once when a status frame reports the run failed", async () => {
+    stubTrainingApi({ run: running() });
+    renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+
+    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+    const source = latestEventSource();
+    act(() => {
+      source.open();
+      source.emit("status", { status: "failed", epoch: 12, epochs: 100, error_category: "disk_full" });
+    });
+
+    expect(await screen.findByText("Disk is full")).toBeInTheDocument();
+  });
+
   it("opens one stream per page and closes it on unmount", async () => {
     stubTrainingApi({ run: running() });
     const view = renderWithProviders(<AppRoutes />, { route: RUN_PATH });
