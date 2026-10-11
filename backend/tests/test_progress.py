@@ -10,9 +10,16 @@ import json
 from pathlib import Path
 
 from yolo_trainer_common.progress import (
+    EVENT_BATCH_PROGRESS,
+    EVENT_FIT_EPOCH_END,
+    EVENT_TRAIN_EPOCH_END,
+    EVENT_TRAIN_START,
     LOG_TAIL_LINES,
+    SCHEMA_VERSION,
     ProgressTail,
     clean_log_tail,
+    compact_replay,
+    enrich_event,
     jsonable,
     map50_key,
     primary_metrics,
@@ -84,6 +91,77 @@ def test_the_progress_tail_skips_an_undecodable_line_and_keeps_going(tmp_path: P
     path.write_bytes(b'{"n": 1}\n\xff\xfe\n{"n": 3}\n')
 
     assert tail.read_new_events(path) == [{"n": 1}, {"n": 3}]
+
+
+def test_read_new_lines_returns_complete_lines_with_the_offset_after_each_newline(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "progress.jsonl"
+    tail = ProgressTail()
+    path.write_bytes(b'{"n": 1}\n{"n": 2}\n{"n": ')
+
+    assert tail.read_new_lines(path) == [(9, {"n": 1}), (18, {"n": 2})]
+    assert tail.read_new_lines(path) == []  # the unterminated line stays for later
+    with path.open("ab") as handle:
+        handle.write(b"3}\n")
+    assert tail.read_new_lines(path) == [(path.stat().st_size, {"n": 3})]
+    assert path.stat().st_size == 27
+
+
+def test_read_new_lines_starts_at_the_offset_and_skips_undecodable_lines(tmp_path: Path) -> None:
+    path = tmp_path / "progress.jsonl"
+    path.write_bytes(b'{"n": 1}\n\xff\xfe\n{"n": 3}\n')
+    tail = ProgressTail()
+    tail.offset = 9
+
+    assert tail.read_new_lines(path) == [(21, {"n": 3})]
+    tail.offset = 0
+    assert tail.read_new_lines(path) == [(9, {"n": 1}), (21, {"n": 3})]
+
+
+def test_enrich_event_adds_primary_numbers_only_to_a_fit_epoch_end() -> None:
+    fit = {
+        "event": EVENT_FIT_EPOCH_END,
+        "epoch": 1,
+        "metrics": {"metrics/mAP50(M)": 0.4, "metrics/mAP50(B)": 0.9},
+    }
+
+    detect = enrich_event("detect", fit)
+    segment = enrich_event("segment", fit)
+
+    assert detect["primary"]["map50"] == 0.9
+    assert segment["primary"]["map50"] == 0.4
+    assert "primary" not in fit  # a copy, not an in-place edit
+    assert enrich_event("detect", {"event": "train_epoch_end", "epoch": 1}) == {
+        "event": "train_epoch_end",
+        "epoch": 1,
+    }
+    assert enrich_event("detect", {"event": EVENT_FIT_EPOCH_END})["primary"]["map50"] is None
+
+
+def _item(offset: int, event: str, **fields: object) -> tuple[int, dict]:
+    return offset, {"event": event, **fields}
+
+
+def test_compact_replay_keeps_only_the_last_batch_progress_in_order() -> None:
+    items = [
+        _item(10, EVENT_TRAIN_EPOCH_END, epoch=1),
+        _item(20, EVENT_BATCH_PROGRESS, epoch=1, batch=1),
+        _item(30, EVENT_BATCH_PROGRESS, epoch=1, batch=2),
+        _item(40, EVENT_FIT_EPOCH_END, epoch=1),
+        _item(50, EVENT_BATCH_PROGRESS, epoch=2, batch=1),
+    ]
+
+    assert [offset for offset, _ in compact_replay(items)] == [10, 40, 50]
+    assert compact_replay(items)[-1][1]["batch"] == 1  # keeps its own offset and content
+
+
+def test_compact_replay_leaves_a_list_without_batch_events_unchanged() -> None:
+    items = [_item(10, EVENT_TRAIN_START), _item(20, EVENT_FIT_EPOCH_END, epoch=1)]
+
+    assert compact_replay(items) == items
+    assert compact_replay([]) == []
+    assert SCHEMA_VERSION == 2
 
 
 def test_clean_log_tail_strips_escape_codes_and_progress_fragments() -> None:

@@ -119,6 +119,13 @@
     "poor": "Требуется дообучение",
     "basis": "Оценка основана на mAP50."
   },
+  "charts": {
+    "map": {
+      "title": "mAP"
+    },
+    "xAxis": "Эпоха",
+    "latest": "Последние значения, эпоха {{epoch}}: {{values}}"
+  },
   "model": {
     "file": "Файл модели: {{file}} · {{size}}",
     "usage": "Загрузка в Python: <code>{{code}}</code>.",

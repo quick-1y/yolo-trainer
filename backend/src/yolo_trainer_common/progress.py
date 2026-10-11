@@ -20,6 +20,11 @@ EVENT_TRAIN_EPOCH_END = "train_epoch_end"
 EVENT_FIT_EPOCH_END = "fit_epoch_end"
 EVENT_MODEL_SAVE = "model_save"
 EVENT_TRAIN_END = "train_end"
+EVENT_TRAIN_START = "train_start"
+EVENT_BATCH_PROGRESS = "batch_progress"
+
+# Readers treat every field added in version 2 as optional (D-05): older files stay readable.
+SCHEMA_VERSION = 2
 
 LOG_TAIL_LINES = 50
 
@@ -73,6 +78,14 @@ class ProgressTail:
         self.offset = 0
 
     def read_new_events(self, path: Path) -> list[dict]:
+        return [event for _, event in self.read_new_lines(path)]
+
+    def read_new_lines(self, path: Path) -> list[tuple[int, dict]]:
+        """Like `read_new_events`, with the byte offset just after each line's newline.
+
+        The offsets are absolute positions in the file, so a client can resume a stream at
+        any of them (`Last-Event-ID`).
+        """
         try:
             with path.open("rb") as handle:
                 handle.seek(self.offset)
@@ -82,9 +95,12 @@ class ProgressTail:
         end = chunk.rfind(b"\n")
         if end < 0:
             return []
+        start = self.offset
         self.offset += end + 1
-        events: list[dict] = []
+        lines: list[tuple[int, dict]] = []
+        position = 0
         for raw in chunk[:end].split(b"\n"):
+            position += len(raw) + 1
             if not raw.strip():
                 continue
             try:
@@ -93,8 +109,8 @@ class ProgressTail:
                 logger.warning("Skipping an undecodable progress line in %s", path)
                 continue
             if isinstance(event, dict):
-                events.append(event)
-        return events
+                lines.append((start + position, event))
+        return lines
 
 
 def _suffix(task_type: str) -> str:
@@ -126,6 +142,38 @@ def primary_metrics(task_type: str, metrics: dict | None) -> dict[str, float | N
         "map50": _number(source.get(f"metrics/mAP50({suffix})")),
         "map50_95": _number(source.get(f"metrics/mAP50-95({suffix})")),
     }
+
+
+def enrich_event(task_type: str, event: dict) -> dict:
+    """A shallow copy of `event`; a `fit_epoch_end` also carries its `primary` headline numbers.
+
+    The `(B)`/`(M)` metric key mapping stays in Python, so the browser never reads
+    `metrics/mAP50(B)` by name.
+    """
+    enriched = dict(event)
+    if event.get("event") == EVENT_FIT_EPOCH_END:
+        metrics = event.get("metrics")
+        enriched["primary"] = primary_metrics(
+            task_type, metrics if isinstance(metrics, dict) else None
+        )
+    return enriched
+
+
+def compact_replay(items: list[tuple[int, dict]]) -> list[tuple[int, dict]]:
+    """Drop every `batch_progress` item except the last one, keeping the order (D-03).
+
+    Used when a stream replays history: a CPU run writes hundreds of batch lines per epoch
+    and only the newest says where the run is now. The file itself is never rewritten.
+    """
+    last_batch = -1
+    for index, (_, event) in enumerate(items):
+        if event.get("event") == EVENT_BATCH_PROGRESS:
+            last_batch = index
+    return [
+        item
+        for index, item in enumerate(items)
+        if item[1].get("event") != EVENT_BATCH_PROGRESS or index == last_batch
+    ]
 
 
 def clean_log_tail(text: str, max_lines: int = LOG_TAIL_LINES) -> str:
