@@ -187,6 +187,17 @@ export interface RunCreateInput {
 /** How often run lists and run pages refetch while a run is preparing, queued or running. */
 export const RUN_POLL_INTERVAL_MS = 3000;
 
+/** Slow poll of a running run whose event stream is healthy (a proxy can swallow a stream silently). */
+export const RUN_SAFETY_POLL_INTERVAL_MS = 15000;
+
+// Signature stub of the RED commit; the GREEN commit implements it.
+export function runPollInterval(
+  _run: { status: RunStatus } | undefined,
+  _streamHealthy: boolean,
+): number | false {
+  return false;
+}
+
 /** The run that is training right now (`GET /training/active`, D-14). */
 export interface ActiveRun {
   run_id: number;

@@ -7,6 +7,7 @@ vi.mock("@mantine/notifications", () => ({
 
 import { notifications } from "@mantine/notifications";
 
+import { RUN_POLL_INTERVAL_MS, RUN_SAFETY_POLL_INTERVAL_MS, runPollInterval } from "../../api/training";
 import { AppRoutes } from "../../app/routes";
 import { renderWithProviders } from "../../test/render";
 import { FakeEventSource, latestEventSource } from "../../test/fakeEventSource";
@@ -294,6 +295,136 @@ describe("RunPage history charts", () => {
 
     expect(await screen.findByRole("group", { name: "Потери" })).toBeInTheDocument();
     expect(screen.getByRole("group", { name: "Precision и recall" })).toBeInTheDocument();
+  });
+});
+
+describe("RunPage stream states", () => {
+  it("shows three skeleton charts until the stream opens, then the waiting panel for a running run", async () => {
+    stubTrainingApi({ run: running() });
+    renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+
+    expect(await screen.findAllByTestId("chart-skeleton")).toHaveLength(3);
+    expect(screen.queryByText("Charts appear after the first epoch finishes.")).toBeNull();
+
+    act(() => {
+      latestEventSource().open();
+    });
+
+    expect(await screen.findByText("Charts appear after the first epoch finishes.")).toBeInTheDocument();
+    expect(screen.queryByTestId("chart-skeleton")).toBeNull();
+  });
+
+  it("renders no chart section for a finished run whose history has no epoch", async () => {
+    stubTrainingApi({ run: completed() });
+    renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+
+    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+    act(() => {
+      latestEventSource().open();
+      latestEventSource().emit("end", { status: "completed" });
+    });
+
+    await waitFor(() => expect(screen.queryByTestId("chart-skeleton")).toBeNull());
+    expect(screen.queryByText("Charts appear after the first epoch finishes.")).toBeNull();
+    expect(screen.queryByRole("group", { name: "mAP" })).toBeNull();
+  });
+
+  it("shows Reconnecting while the browser retries and keeps the charts", async () => {
+    stubTrainingApi({ run: running() });
+    renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+
+    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+    const source = latestEventSource();
+    act(() => {
+      source.open();
+      source.emit("progress", fitEpoch(1, 0.5), "100");
+    });
+    expect(await screen.findByRole("group", { name: "mAP" })).toBeInTheDocument();
+
+    act(() => {
+      source.fail(FakeEventSource.CONNECTING);
+    });
+    expect(await screen.findByText("Reconnecting…")).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "mAP" })).toBeInTheDocument();
+
+    act(() => {
+      source.open();
+    });
+    await waitFor(() => expect(screen.queryByText("Reconnecting…")).toBeNull());
+  });
+
+  it("keeps the last data when the stream closes for good and reopens it on Try again", async () => {
+    stubTrainingApi({ run: running() });
+    const view = renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+
+    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+    const source = latestEventSource();
+    act(() => {
+      source.open();
+      source.emit("progress", fitEpoch(1, 0.5), "100");
+    });
+    expect(await screen.findByRole("group", { name: "mAP" })).toBeInTheDocument();
+
+    act(() => {
+      source.fail(FakeEventSource.CLOSED);
+    });
+    const message = await screen.findByText(
+      "Live updates are unavailable. Charts show data up to the last update.",
+    );
+    expect(screen.getByRole("group", { name: "mAP" })).toBeInTheDocument();
+
+    await view.user.click(within(message.closest("[role='status']") as HTMLElement).getByRole("button", { name: "Try again" }));
+
+    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(2));
+    expect(source.readyState).toBe(FakeEventSource.CLOSED);
+    expect(latestEventSource().url).toBe("/api/projects/1/runs/7/stream");
+  });
+
+  it("polls a running run every 15 seconds while the stream is healthy and every 3 seconds when it is down", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    const stub = stubTrainingApi({ run: running() });
+    renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+
+    expect((await screen.findAllByText("Epoch 12 of 100")).length).toBeGreaterThan(0);
+    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+    act(() => {
+      latestEventSource().open();
+    });
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(4000);
+    });
+    expect(stub.count("GET /api/projects/1/runs/7")).toBe(1);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(12000);
+    });
+    await waitFor(() => expect(stub.count("GET /api/projects/1/runs/7")).toBe(2));
+
+    act(() => {
+      latestEventSource().fail(FakeEventSource.CLOSED);
+    });
+    const before = stub.count("GET /api/projects/1/runs/7");
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(3100);
+    });
+    await waitFor(() => expect(stub.count("GET /api/projects/1/runs/7")).toBeGreaterThan(before));
+  });
+});
+
+describe("runPollInterval", () => {
+  it("is 15 s for a running run with a healthy stream and 3 s otherwise while the run is active", () => {
+    expect(runPollInterval({ status: "running" }, true)).toBe(RUN_SAFETY_POLL_INTERVAL_MS);
+    expect(RUN_SAFETY_POLL_INTERVAL_MS).toBe(15000);
+    expect(runPollInterval({ status: "running" }, false)).toBe(RUN_POLL_INTERVAL_MS);
+    expect(runPollInterval({ status: "queued" }, true)).toBe(RUN_POLL_INTERVAL_MS);
+    expect(runPollInterval({ status: "preparing" }, true)).toBe(RUN_POLL_INTERVAL_MS);
+  });
+
+  it("stops for a finished run and before the first answer", () => {
+    for (const status of ["completed", "failed", "cancelled", "interrupted"] as const) {
+      expect(runPollInterval({ status }, false)).toBe(false);
+    }
+    expect(runPollInterval(undefined, true)).toBe(false);
   });
 });
 
