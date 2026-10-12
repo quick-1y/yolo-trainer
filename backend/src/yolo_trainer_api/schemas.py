@@ -626,6 +626,9 @@ class RunRead(RunSummary):
     # is missing, `finished` when the progress events show the training loop ended, `not_resumable`
     # when the worker already refused this checkpoint. Null otherwise (D-10).
     resume_blocked: Literal["no_checkpoint", "finished", "not_resumable"] | None = None
+    # Single-run read only: a failed, interrupted or cancelled run has a non-empty best.pt that
+    # `GET .../interim-best` serves. It is a download only, never a registered model (D-08).
+    interim_best: bool = False
 
 
 # --------------------------------------------------------------------------

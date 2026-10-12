@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, BackgroundTasks, Depends, Header, HTTPException, Request, Response
+from fastapi.responses import FileResponse
 from fastapi.sse import EventSourceResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -180,6 +181,41 @@ async def get_run(
     if run is None:
         raise HTTPException(status_code=404, detail=service.RUN_NOT_FOUND_DETAIL)
     return await service.run_read(session, run, request.app.state.settings.data_dir)
+
+
+@router.get("/projects/{project_id}/runs/{run_id}/interim-best")
+async def download_interim_best(
+    project_id: int,
+    run_id: int,
+    request: Request,
+    session: AsyncSession = Depends(get_session),
+) -> FileResponse:
+    """The best.pt of a failed, interrupted or cancelled run, as a download only (D-08).
+
+    It is incomplete by nature (the training stopped early) and is never registered as a model,
+    so it is not in the model list or the base-model picker. The path comes from the integer run
+    id; the run is looked up by (id, project_id), so another project's run answers 404.
+    """
+    project = await get_project_or_404(session, project_id)
+    run = (
+        await session.execute(
+            select(TrainingRun).where(
+                TrainingRun.id == run_id, TrainingRun.project_id == project_id
+            )
+        )
+    ).scalar_one_or_none()
+    if run is None:
+        raise HTTPException(status_code=404, detail=service.RUN_NOT_FOUND_DETAIL)
+    path = await asyncio.to_thread(
+        service.interim_best_file, request.app.state.settings.data_dir, run
+    )
+    if path is None:
+        raise HTTPException(status_code=404, detail=service.INTERIM_NOT_FOUND_DETAIL)
+    return FileResponse(
+        path,
+        filename=service.model_download_name(project.name, f"{run.name}_interim"),
+        media_type="application/octet-stream",
+    )
 
 
 @router.get("/projects/{project_id}/runs/{run_id}/stream", response_class=EventSourceResponse)

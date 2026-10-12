@@ -73,6 +73,7 @@ RUN_ACTIVE_DETAIL = "This run is still active. Cancel it before deleting it."
 RUN_MODEL_IN_USE_DETAIL = (
     "The model of this run is the base of a run that is still active. Wait until that run finishes."
 )
+INTERIM_NOT_FOUND_DETAIL = "No interim model is available for this run."
 RUN_NOT_CANCELLABLE_DETAIL = "Only a running run can be cancelled."
 RUN_NOT_RESUMABLE_STATUS_DETAIL = "Only an interrupted, cancelled or failed run can be resumed."
 RUN_NO_CHECKPOINT_DETAIL = "No checkpoint was saved for this run yet. Start a new run instead."
@@ -564,6 +565,23 @@ async def resume_run(
     return run
 
 
+def interim_best_file(data_dir: Path, run: TrainingRun) -> Path | None:
+    """The best.pt of an unfinished run, or None when none may be offered (D-08).
+
+    Only a failed, interrupted or cancelled run has one to offer, and only when the file exists
+    and is not empty (a kill during the write can leave it truncated, so it is always presented as
+    incomplete). The path comes from the integer run id. Sync and touching the disk: call it
+    through a thread. The file is never registered as a model.
+    """
+    if run.status not in RESUMABLE_STATUSES:
+        return None
+    path = layout.best_weights(layout.run_dir(data_dir, run.id))
+    try:
+        return path if path.is_file() and path.stat().st_size > 0 else None
+    except OSError:
+        return None
+
+
 def model_download_name(project_name: str | None, model_name: str) -> str:
     """`<project>_<run>_best.pt` reduced to safe filename characters (D-18, Pattern 8).
 
@@ -687,8 +705,14 @@ async def run_read(session: AsyncSession, run: TrainingRun, data_dir: Path) -> R
     )
     if resume is not None and run.resume_epoch is None:
         fields["resume_epoch"] = resume.epoch
+    interim = (
+        await asyncio.to_thread(interim_best_file, data_dir, run)
+        if run.status in RESUMABLE_STATUSES
+        else None
+    )
     return RunRead(
         **fields,
+        interim_best=interim is not None,
         can_resume=resume.can_resume if resume is not None else False,
         resume_blocked=resume.blocked if resume is not None else None,
         dataset_counts=DatasetCounts(**run.dataset_counts) if run.dataset_counts else None,
