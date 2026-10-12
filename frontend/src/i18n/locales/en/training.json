@@ -10,8 +10,16 @@
       "status": "Status",
       "base": "Base model",
       "created": "Created",
-      "map50": "mAP50"
+      "duration": "Duration",
+      "epochs": "Epochs",
+      "settings": "Settings",
+      "map50": "mAP50",
+      "map5095": "mAP50-95",
+      "images": "Images",
+      "imagesTitle": "Images in the dataset snapshot"
     },
+    "settingsTitle": "Image size {{imgsz}} · Batch size {{batch}} · Device {{device}}",
+    "lastEpochValue": "Value from the last completed epoch",
     "downloadAria": "Download {{file}}",
     "empty": {
       "title": "No training runs yet",

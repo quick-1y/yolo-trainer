@@ -10,8 +10,14 @@ const COMPLETED = makeRun({
   name: "run-3",
   status: "completed",
   queue_position: null,
-  epoch: 100,
-  map50: 0.812,
+  epoch: 10,
+  epochs: 10,
+  map50: 0.81,
+  map50_95: 0.52,
+  active_seconds: 125,
+  image_count: 160,
+  settings: { epochs: 10, imgsz: 640, batch: -1, device: "auto" },
+  resolved: { device: "cpu", batch: 16, workers: 0 },
   started_at: "2026-01-15T10:05:00Z",
   finished_at: "2026-01-15T11:05:00Z",
   model: {
@@ -71,7 +77,7 @@ describe("TrainingPage", () => {
     expect(names).toEqual(["run-3", "run-2", "run-1"]);
 
     const [completedRow, runningRow, queuedRow] = screen.getAllByTestId("run-row");
-    expect(within(completedRow).getByText("0.812")).toBeInTheDocument();
+    expect(within(completedRow).getByText("0.810")).toBeInTheDocument();
     expect(within(completedRow).getByText("Completed")).toBeInTheDocument();
     expect(within(completedRow).getByText("yolo26n")).toBeInTheDocument();
     const download = within(completedRow).getByRole("link", { name: /plates_run-3_best\.pt/ });
@@ -79,7 +85,7 @@ describe("TrainingPage", () => {
     expect(download).toHaveAttribute("download");
 
     expect(within(runningRow).getByText("Epoch 12 of 100")).toBeInTheDocument();
-    expect(within(runningRow).getByText("—")).toBeInTheDocument();
+    expect(within(runningRow).getByText("0.457")).toBeInTheDocument();
     expect(within(runningRow).queryByRole("link", { name: /Download/ })).toBeNull();
 
     expect(within(queuedRow).getByText("In queue: 2")).toBeInTheDocument();
@@ -103,6 +109,78 @@ describe("TrainingPage", () => {
     expect(screen.getAllByTestId("run-row")).toHaveLength(1);
   });
 
+  it("shows a completed run's duration, epochs, key settings, final metrics and snapshot size", async () => {
+    stubTrainingApi({ runs: [COMPLETED] });
+    renderWithProviders(<AppRoutes />, { route: TRAINING });
+
+    const row = await screen.findByTestId("run-row");
+    expect(within(row).getByText("640 · 16 · CPU")).toBeInTheDocument();
+    expect(within(row).getByText("0:02:05")).toBeInTheDocument();
+    expect(within(row).getByText("10/10")).toBeInTheDocument();
+    expect(within(row).getByText("0.810")).toBeInTheDocument();
+    expect(within(row).getByText("0.520")).toBeInTheDocument();
+    expect(within(row).getByText("160")).toBeInTheDocument();
+    expect(within(row).getByRole("link", { name: /plates_run-3_best\.pt/ })).toBeInTheDocument();
+    // a final value is not a last-epoch value: no explanatory title
+    expect(within(row).getByText("0.810")).not.toHaveAttribute("title");
+    expect(within(row).getByText("640 · 16 · CPU")).toHaveAttribute(
+      "title",
+      "Image size 640 · Batch size 16 · Device CPU",
+    );
+  });
+
+  it("shows a dash for the duration, epochs, mAP and images of a queued run that never started", async () => {
+    stubTrainingApi({ runs: [QUEUED] });
+    renderWithProviders(<AppRoutes />, { route: TRAINING });
+
+    const row = await screen.findByTestId("run-row");
+    const cells = within(row).getAllByRole("cell");
+    // name, status, base, created, duration, epochs, settings, mAP50, mAP50-95, images, download
+    expect(cells).toHaveLength(11);
+    for (const index of [4, 5, 7, 8, 9]) {
+      expect(cells[index]).toHaveTextContent("—");
+    }
+    // an auto request that was not resolved yet stays "Auto"
+    expect(cells[6]).toHaveTextContent("640 · Auto · Auto");
+  });
+
+  it("explains that a cancelled run's mAP is the value of its last completed epoch", async () => {
+    const cancelled = makeRun({
+      id: 5,
+      name: "run-5",
+      status: "cancelled",
+      queue_position: null,
+      epoch: 1,
+      epochs: 2,
+      last_map50: 0.5,
+      map50: null,
+      map50_95: 0.3,
+      last_map50_95: 0.3,
+      started_at: "2026-01-15T10:05:00Z",
+      active_seconds: 30,
+    });
+    stubTrainingApi({ runs: [cancelled] });
+    renderWithProviders(<AppRoutes />, { route: TRAINING });
+
+    const row = await screen.findByTestId("run-row");
+    expect(within(row).getByText("0.500")).toHaveAttribute("title", "Value from the last completed epoch");
+    expect(within(row).getByText("0.300")).toHaveAttribute("title", "Value from the last completed epoch");
+    expect(within(row).getByText("1/2")).toBeInTheDocument();
+  });
+
+  it("scrolls horizontally and keeps the name cell sticky", async () => {
+    stubTrainingApi({ runs: [COMPLETED] });
+    renderWithProviders(<AppRoutes />, { route: TRAINING });
+
+    const table = await screen.findByRole("table");
+    // CSS modules are not applied in jsdom: the markup carries the scroll container, the
+    // min-width wrapper and the sticky name cell through their class names.
+    expect(table.parentElement).toHaveClass(/scroller/);
+    expect(table).toHaveClass(/table/);
+    const row = screen.getByTestId("run-row");
+    expect(within(row).getAllByRole("cell")[0]).toHaveClass(/nameCell/);
+  });
+
   it("opens the run page from the row name and keeps the download anchor outside that link", async () => {
     stubTrainingApi({ runs: [COMPLETED] });
     renderWithProviders(<AppRoutes />, { route: TRAINING });
@@ -119,8 +197,8 @@ describe("TrainingPage", () => {
     stubTrainingApi({ runs: [makeRun({ id: 4, name: longName, base_name: "b".repeat(100) })] });
     renderWithProviders(<AppRoutes />, { route: TRAINING });
 
-    const name = await screen.findByTestId("run-name");
-    expect(name).toHaveAttribute("title", longName);
+    expect(await screen.findByTestId("run-name")).toHaveTextContent(longName);
+    expect(screen.getByRole("link", { name: longName })).toHaveAttribute("title", longName);
     expect(screen.getByTitle("b".repeat(100))).toBeInTheDocument();
   });
 
@@ -193,7 +271,7 @@ describe("TrainingPage", () => {
     const stub = stubTrainingApi({ runs: [COMPLETED] });
     renderWithProviders(<AppRoutes />, { route: TRAINING });
 
-    expect(await screen.findByText("0.812")).toBeInTheDocument();
+    expect(await screen.findByText("0.810")).toBeInTheDocument();
     await act(async () => {
       await vi.advanceTimersByTimeAsync(7000);
     });
