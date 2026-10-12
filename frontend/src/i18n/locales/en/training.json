@@ -140,6 +140,19 @@
       "body": "Run \"{{name}}\" will be removed from the queue and its prepared dataset will be deleted. This cannot be undone.",
       "confirm": "Remove",
       "done": "Run \"{{name}}\" was removed from the queue."
+    },
+    "interim": {
+      "download": "Download interim best.pt",
+      "note": "Incomplete: the best epoch so far. It is not added to your models."
+    },
+    "delete": {
+      "open": "Delete run",
+      "title": "Delete run",
+      "confirm": "Delete run",
+      "keep": "Keep run",
+      "body": "Run \"{{name}}\" will be deleted together with its dataset snapshot, checkpoints, charts and logs. This cannot be undone.",
+      "bodyModel": "The model \"{{model}}\" trained by this run will be deleted too. Models trained from it keep its name as plain text.",
+      "done": "Run \"{{name}}\" was deleted."
     }
   },
   "settings": {

@@ -232,7 +232,7 @@ def test_a_failing_run_folder_removal_does_not_fail_the_delete(
     def boom(*args: object, **kwargs: object) -> None:
         raise OSError("locked by another process")
 
-    monkeypatch.setattr(projects_router, "remove_run_dir", boom)
+    monkeypatch.setattr(storage, "remove_run_dir", boom)
     with caplog.at_level(logging.ERROR):
         response = client.delete(f"/api/projects/{project_id}")
 

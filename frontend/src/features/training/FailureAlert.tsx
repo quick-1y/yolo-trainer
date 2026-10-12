@@ -1,7 +1,7 @@
-import { Alert, Group, Stack, Text } from "@mantine/core";
+import { Alert, Button, Group, Stack, Text } from "@mantine/core";
 import { useTranslation } from "react-i18next";
 
-import { failureCategory } from "../../api/training";
+import { failureCategory, interimBestUrl } from "../../api/training";
 import type { RunDetail } from "../../api/training";
 import { RunFailureLogBody, RunFailureLogToggle, useRunFailureLog } from "./RunFailureLog";
 import { NewTrainingButton, ResumeInfo, failureHintIsResumeReason, resumeReasonId } from "./ResumeInfo";
@@ -35,8 +35,24 @@ export function FailureAlert({ run }: { run: RunDetail }) {
         <ResumeInfo run={run} />
         <Group gap={8}>
           <NewTrainingButton />
+          {run.interim_best ? (
+            <Button
+              component="a"
+              variant="default"
+              size="compact-sm"
+              href={interimBestUrl(run.project_id, run.id)}
+              download
+            >
+              {t("run.interim.download")}
+            </Button>
+          ) : null}
           <RunFailureLogToggle opened={log.opened} onToggle={log.toggle} />
         </Group>
+        {run.interim_best ? (
+          <Text fz={12} c="dark.1">
+            {t("run.interim.note")}
+          </Text>
+        ) : null}
         <RunFailureLogBody log={run.log_tail} opened={log.opened} />
       </Stack>
     </Alert>

@@ -16,9 +16,10 @@ from pathlib import Path
 from typing import NamedTuple
 
 from fastapi import HTTPException
-from sqlalchemy import delete, func, select, update
+from sqlalchemy import delete, exists, func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+from sqlalchemy.orm import aliased
 
 from yolo_trainer_api import storage
 from yolo_trainer_api.models import (
@@ -29,6 +30,7 @@ from yolo_trainer_api.models import (
     utcnow,
 )
 from yolo_trainer_api.schemas import (
+    ACTIVE_RUN_STATUSES,
     DatasetCounts,
     OfficialBase,
     RunBase,
@@ -67,6 +69,11 @@ logger = logging.getLogger(__name__)
 RUN_NOT_FOUND_DETAIL = "Run not found."
 RUN_NOT_QUEUED_DETAIL = "This run has already started and can no longer be removed from the queue."
 RUN_RESUMED_DETAIL = "This run was resumed. Cancel the resume instead to keep its progress."
+RUN_ACTIVE_DETAIL = "This run is still active. Cancel it before deleting it."
+RUN_MODEL_IN_USE_DETAIL = (
+    "The model of this run is the base of a run that is still active. Wait until that run finishes."
+)
+INTERIM_NOT_FOUND_DETAIL = "No interim model is available for this run."
 RUN_NOT_CANCELLABLE_DETAIL = "Only a running run can be cancelled."
 RUN_NOT_RESUMABLE_STATUS_DETAIL = "Only an interrupted, cancelled or failed run can be resumed."
 RUN_NO_CHECKPOINT_DETAIL = "No checkpoint was saved for this run yet. Start a new run instead."
@@ -87,6 +94,8 @@ PREPARE_SOURCE_MISSING_DETAIL = (
 
 # The statuses a run can be resumed from (D-10). Resume additionally needs a last.pt on disk.
 RESUMABLE_STATUSES = ("interrupted", "cancelled", "failed")
+# The statuses a run can be hard-deleted from (D-15); every other run is active or queued.
+TERMINAL_RUN_STATUSES = ("completed", "failed", "interrupted", "cancelled")
 
 _DOWNLOAD_NAME_MAX = 120
 _DOWNLOAD_SUFFIX = "_best.pt"
@@ -344,6 +353,63 @@ async def remove_queued_run(
     await _remove_folder(settings, run_id)
 
 
+async def delete_run(
+    session: AsyncSession, settings: Settings, project_id: int, run_id: int
+) -> None:
+    """Hard-delete a finished run with its folder and its registered model (D-15, one-way).
+
+    A never-resumed `queued` run is the Phase 4 remove-from-queue (`remove_queued_run`, which also
+    refuses a resumed one); `preparing` and `running` runs answer 409 `RUN_ACTIVE_DETAIL`. For a
+    finished run the status check and the base-in-use check are part of ONE guarded DELETE: the
+    run must still be terminal and no preparing, queued or running run may name one of its models
+    as its base (that run's job would fail with "The base model file is missing."), so a run
+    claimed or resumed in between can never be deleted. The model rows follow through the
+    `source_run_id` cascade and models fine-tuned from them keep the base name as text
+    (`base_model_id` becomes NULL). Rows first, files after, through `storage.remove_run_files`;
+    a leftover is swept by the startup cleanup. There is no trash.
+    """
+    run = await _find_run(session, project_id, run_id)
+    if run is None:
+        raise HTTPException(status_code=404, detail=RUN_NOT_FOUND_DETAIL)
+    if run.status == "queued":
+        await remove_queued_run(session, settings, project_id, run_id)
+        return
+    if run.status not in TERMINAL_RUN_STATUSES:
+        raise HTTPException(status_code=409, detail=RUN_ACTIVE_DETAIL)
+
+    # The ids are collected BEFORE the delete: the cascade takes the model rows with the run.
+    model_ids = list(
+        (await session.execute(select(TrainedModel.id).where(TrainedModel.source_run_id == run_id)))
+        .scalars()
+        .all()
+    )
+    guards = [
+        TrainingRun.id == run_id,
+        TrainingRun.project_id == project_id,
+        TrainingRun.status.in_(TERMINAL_RUN_STATUSES),
+    ]
+    if model_ids:
+        dependent = aliased(TrainingRun)
+        guards.append(
+            ~exists().where(
+                dependent.base_model_id.in_(model_ids),
+                dependent.status.in_(ACTIVE_RUN_STATUSES),
+            )
+        )
+    result = await session.execute(
+        delete(TrainingRun).where(*guards).execution_options(synchronize_session=False)
+    )
+    await session.commit()
+    if result.rowcount == 0:
+        current = await _find_run(session, project_id, run_id)
+        if current is None:
+            raise HTTPException(status_code=404, detail=RUN_NOT_FOUND_DETAIL)
+        if current.status not in TERMINAL_RUN_STATUSES:
+            raise HTTPException(status_code=409, detail=RUN_ACTIVE_DETAIL)
+        raise HTTPException(status_code=409, detail=RUN_MODEL_IN_USE_DETAIL)
+    await asyncio.to_thread(storage.remove_run_files, settings, [run_id], model_ids)
+
+
 async def cancel_run(session: AsyncSession, project_id: int, run_id: int) -> TrainingRun:
     """Ask for a `running` run to be cancelled (D-06, D-07); anything else is refused with 409.
 
@@ -499,6 +565,23 @@ async def resume_run(
     return run
 
 
+def interim_best_file(data_dir: Path, run: TrainingRun) -> Path | None:
+    """The best.pt of an unfinished run, or None when none may be offered (D-08).
+
+    Only a failed, interrupted or cancelled run has one to offer, and only when the file exists
+    and is not empty (a kill during the write can leave it truncated, so it is always presented as
+    incomplete). The path comes from the integer run id. Sync and touching the disk: call it
+    through a thread. The file is never registered as a model.
+    """
+    if run.status not in RESUMABLE_STATUSES:
+        return None
+    path = layout.best_weights(layout.run_dir(data_dir, run.id))
+    try:
+        return path if path.is_file() and path.stat().st_size > 0 else None
+    except OSError:
+        return None
+
+
 def model_download_name(project_name: str | None, model_name: str) -> str:
     """`<project>_<run>_best.pt` reduced to safe filename characters (D-18, Pattern 8).
 
@@ -515,6 +598,7 @@ def model_download_name(project_name: str | None, model_name: str) -> str:
 def _model_ref(model: TrainedModel, project_name: str | None) -> RunModelRef:
     return RunModelRef(
         id=model.id,
+        name=model.name,
         file_name=model_download_name(project_name, model.name),
         size_bytes=model.size_bytes,
         ultralytics_version=model.ultralytics_version,
@@ -621,8 +705,14 @@ async def run_read(session: AsyncSession, run: TrainingRun, data_dir: Path) -> R
     )
     if resume is not None and run.resume_epoch is None:
         fields["resume_epoch"] = resume.epoch
+    interim = (
+        await asyncio.to_thread(interim_best_file, data_dir, run)
+        if run.status in RESUMABLE_STATUSES
+        else None
+    )
     return RunRead(
         **fields,
+        interim_best=interim is not None,
         can_resume=resume.can_resume if resume is not None else False,
         resume_blocked=resume.blocked if resume is not None else None,
         dataset_counts=DatasetCounts(**run.dataset_counts) if run.dataset_counts else None,

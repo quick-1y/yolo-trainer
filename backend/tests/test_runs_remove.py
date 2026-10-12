@@ -72,20 +72,25 @@ def test_removing_a_queued_run_deletes_it_and_its_folder_and_later_runs_move_up(
     assert layout.run_dir(settings.data_dir, first["id"]).is_dir()
 
 
-def test_a_run_that_is_no_longer_queued_answers_409_and_stays(
+def test_a_run_that_is_no_longer_queued_is_refused_or_deleted_by_its_status(
     client: TestClient, settings: Settings
 ) -> None:
+    """A running run answers 409 and stays; a finished one is no queue matter any more (D-15)."""
     project_id, (running, failed, done, waiting) = _queued_runs(client, 4)
     engine = _worker_engine(settings)
     assert queue.claim_next(engine) == running["id"]
     _force_status(engine, failed["id"], "failed")
     _force_status(engine, done["id"], "completed")
 
-    for run, status in ((running, "running"), (failed, "failed"), (done, "completed")):
-        response = client.delete(_url(project_id, run["id"]), headers=XHR)
-        assert response.status_code == 409, status
-        assert response.json()["detail"] == service.RUN_NOT_QUEUED_DETAIL
-        assert run_status(client, project_id, run["id"]) == status  # unchanged
+    response = client.delete(_url(project_id, running["id"]), headers=XHR)
+    assert response.status_code == 409
+    assert response.json()["detail"] == service.RUN_ACTIVE_DETAIL
+    assert run_status(client, project_id, running["id"]) == "running"  # unchanged
+
+    for run in (failed, done):
+        assert client.delete(_url(project_id, run["id"]), headers=XHR).status_code == 204
+        assert client.get(_url(project_id, run["id"])).status_code == 404
+        assert not layout.run_dir(settings.data_dir, run["id"]).exists()
 
     assert layout.run_dir(settings.data_dir, running["id"]).is_dir()
     assert run_status(client, project_id, waiting["id"]) == "queued"
@@ -136,7 +141,7 @@ def test_a_preparing_run_cannot_be_removed(client: TestClient, settings: Setting
     response = client.delete(_url(project_id, run["id"]), headers=XHR)
 
     assert response.status_code == 409
-    assert response.json()["detail"] == service.RUN_NOT_QUEUED_DETAIL
+    assert response.json()["detail"] == service.RUN_ACTIVE_DETAIL
     assert run_status(client, project_id, run["id"]) == "preparing"
 
 

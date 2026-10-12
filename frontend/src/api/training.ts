@@ -78,6 +78,8 @@ export interface RunMetrics {
 
 export interface RunModelRef {
   id: number;
+  /** The registered model's own name; the delete dialog names it (D-15). */
+  name: string;
   file_name: string;
   size_bytes: number;
   ultralytics_version: string | null;
@@ -141,6 +143,11 @@ export interface RunDetail extends RunSummary {
    * refused the checkpoint. Null otherwise (D-10).
    */
   resume_blocked: ResumeBlocked | null;
+  /**
+   * Detail only: a failed, interrupted or cancelled run has a non-empty interim best.pt to
+   * download. It is incomplete and never a registered model (D-08).
+   */
+  interim_best: boolean;
 }
 
 export interface OfficialModelOption {
@@ -371,6 +378,25 @@ export function useRemoveQueuedRun(projectId: number) {
 }
 
 /**
+ * Hard-delete a finished run with its folder and its registered model (D-15, one-way). A 409 means
+ * the run is active or its model is the base of an active run; the message says which. The deleted
+ * model leaves the base-model picker, so the start-form options are refetched too.
+ */
+export function useDeleteRun(projectId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (runId: number) =>
+      apiRequest<void>(`/projects/${projectId}/runs/${runId}`, { method: "DELETE" }),
+    onSuccess: (_data, runId) => {
+      queryClient.removeQueries({ queryKey: trainingKeys.run(projectId, runId) });
+      void queryClient.invalidateQueries({ queryKey: trainingKeys.runs(projectId) });
+      void queryClient.invalidateQueries({ queryKey: trainingKeys.options(projectId) });
+      void queryClient.invalidateQueries({ queryKey: projectKeys.detail(projectId) });
+    },
+  });
+}
+
+/**
  * Ask for a running run to be cancelled (D-06). The api only sets a flag; the worker stops the
  * process within seconds, so the response is a still-running run with `cancelling: true`. A 409
  * means the run already finished or was not running.
@@ -408,6 +434,11 @@ export function useResumeRun(projectId: number) {
 /** A plain GET target for `<a href download>`; never fetched as a blob (MODL-04). */
 export function modelDownloadUrl(modelId: number): string {
   return `/api/models/${modelId}/download`;
+}
+
+/** The interim best.pt of an unfinished run; a plain GET target for `<a href download>` (D-08). */
+export function interimBestUrl(projectId: number, runId: number): string {
+  return `/api/projects/${projectId}/runs/${runId}/interim-best`;
 }
 
 /** The Server-Sent Events stream of one run's progress (`EventSource`, same origin). */

@@ -168,6 +168,26 @@ def remove_model_file(settings: Settings, model_id: int) -> None:
     )
 
 
+def remove_run_files(settings: Settings, run_ids: Iterable[int], model_ids: Iterable[int]) -> None:
+    """Delete the folders of runs and the `.pt` files of models whose rows are already gone.
+
+    The one removal path shared by project delete and run delete (D-15, D-19): the rows leave the
+    database first, the files after. Every failure is logged and skipped - the startup cleanup
+    removes a leftover - and `remove_run_dir` / `remove_model_file` stay the only deletion calls,
+    so their direct-child, non-symlink guards always apply.
+    """
+    for run_id in run_ids:
+        try:
+            remove_run_dir(settings, run_id)
+        except Exception:
+            logger.exception("Could not remove the folder of deleted run %s", run_id)
+    for model_id in model_ids:
+        try:
+            remove_model_file(settings, model_id)
+        except Exception:
+            logger.exception("Could not remove the file of deleted model %s", model_id)
+
+
 @dataclass
 class ProjectDirListing:
     """Plain names found directly inside one child of the projects root."""
