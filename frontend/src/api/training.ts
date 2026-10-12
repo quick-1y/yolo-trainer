@@ -114,14 +114,20 @@ export interface RunSummary {
   segment_started_at: string | null;
   /** Verdict on mAP50 computed by the server (null while there is no final mAP50). */
   quality: QualityLevel | null;
+  /** Final mAP50-95, else the last completed epoch's; null while none is known (TRAN-08). */
+  map50_95: number | null;
+  /** mAP50-95 of the last completed epoch the supervisor saw; null before the first epoch. */
+  last_map50_95: number | null;
+  /** Images in the dataset snapshot (train + valid + test); null while it is not written yet. */
+  image_count: number | null;
+  settings: RunSettings;
+  resolved: RunResolved | null;
 }
 
 /** The reasons a run in a resumable status cannot be resumed (D-10). */
 export type ResumeBlocked = "no_checkpoint" | "finished" | "not_resumable";
 
 export interface RunDetail extends RunSummary {
-  settings: RunSettings;
-  resolved: RunResolved | null;
   dataset_counts: DatasetCounts | null;
   class_names: string[] | null;
   metrics: RunMetrics | null;

@@ -511,3 +511,52 @@ def test_0008_downgrades_to_0007_and_back_keeping_the_runs_and_autoincrement(
         ).fetchall() == [(0, 0.0)]
     finally:
         connection.close()
+
+
+def test_a_populated_0008_database_upgrades_with_no_last_epoch_value_and_round_trips(
+    tmp_path: Path,
+) -> None:
+    settings = Settings(
+        data_dir=tmp_path / "data", allowed_hosts=["testserver", "localhost", "127.0.0.1"]
+    )
+    settings.data_dir.mkdir(parents=True)
+    config = _alembic_config(settings.sync_database_url)
+    command.upgrade(config, "0008")
+    _seed_0005_run(settings)
+
+    command.upgrade(config, "head")
+
+    connection = sqlite3.connect(settings.db_path)
+    try:
+        assert connection.execute(
+            "SELECT status, last_map50, last_map50_95 FROM training_runs WHERE id = 1"
+        ).fetchone() == ("failed", None, None)
+        columns = {row[1]: row for row in connection.execute("PRAGMA table_info(training_runs)")}
+        assert columns["last_map50_95"][3] == 0  # nullable
+    finally:
+        connection.close()
+
+    command.downgrade(config, "0008")
+
+    connection = sqlite3.connect(settings.db_path)
+    try:
+        columns = [row[1] for row in connection.execute("PRAGMA table_info(training_runs)")]
+        assert "last_map50_95" not in columns
+        assert "last_map50" in columns  # only the 0009 column goes
+        assert "segment_started_at" in columns
+        assert connection.execute("SELECT name FROM training_runs").fetchall() == [("run-1",)]
+        sql = connection.execute(
+            "SELECT sql FROM sqlite_master WHERE name = 'training_runs'"
+        ).fetchone()[0]
+        assert "ck_training_runs_status" in sql
+        assert "AUTOINCREMENT" in sql
+    finally:
+        connection.close()
+
+    command.upgrade(config, "head")
+
+    connection = sqlite3.connect(settings.db_path)
+    try:
+        assert connection.execute("SELECT last_map50_95 FROM training_runs").fetchall() == [(None,)]
+    finally:
+        connection.close()

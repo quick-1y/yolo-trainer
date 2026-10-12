@@ -1,8 +1,21 @@
-/* Run list grid: name | status | base model | created | mAP50 | download (UI-SPEC "Training list"). */
+/*
+ * History table (UI-SPEC "History table"): name | status | base model | created | duration | epochs |
+ * settings | mAP50 | mAP50-95 | images | download. Eleven columns do not fit the 760px content
+ * width at 1024px, so the Paper scrolls horizontally and the grid keeps its natural width.
+ */
+.scroller {
+  overflow-x: auto;
+  container-type: inline-size;
+}
+
+.table {
+  min-width: 1272px;
+}
+
 .headerRow,
 .row {
   display: grid;
-  grid-template-columns: minmax(120px, 1fr) 128px 144px 96px 64px 32px;
+  grid-template-columns: minmax(160px, 1fr) 128px 144px 96px 104px 72px 176px 72px 80px 96px 32px;
   align-items: center;
   column-gap: 8px;
   padding: 0 16px;
@@ -27,30 +40,98 @@
   background: var(--mantine-color-dark-5);
 }
 
-/* The name link is stretched over the whole row; the download anchor sits above it. */
-.nameLink {
+/*
+ * The name column stays at the left edge while the table scrolls sideways. It reaches over the
+ * row padding (negative margin) so scrolled cells never show through, has an opaque fill that
+ * follows the row hover, and a 1px divider on its right.
+ */
+.nameCell {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  align-self: stretch;
+  min-width: 0;
+  margin-left: -16px;
+  padding: 0 8px 0 16px;
+  background: var(--mantine-color-dark-6);
+  border-right: 1px solid var(--mantine-color-dark-4);
+  /* Clicks go through to the row link below. */
+  pointer-events: none;
+}
+
+.headerRow .nameCell {
+  background: var(--mantine-color-dark-6);
+  /* The header's sort button must be clickable (the data cells let clicks through). */
+  pointer-events: auto;
+}
+
+.headerCell {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.headerRight {
+  justify-content: flex-end;
+}
+
+.sortButton {
+  display: inline-flex;
+  align-items: baseline;
+  max-width: 100%;
+  white-space: nowrap;
+}
+
+.sortLabel {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sortButton:focus-visible {
+  outline: 2px solid var(--mantine-primary-color-filled);
+  outline-offset: 2px;
+}
+
+/* The "no matching runs" state stays as wide as the visible part of the table while it scrolls. */
+.filteredEmpty {
+  position: sticky;
+  left: 0;
+  width: 100cqw;
+}
+
+.row:hover .nameCell {
+  background: var(--mantine-color-dark-5);
+}
+
+.nameText {
   display: block;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: inherit;
-  text-decoration: none;
   font-size: 16px;
   font-weight: 600;
 }
 
-.nameLink::after {
-  content: "";
+/* The link is stretched over the whole row; the download anchor sits above it. */
+.rowLink {
   position: absolute;
   inset: 0;
+  color: inherit;
+  text-decoration: none;
 }
 
-.nameLink:focus-visible {
+.rowLink:focus-visible {
   outline: none;
 }
 
-.nameLink:focus-visible::after {
+.rowLink:focus-visible::after {
+  content: "";
+  position: absolute;
+  inset: 0;
   outline: 2px solid var(--mantine-primary-color-filled);
   outline-offset: -2px;
 }
@@ -67,6 +148,13 @@
 .numeric {
   text-align: right;
   font-variant-numeric: tabular-nums;
+}
+
+.downloadCell {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  justify-content: center;
 }
 
 .download {

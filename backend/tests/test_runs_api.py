@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import threading
 from pathlib import Path
 
 import pytest
@@ -17,8 +18,12 @@ from fastapi.testclient import TestClient
 from yolo_trainer_api.settings import Settings
 from yolo_trainer_api.training import service
 from yolo_trainer_common import layout
+from yolo_trainer_worker import queue
+from yolo_trainer_worker.supervisor import CANCELLED
 
-from .test_training_pipeline import _install_stub_ultralytics, _run_train_job
+from .test_runs_cancel import _cancel, _epoch, _queued_runs, _supervisor
+from .test_training_pipeline import _install_stub_ultralytics, _run_train_job, _train_to_end
+from .test_worker_supervisor import _in_thread, _Spawned, _wait_until
 from .training_helpers import post_run, seed_model, setup_project, start_run, wait_status
 
 
@@ -300,3 +305,108 @@ def test_train_job_refuses_a_model_id_that_is_not_a_whole_number(
     assert _run_train_job(data_dir, run_directory) == 1
 
     assert paths == []
+
+
+# --------------------------------------------------------------------------
+# The history list: one row per run, read from the database only (TRAN-08, D-14)
+# --------------------------------------------------------------------------
+
+
+def _listed(client: TestClient, project_id: int) -> list[dict]:
+    response = client.get(f"/api/projects/{project_id}/runs")
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def test_a_completed_run_lists_its_final_metrics_settings_and_snapshot_size(
+    client: TestClient, settings: Settings
+) -> None:
+    done = _train_to_end(client, settings, "success")
+    project_id, run_id = done["ids"]["project_id"], done["run_id"]
+
+    (row,) = _listed(client, project_id)
+
+    assert row["id"] == run_id and row["status"] == "completed"
+    # the final validation wins; the last epoch's mAP50-95 is kept next to it
+    assert (row["map50"], row["map50_95"]) == (0.7, 0.4)
+    assert row["last_map50_95"] == 0.35
+    assert row["image_count"] == 3  # train 2 + valid 1 of the snapshot
+    assert row["settings"] == {"epochs": 2, "imgsz": 64, "batch": 2, "device": "cpu"}
+    assert row["resolved"] == {"device": "cpu", "batch": 2, "workers": 0}
+
+
+def test_a_run_cancelled_after_one_epoch_lists_the_last_epoch_mean_average_precision(
+    client: TestClient, settings: Settings, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    spawned = _Spawned()
+    spawned.install(monkeypatch)
+    project_id, (run,) = _queued_runs(client, 1, name="History")
+    supervisor, engine = _supervisor(settings, "sleep")
+    assert queue.claim_next(engine) == run["id"]
+    thread, outcome = _in_thread(lambda: supervisor.run_claimed(run["id"], threading.Event()))
+    _wait_until(lambda: _epoch(client, project_id, run["id"]) == 1)
+    assert _cancel(client, project_id, run["id"]).status_code == 200
+    thread.join(timeout=15)
+    assert outcome == [CANCELLED]
+    wait_status(client, project_id, run["id"], {"cancelled"})
+
+    (row,) = _listed(client, project_id)
+
+    assert row["status"] == "cancelled"
+    assert row["map50"] is None  # no final validation ever ran
+    assert row["last_map50"] == 0.5
+    assert row["map50_95"] == 0.3  # the last epoch's value stands in for the missing final one
+    assert row["last_map50_95"] == 0.3
+    assert row["image_count"] == 3
+
+
+def test_a_queued_run_lists_no_metrics_but_its_settings_and_snapshot_size(
+    client: TestClient,
+) -> None:
+    mine = setup_project(client, "Plates", train=2, valid=1, test=1)
+    started = start_run(client, mine["project_id"], imgsz=96, batch=-1, device="auto")
+    wait_status(client, mine["project_id"], started["id"], {"queued"})
+
+    (row,) = _listed(client, mine["project_id"])
+
+    assert (row["map50"], row["map50_95"], row["last_map50"], row["last_map50_95"]) == (
+        None,
+        None,
+        None,
+        None,
+    )
+    assert row["image_count"] == 4
+    assert row["settings"] == {"epochs": 2, "imgsz": 96, "batch": -1, "device": "auto"}
+    assert row["resolved"] is None
+
+
+def test_the_detail_of_a_run_carries_the_same_new_fields_as_its_list_row(
+    client: TestClient, settings: Settings
+) -> None:
+    done = _train_to_end(client, settings, "success")
+    project_id, run_id = done["ids"]["project_id"], done["run_id"]
+
+    detail = client.get(f"/api/projects/{project_id}/runs/{run_id}").json()
+    (row,) = _listed(client, project_id)
+
+    for key in ("map50_95", "last_map50_95", "image_count", "settings", "resolved"):
+        assert detail[key] == row[key], key
+
+
+def test_listing_the_history_checks_no_file_per_row(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    mine = setup_project(client, "Plates", train=1, valid=1)
+    for number in range(3):
+        started = start_run(client, mine["project_id"], name=f"run-{number}")
+        wait_status(client, mine["project_id"], started["id"], {"queued"})
+    touched: list[object] = []
+
+    def refuse(*args: object, **kwargs: object) -> bool:
+        touched.append(args)
+        return False
+
+    monkeypatch.setattr(Path, "is_file", refuse)
+
+    assert len(_listed(client, mine["project_id"])) == 3
+    assert touched == []

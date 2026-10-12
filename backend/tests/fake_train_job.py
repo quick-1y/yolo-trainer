@@ -39,7 +39,7 @@ def _emit(run_dir: Path, event: str, **fields: object) -> None:
         handle.flush()
 
 
-def _real_epoch(run_dir: Path, epoch: int, epochs: int, map50: float) -> None:
+def _real_epoch(run_dir: Path, epoch: int, epochs: int, map50: float, map50_95: float) -> None:
     for batch in range(1, BATCHES_PER_EPOCH + 1):
         _emit(
             run_dir,
@@ -71,7 +71,13 @@ def _real_epoch(run_dir: Path, epoch: int, epochs: int, map50: float) -> None:
         final_validation=False,
         last_epoch=epoch == epochs,
         fitness=map50 - 0.2,
-        metrics={"metrics/mAP50(B)": map50, "val/box_loss": 1.5},
+        metrics={
+            "metrics/precision(B)": map50 + 0.2,
+            "metrics/recall(B)": map50 + 0.1,
+            "metrics/mAP50(B)": map50,
+            "metrics/mAP50-95(B)": map50_95,
+            "val/box_loss": 1.5,
+        },
     )
 
 
@@ -158,12 +164,12 @@ def main() -> int:
             time.sleep(60)
             return 0
     else:
-        _real_epoch(run_dir, 1, epochs, 0.5)
+        _real_epoch(run_dir, 1, epochs, 0.5, 0.3)
         if args.mode == "sleep":
             time.sleep(60)
             return 0
 
-    _real_epoch(run_dir, 2, epochs, 0.6)
+    _real_epoch(run_dir, 2, epochs, 0.6, 0.35)
     _emit(
         run_dir,
         "fit_epoch_end",

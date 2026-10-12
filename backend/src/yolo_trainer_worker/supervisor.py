@@ -40,6 +40,7 @@ from yolo_trainer_common.progress import (
     ProgressTail,
     clean_log_tail,
     map50_key,
+    primary_metrics,
 )
 from yolo_trainer_worker import queue
 
@@ -410,6 +411,9 @@ class Supervisor:
                     loop_over = True
                     self._record_checkpoint(run_id, None)
                 value = metrics.get(key)
+                # The same headline numbers the final result uses: box metrics for detect, mask
+                # metrics for segment, so a run that stops early still shows how good it got.
+                headline = primary_metrics(run["task_type"], metrics)
                 try:
                     changed = queue.record_epoch(
                         self.engine,
@@ -417,6 +421,7 @@ class Supervisor:
                         int(event.get("epoch", 0)),
                         event.get("epochs") or run.get("epochs"),
                         value if isinstance(value, int | float) else None,
+                        map50_95=headline["map50_95"],
                     )
                 except OperationalError:
                     # A busy database must not kill a long training; the next epoch retries.
