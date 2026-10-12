@@ -143,6 +143,11 @@ export interface RunDetail extends RunSummary {
    * refused the checkpoint. Null otherwise (D-10).
    */
   resume_blocked: ResumeBlocked | null;
+  /**
+   * Detail only: a failed, interrupted or cancelled run has a non-empty interim best.pt to
+   * download. It is incomplete and never a registered model (D-08).
+   */
+  interim_best: boolean;
 }
 
 export interface OfficialModelOption {
@@ -429,6 +434,11 @@ export function useResumeRun(projectId: number) {
 /** A plain GET target for `<a href download>`; never fetched as a blob (MODL-04). */
 export function modelDownloadUrl(modelId: number): string {
   return `/api/models/${modelId}/download`;
+}
+
+/** The interim best.pt of an unfinished run; a plain GET target for `<a href download>` (D-08). */
+export function interimBestUrl(projectId: number, runId: number): string {
+  return `/api/projects/${projectId}/runs/${runId}/interim-best`;
 }
 
 /** The Server-Sent Events stream of one run's progress (`EventSource`, same origin). */

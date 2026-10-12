@@ -141,6 +141,10 @@
       "confirm": "Remove",
       "done": "Run \"{{name}}\" was removed from the queue."
     },
+    "interim": {
+      "download": "Download interim best.pt",
+      "note": "Incomplete: the best epoch so far. It is not added to your models."
+    },
     "delete": {
       "open": "Delete run",
       "title": "Delete run",

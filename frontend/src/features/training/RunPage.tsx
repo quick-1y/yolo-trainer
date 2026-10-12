@@ -19,7 +19,7 @@ import { Link, useOutletContext, useParams } from "react-router-dom";
 
 import { ApiError } from "../../api/client";
 import type { Project } from "../../api/projects";
-import { modelDownloadUrl, useRun } from "../../api/training";
+import { interimBestUrl, modelDownloadUrl, useRun } from "../../api/training";
 import type { RunDetail, RunStatus } from "../../api/training";
 import { BatchProgress } from "./progress/BatchProgress";
 import { runActiveSeconds } from "./progress/duration";
@@ -291,6 +291,38 @@ function StatusAnnouncer({ status }: { status: RunStatus }) {
   );
 }
 
+/**
+ * The action row of an interrupted or cancelled run: "New training" and, when the run left a
+ * best.pt, a plain-anchor download of it with the note that it is incomplete (D-08). Never filled,
+ * so the header's "Resume training" stays the only filled button.
+ */
+function UnfinishedActions({ run }: { run: RunDetail }) {
+  const { t } = useTranslation("training");
+  return (
+    <>
+      <Group gap={8}>
+        <NewTrainingButton />
+        {run.interim_best ? (
+          <Button
+            component="a"
+            variant="default"
+            size="compact-sm"
+            href={interimBestUrl(run.project_id, run.id)}
+            download
+          >
+            {t("run.interim.download")}
+          </Button>
+        ) : null}
+      </Group>
+      {run.interim_best ? (
+        <Text fz={12} c="dark.1">
+          {t("run.interim.note")}
+        </Text>
+      ) : null}
+    </>
+  );
+}
+
 function InterruptedAlert({ run }: { run: RunDetail }) {
   const { t } = useTranslation("training");
   return (
@@ -298,9 +330,7 @@ function InterruptedAlert({ run }: { run: RunDetail }) {
       <Stack gap={8} align="flex-start">
         <Text size="sm">{t("run.interrupted.body")}</Text>
         <ResumeInfo run={run} />
-        <Group gap={8}>
-          <NewTrainingButton />
-        </Group>
+        <UnfinishedActions run={run} />
       </Stack>
     </Alert>
   );
@@ -313,9 +343,7 @@ function CancelledAlert({ run }: { run: RunDetail }) {
       <Stack gap={8} align="flex-start">
         <Text size="sm">{t("run.cancelled.body")}</Text>
         <ResumeInfo run={run} />
-        <Group gap={8}>
-          <NewTrainingButton />
-        </Group>
+        <UnfinishedActions run={run} />
       </Stack>
     </Alert>
   );

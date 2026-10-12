@@ -80,6 +80,7 @@ export function makeRun(overrides: Json = {}): Json {
     segment_started_at: null,
     can_resume: false,
     resume_blocked: null,
+    interim_best: false,
     log_tail: null,
     ...overrides,
   };
