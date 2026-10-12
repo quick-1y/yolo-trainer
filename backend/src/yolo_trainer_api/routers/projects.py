@@ -19,7 +19,7 @@ from yolo_trainer_api.schemas import (
     ProjectUpdate,
 )
 from yolo_trainer_api.settings import Settings
-from yolo_trainer_api.storage import remove_model_file, remove_project_dir, remove_run_dir
+from yolo_trainer_api.storage import remove_project_dir, remove_run_files
 
 logger = logging.getLogger(__name__)
 
@@ -127,20 +127,7 @@ def _remove_project_files(
         remove_project_dir(settings, project_id)
     except Exception:
         logger.exception("Could not remove the folder of deleted project %s", project_id)
-    for run_id in run_ids:
-        try:
-            remove_run_dir(settings, run_id)
-        except Exception:
-            logger.exception(
-                "Could not remove the folder of run %s of deleted project %s", run_id, project_id
-            )
-    for model_id in model_ids:
-        try:
-            remove_model_file(settings, model_id)
-        except Exception:
-            logger.exception(
-                "Could not remove the file of model %s of deleted project %s", model_id, project_id
-            )
+    remove_run_files(settings, run_ids, model_ids)
 
 
 @router.delete("/{project_id}", status_code=204)

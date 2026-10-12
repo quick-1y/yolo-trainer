@@ -535,6 +535,8 @@ class RunMetrics(BaseModel):
 
 class RunModelRef(BaseModel):
     id: int
+    # The registered model's own name; the delete dialog names it (D-15).
+    name: str
     file_name: str
     size_bytes: int
     ultralytics_version: str | None = None

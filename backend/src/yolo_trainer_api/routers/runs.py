@@ -114,8 +114,13 @@ async def remove_run(
     request: Request,
     session: AsyncSession = Depends(get_session),
 ) -> Response:
+    """Delete a run: a never-resumed queued run leaves the queue, a finished one is hard-deleted.
+
+    A finished run goes with its folder and its registered model (D-15); active runs and runs
+    whose model is the base of an active run answer 409.
+    """
     await get_project_or_404(session, project_id)
-    await service.remove_queued_run(session, request.app.state.settings, project_id, run_id)
+    await service.delete_run(session, request.app.state.settings, project_id, run_id)
     return Response(status_code=204)
 
 
