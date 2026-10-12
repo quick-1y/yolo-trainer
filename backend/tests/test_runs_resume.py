@@ -617,7 +617,7 @@ def test_the_read_model_names_the_reason_a_run_cannot_be_resumed(
     assert blocked(resumable) == (False, "no_checkpoint")
 
 
-def test_a_phase4_row_with_its_checkpoint_is_not_blocked_and_one_without_events_names_no_epoch(
+def test_a_phase4_row_with_its_checkpoint_is_not_blocked(
     client: TestClient, settings: Settings
 ) -> None:
     project_id, run_id, _ = _phase4_run(client, settings, saved=4)
@@ -628,6 +628,10 @@ def test_a_phase4_row_with_its_checkpoint_is_not_blocked_and_one_without_events_
         4,
     )
 
+
+def test_a_phase4_row_with_a_checkpoint_but_no_events_is_not_blocked_and_names_no_epoch(
+    client: TestClient, settings: Settings
+) -> None:
     project_id, run_id, _ = _phase4_run(client, settings, saved=None, db_epoch=3)
     detail = client.get(_url(project_id, run_id)).json()
     assert (detail["can_resume"], detail["resume_blocked"], detail["resume_epoch"]) == (
