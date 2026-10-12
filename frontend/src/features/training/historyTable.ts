@@ -1,4 +1,46 @@
-import type { RunSummary } from "../../api/training";
+import type { RunStatus, RunSummary } from "../../api/training";
+
+export type HistorySort =
+  | "name"
+  | "status"
+  | "base"
+  | "created"
+  | "duration"
+  | "epochs"
+  | "map50"
+  | "map5095"
+  | "images";
+export type HistoryDirection = "asc" | "desc";
+export type HistoryStatus = RunStatus | "all";
+export interface HistoryState {
+  sort: HistorySort;
+  dir: HistoryDirection;
+  status: HistoryStatus;
+}
+
+// Signature stubs for the RED step of Plan 05-08 Task 2: they compile and answer the defaults, so
+// the tests fail on the planned assertions. The GREEN commit replaces them.
+export const STATUS_ORDER: readonly RunStatus[] = [];
+export function parseHistoryParams(_params: URLSearchParams): HistoryState {
+  return { sort: "created", dir: "desc", status: "all" };
+}
+export function historyParams(_state: HistoryState): URLSearchParams {
+  return new URLSearchParams("stub=1");
+}
+export function firstDirection(_sort: HistorySort): HistoryDirection {
+  return "asc";
+}
+export function sortRuns(
+  runs: readonly RunSummary[],
+  _sort: HistorySort,
+  _dir: HistoryDirection,
+  _nowMs: number,
+): RunSummary[] {
+  return [...runs];
+}
+export function filterRuns(runs: readonly RunSummary[], _status: HistoryStatus): RunSummary[] {
+  return [...runs];
+}
 
 /** The translation function the helpers need; `useTranslation`'s `t` fits. */
 export type Translate = (key: string, options?: Record<string, unknown>) => string;
