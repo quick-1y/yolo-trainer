@@ -5,6 +5,7 @@
  */
 .scroller {
   overflow-x: auto;
+  container-type: inline-size;
 }
 
 .table {
@@ -62,6 +63,43 @@
 
 .headerRow .nameCell {
   background: var(--mantine-color-dark-6);
+  /* The header's sort button must be clickable (the data cells let clicks through). */
+  pointer-events: auto;
+}
+
+.headerCell {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.headerRight {
+  justify-content: flex-end;
+}
+
+.sortButton {
+  display: inline-flex;
+  align-items: baseline;
+  max-width: 100%;
+  white-space: nowrap;
+}
+
+.sortLabel {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sortButton:focus-visible {
+  outline: 2px solid var(--mantine-primary-color-filled);
+  outline-offset: 2px;
+}
+
+/* The "no matching runs" state stays as wide as the visible part of the table while it scrolls. */
+.filteredEmpty {
+  position: sticky;
+  left: 0;
+  width: 100cqw;
 }
 
 .row:hover .nameCell {

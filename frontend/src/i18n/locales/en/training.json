@@ -2,6 +2,7 @@
   "page": {
     "title": "Training",
     "count": "Runs: {{count}}",
+    "countFiltered": "Shown: {{shown}} of {{total}}",
     "new": "New training"
   },
   "list": {
@@ -20,6 +21,16 @@
     },
     "settingsTitle": "Image size {{imgsz}} · Batch size {{batch}} · Device {{device}}",
     "lastEpochValue": "Value from the last completed epoch",
+    "sortAria": "Sort by: {{column}}",
+    "filter": {
+      "aria": "Filter by status",
+      "all": "All statuses"
+    },
+    "filteredEmpty": {
+      "title": "No matching runs",
+      "body": "No runs have this status.",
+      "reset": "Show all runs"
+    },
     "downloadAria": "Download {{file}}",
     "empty": {
       "title": "No training runs yet",

@@ -1,4 +1,5 @@
 import type { RunStatus, RunSummary } from "../../api/training";
+import { runActiveSeconds } from "./progress/duration";
 
 export type HistorySort =
   | "name"
@@ -18,28 +19,143 @@ export interface HistoryState {
   status: HistoryStatus;
 }
 
-// Signature stubs for the RED step of Plan 05-08 Task 2: they compile and answer the defaults, so
-// the tests fail on the planned assertions. The GREEN commit replaces them.
-export const STATUS_ORDER: readonly RunStatus[] = [];
-export function parseHistoryParams(_params: URLSearchParams): HistoryState {
-  return { sort: "created", dir: "desc", status: "all" };
+export const HISTORY_SORTS: readonly HistorySort[] = [
+  "name",
+  "status",
+  "base",
+  "created",
+  "duration",
+  "epochs",
+  "map50",
+  "map5095",
+  "images",
+];
+
+/** Every status, in lifecycle order: the options of the status filter. */
+export const RUN_STATUSES: readonly RunStatus[] = [
+  "preparing",
+  "queued",
+  "running",
+  "completed",
+  "failed",
+  "interrupted",
+  "cancelled",
+];
+
+/** The fixed order of the Status column (not alphabetical): what needs attention comes first. */
+export const STATUS_ORDER: readonly RunStatus[] = [
+  "running",
+  "preparing",
+  "queued",
+  "interrupted",
+  "failed",
+  "cancelled",
+  "completed",
+];
+
+const DEFAULT_STATE: HistoryState = { sort: "created", dir: "desc", status: "all" };
+
+/**
+ * The sort, direction and status filter held in the URL (`?sort`, `?dir`, `?status`). Only
+ * allow-listed values are accepted: anything else falls back to the default, so a hand-edited or
+ * stale URL can never put the table in an undefined state. The values never reach the server.
+ */
+export function parseHistoryParams(params: URLSearchParams): HistoryState {
+  const sort = params.get("sort");
+  const dir = params.get("dir");
+  const status = params.get("status");
+  return {
+    sort: HISTORY_SORTS.find((value) => value === sort) ?? DEFAULT_STATE.sort,
+    dir: dir === "asc" || dir === "desc" ? dir : DEFAULT_STATE.dir,
+    status: RUN_STATUSES.find((value) => value === status) ?? DEFAULT_STATE.status,
+  };
 }
-export function historyParams(_state: HistoryState): URLSearchParams {
-  return new URLSearchParams("stub=1");
+
+/** The URL for a state; every default is omitted, so the default view has a clean URL. */
+export function historyParams(state: HistoryState): URLSearchParams {
+  const params = new URLSearchParams();
+  if (state.sort !== DEFAULT_STATE.sort) {
+    params.set("sort", state.sort);
+  }
+  if (state.dir !== DEFAULT_STATE.dir) {
+    params.set("dir", state.dir);
+  }
+  if (state.status !== DEFAULT_STATE.status) {
+    params.set("status", state.status);
+  }
+  return params;
 }
-export function firstDirection(_sort: HistorySort): HistoryDirection {
-  return "asc";
+
+/** The direction a column is first sorted in: text ascending, numbers and dates best/newest first. */
+export function firstDirection(sort: HistorySort): HistoryDirection {
+  return sort === "name" || sort === "base" || sort === "status" ? "asc" : "desc";
 }
+
+/** The value a column sorts by; null means "missing" and sorts last in both directions. */
+function sortValue(run: RunSummary, sort: HistorySort, nowMs: number): number | string | null {
+  switch (sort) {
+    case "name":
+      return run.name;
+    case "base":
+      return run.base_name;
+    case "status":
+      return STATUS_ORDER.indexOf(run.status);
+    case "created":
+      return Date.parse(run.created_at);
+    case "duration":
+      return runActiveSeconds(run, nowMs);
+    case "epochs":
+      return run.epoch;
+    case "map50":
+      return historyMetric(run, "map50").value;
+    case "map5095":
+      return historyMetric(run, "map50_95").value;
+    case "images":
+      return run.image_count;
+  }
+}
+
+function compareValues(a: number | string, b: number | string): number {
+  if (typeof a === "string" && typeof b === "string") {
+    return a.localeCompare(b, undefined, { sensitivity: "base", numeric: true });
+  }
+  return Number(a) - Number(b);
+}
+
+/**
+ * A sorted copy of `runs`. Missing values are last whichever way the column runs, and equal
+ * values keep the newest run (highest id) first. `nowMs` closes the live segment of a running
+ * run, so the duration column orders by active time.
+ */
 export function sortRuns(
   runs: readonly RunSummary[],
-  _sort: HistorySort,
-  _dir: HistoryDirection,
-  _nowMs: number,
+  sort: HistorySort,
+  dir: HistoryDirection,
+  nowMs: number,
 ): RunSummary[] {
-  return [...runs];
+  const sign = dir === "asc" ? 1 : -1;
+  return [...runs].sort((a, b) => {
+    const left = sortValue(a, sort, nowMs);
+    const right = sortValue(b, sort, nowMs);
+    if (left === null && right !== null) {
+      return 1;
+    }
+    if (left !== null && right === null) {
+      return -1;
+    }
+    if (left !== null && right !== null) {
+      const order = compareValues(left, right);
+      if (order !== 0) {
+        return sign * order;
+      }
+    }
+    return b.id - a.id;
+  });
 }
-export function filterRuns(runs: readonly RunSummary[], _status: HistoryStatus): RunSummary[] {
-  return [...runs];
+
+/** The runs with the given status, or all of them for "all". */
+export function filterRuns(runs: readonly RunSummary[], status: HistoryStatus): RunSummary[] {
+  return status === "all" ? [...runs] : runs.filter((run) => run.status === status);
 }
 
 /** The translation function the helpers need; `useTranslation`'s `t` fits. */
