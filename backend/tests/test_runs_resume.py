@@ -26,6 +26,7 @@ from yolo_trainer_worker import supervisor as supervisor_module
 from yolo_trainer_worker.supervisor import Supervisor
 
 from .test_runs_cancel import _cancel, _queued_runs, _supervisor, _url
+from .test_training_options import write_heartbeat
 from .test_worker_supervisor import _in_thread, _Spawned, _wait_until
 from .training_helpers import (
     XHR,
@@ -565,3 +566,119 @@ def test_a_run_cancelled_and_resumed_counts_only_its_running_segments(
     summary = client.get(_url(project_id, run_id)).json()
     assert summary["active_seconds"] == done.active_seconds
     assert summary["segment_started_at"] is None
+
+
+# -- why a run cannot be resumed, in the read model of one run (D-10) ------------------------
+
+
+def _fit_end(epoch: int, **extra: object) -> dict:
+    return {
+        "event": "fit_epoch_end",
+        "epoch": epoch,
+        "epochs": 5,
+        "final_validation": False,
+        **extra,
+    }
+
+
+def _write_events(settings: Settings, run_id: int, events: list[dict]) -> None:
+    path = layout.run_dir(settings.data_dir, run_id) / layout.PROGRESS_FILE
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("".join(json.dumps(event) + "\n" for event in events), encoding="utf-8")
+
+
+def test_the_read_model_names_the_reason_a_run_cannot_be_resumed(
+    client: TestClient, settings: Settings
+) -> None:
+    project_id, runs = _queued_runs(client, 6, "Blocked")
+    engine = queue.create_worker_engine(worker_settings(settings))
+    resumable, no_file, finished, refused, completed, queued = runs
+    _force(engine, resumable["id"], status="cancelled", resume_epoch=3)
+    _force(engine, no_file["id"], status="failed", error_category="out_of_memory")
+    _force(engine, finished["id"], status="failed", epochs=5)
+    _force(engine, refused["id"], status="failed", error_category="not_resumable", resume_epoch=1)
+    _force(engine, completed["id"], status="completed")
+    for run in (resumable, finished, refused):
+        _write_weights(settings, run["id"])
+    _write_events(settings, finished["id"], [_fit_end(5, last_epoch=True)])
+
+    def blocked(run: dict) -> tuple[bool, str | None]:
+        body = client.get(_url(project_id, run["id"])).json()
+        return body["can_resume"], body["resume_blocked"]
+
+    assert blocked(resumable) == (True, None)
+    assert blocked(no_file) == (False, "no_checkpoint")
+    assert blocked(finished) == (False, "finished")
+    assert blocked(refused) == (False, "not_resumable")
+    assert blocked(completed) == (False, None)
+    assert blocked(queued) == (False, None)
+    # deleting last.pt turns a resumable run into a no_checkpoint one
+    layout.last_weights(layout.run_dir(settings.data_dir, resumable["id"])).unlink()
+    assert blocked(resumable) == (False, "no_checkpoint")
+
+
+def test_a_phase4_row_with_its_checkpoint_is_not_blocked_and_one_without_events_names_no_epoch(
+    client: TestClient, settings: Settings
+) -> None:
+    project_id, run_id, _ = _phase4_run(client, settings, saved=4)
+    detail = client.get(_url(project_id, run_id)).json()
+    assert (detail["can_resume"], detail["resume_blocked"], detail["resume_epoch"]) == (
+        True,
+        None,
+        4,
+    )
+
+    project_id, run_id, _ = _phase4_run(client, settings, saved=None, db_epoch=3)
+    detail = client.get(_url(project_id, run_id)).json()
+    assert (detail["can_resume"], detail["resume_blocked"], detail["resume_epoch"]) == (
+        True,
+        None,
+        None,
+    )
+
+
+def test_the_run_list_carries_no_blocked_reason(client: TestClient, settings: Settings) -> None:
+    project_id, (run,) = _queued_runs(client, 1, "ListBlocked")
+    engine = queue.create_worker_engine(worker_settings(settings))
+    _force(engine, run["id"], status="failed")
+
+    (listed,) = client.get(f"/api/projects/{project_id}/runs").json()
+
+    assert "resume_blocked" not in listed
+
+
+# -- the device is checked again on a resume (D-11) -------------------------------------------
+
+
+def test_a_gpu_run_is_not_resumed_on_a_host_without_a_gpu(
+    client: TestClient, settings: Settings
+) -> None:
+    project_id, (run,) = _queued_runs(client, 1, "NoGpu")
+    engine = queue.create_worker_engine(worker_settings(settings))
+    _force(
+        engine,
+        run["id"],
+        status="cancelled",
+        resume_epoch=1,
+        settings={"epochs": 5, "imgsz": 64, "batch": 2, "device": "0"},
+    )
+    _write_weights(settings, run["id"])
+
+    response = _resume(client, project_id, run["id"])
+
+    assert response.status_code == 422
+    assert response.json()["detail"] == "No GPU is available."
+    assert _row(engine, run["id"]).status == "cancelled"
+    assert _row(engine, run["id"]).resume_count == 0
+
+    write_heartbeat(settings)  # the worker reports CUDA now
+    assert _resume(client, project_id, run["id"]).status_code == 200
+
+
+def test_an_auto_or_cpu_run_needs_no_gpu_to_resume(client: TestClient, settings: Settings) -> None:
+    project_id, (run,) = _queued_runs(client, 1, "CpuResume")
+    engine = queue.create_worker_engine(worker_settings(settings))
+    _force(engine, run["id"], status="cancelled", resume_epoch=1)
+    _write_weights(settings, run["id"])
+
+    assert _resume(client, project_id, run["id"]).status_code == 200
