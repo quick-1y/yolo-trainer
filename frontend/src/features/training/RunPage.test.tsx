@@ -2119,3 +2119,76 @@ describe("RunPage delete run", () => {
     expect(within(dialog).getByRole("button", { name: "Оставить запуск" })).toBeInTheDocument();
   });
 });
+
+const INTERIM_NOTE = "Incomplete: the best epoch so far. It is not added to your models.";
+
+describe("RunPage interim best.pt", () => {
+  it.each(["interrupted", "cancelled", "failed"] as const)(
+    "offers a plain-anchor download with the incomplete note for a %s run that has one",
+    async (status) => {
+      stubTrainingApi({ run: resumable(status, { interim_best: true }) });
+      renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+
+      const link = await screen.findByRole("link", { name: "Download interim best.pt" });
+      expect(link).toHaveAttribute("href", "/api/projects/1/runs/7/interim-best");
+      expect(link).toHaveAttribute("download");
+      expect(link).toHaveAttribute("data-variant", "default");
+      expect(screen.getByText(INTERIM_NOTE)).toBeInTheDocument();
+      // Resume training stays the only filled button of an interrupted or cancelled run
+      const filled = screen
+        .getAllByRole("button")
+        .filter((button) => button.getAttribute("data-variant") === "filled");
+      expect(filled.map((button) => button.textContent)).toEqual(
+        status === "failed" ? [] : ["Resume training"],
+      );
+    },
+  );
+
+  it("sits in the action row after New training", async () => {
+    stubTrainingApi({ run: resumable("cancelled", { interim_best: true }) });
+    renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+
+    const row = (await screen.findByRole("link", { name: "New training" })).parentElement as HTMLElement;
+    const names = within(row)
+      .getAllByRole("link")
+      .map((link) => link.textContent);
+    expect(names).toEqual(["New training", "Download interim best.pt"]);
+  });
+
+  it.each(["interrupted", "cancelled", "failed"] as const)(
+    "shows neither the download nor the note for a %s run without an interim file",
+    async (status) => {
+      stubTrainingApi({ run: resumable(status, { interim_best: false }) });
+      renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+
+      await screen.findByText("Settings used");
+      expect(screen.queryByRole("link", { name: "Download interim best.pt" })).toBeNull();
+      expect(screen.queryByText(INTERIM_NOTE)).toBeNull();
+    },
+  );
+
+  it("is not offered for an active or completed run", async () => {
+    for (const run of [running({ interim_best: true }), completed({ interim_best: true })]) {
+      stubTrainingApi({ run });
+      const view = renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+      await screen.findByText("Settings used");
+      expect(screen.queryByRole("link", { name: "Download interim best.pt" })).toBeNull();
+      expect(screen.queryByText(INTERIM_NOTE)).toBeNull();
+      view.unmount();
+    }
+  });
+
+  it("words the download and the note in Russian", async () => {
+    stubTrainingApi({ run: resumable("cancelled", { interim_best: true }) });
+    renderWithProviders(<AppRoutes />, { route: RUN_PATH, language: "ru" });
+
+    expect(
+      await screen.findByRole("link", { name: "Скачать промежуточный best.pt" }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Неполная модель: лучшая эпоха на данный момент. В список моделей она не добавляется.",
+      ),
+    ).toBeInTheDocument();
+  });
+});
