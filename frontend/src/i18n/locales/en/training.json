@@ -44,7 +44,8 @@
     },
     "queued": {
       "title": "In queue: position {{position}}",
-      "body": "The run starts automatically when the worker is free. You can close this page."
+      "body": "The run starts automatically when the worker is free. You can close this page.",
+      "resumeBody": "The run continues from epoch {{epoch}} when the worker is free. You can close this page."
     },
     "running": {
       "starting": "Starting…",
@@ -80,9 +81,9 @@
     "interrupted": {
       "title": "Run interrupted",
       "body": "The service was restarted while this run was training.",
-      "reached": "Last completed epoch: {{epoch}} of {{epochs}}.",
-      "action": "Start a new run to train again."
+      "action": "Resume it to continue from the last saved epoch, or start a new run."
     },
+    "reached": "Last completed epoch: {{epoch}} of {{epochs}}.",
     "cancelled": {
       "title": "Run cancelled",
       "body": "This run was cancelled before it finished."
@@ -97,11 +98,22 @@
       "confirm": "Cancel training",
       "keep": "Keep training",
       "body": "Training will stop at epoch {{epoch}}. You can resume it from the last checkpoint.",
+      "bodyNoCheckpoint": "Training will stop now. No checkpoint has been saved yet, so this run cannot be resumed.",
       "note": "The epoch in progress is not saved."
     },
     "resume": {
       "open": "Resume training",
-      "done": "Run \"{{name}}\" was queued to resume."
+      "done": "Run \"{{name}}\" was queued to resume.",
+      "hint": "Resuming continues from epoch {{epoch}} with the same settings. To change settings, start a new run.",
+      "hintUnknown": "Resuming continues from the last saved checkpoint with the same settings. To change settings, start a new run.",
+      "blocked": {
+        "no_checkpoint": "No checkpoint saved yet — start a new run.",
+        "finished": "All epochs were already trained, so there is nothing left to resume."
+      }
+    },
+    "cancelResume": {
+      "open": "Cancel resume",
+      "done": "The resume was cancelled. The run keeps its saved progress."
     },
     "remove": {
       "open": "Remove from queue",

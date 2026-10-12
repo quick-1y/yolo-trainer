@@ -116,6 +116,9 @@ export interface RunSummary {
   quality: QualityLevel | null;
 }
 
+/** The reasons a run in a resumable status cannot be resumed (D-10). */
+export type ResumeBlocked = "no_checkpoint" | "finished" | "not_resumable";
+
 export interface RunDetail extends RunSummary {
   settings: RunSettings;
   resolved: RunResolved | null;
@@ -126,6 +129,12 @@ export interface RunDetail extends RunSummary {
   log_tail: string | null;
   /** Detail only: the run is resumable and its checkpoint is not known to be finished or refused. */
   can_resume: boolean;
+  /**
+   * Why a run in a resumable status cannot be resumed: `no_checkpoint` only when last.pt is
+   * missing, `finished` when the training loop ended, `not_resumable` when the worker already
+   * refused the checkpoint. Null otherwise (D-10).
+   */
+  resume_blocked: ResumeBlocked | null;
 }
 
 export interface OfficialModelOption {

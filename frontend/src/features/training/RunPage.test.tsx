@@ -1942,7 +1942,9 @@ describe("RunPage queued resume", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(stub.cancels).toEqual(["/api/projects/1/runs/7/cancel"]);
     expect(stub.deletes).toEqual([]);
-    expect(await screen.findByText("Run cancelled")).toBeInTheDocument();
+    expect(
+      await screen.findByText("Run cancelled", { selector: ".mantine-Alert-label" }),
+    ).toBeInTheDocument();
     expect(notifications.show).toHaveBeenCalledWith(
       expect.objectContaining({
         color: "green",

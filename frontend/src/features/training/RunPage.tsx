@@ -28,7 +28,9 @@ import type { ProgressState } from "./progress/foldProgress";
 import { RunCharts } from "./progress/RunCharts";
 import { useRunStream } from "./progress/useRunStream";
 import { FailureAlert } from "./FailureAlert";
+import { CancelResumeButton } from "./CancelResumeButton";
 import { CancelRunModal } from "./CancelRunModal";
+import { NewTrainingButton, ResumeInfo, resumeDescribedBy } from "./ResumeInfo";
 import { ResumeButton } from "./ResumeButton";
 import { FinalResultsCard } from "./FinalResultsCard";
 import { RemoveFromQueueModal } from "./RemoveFromQueueModal";
@@ -166,13 +168,16 @@ export function RunPage() {
             {t("training:run.download")}
           </Button>
         ) : null}
-        {run.status === "queued" ? (
+        {run.status === "queued" && run.resume_count === 0 ? (
           <Button variant="light" color="red" onClick={() => setRemoveOpened(true)}>
             {t("training:run.remove.open")}
           </Button>
         ) : null}
+        {run.status === "queued" && run.resume_count > 0 ? (
+          <CancelResumeButton projectId={project.id} run={run} />
+        ) : null}
         {run.status === "interrupted" || run.status === "cancelled" || run.status === "failed" ? (
-          <ResumeButton projectId={project.id} run={run} />
+          <ResumeButton projectId={project.id} run={run} describedBy={resumeDescribedBy(run)} />
         ) : null}
         {run.status === "running" && !run.cancelling ? (
           <Button variant="light" color="red" onClick={() => setCancelOpened(true)}>
@@ -203,7 +208,7 @@ export function RunPage() {
       ) : null}
       <RunSettingsCard run={run} />
       <StatusAnnouncer status={run.status} />
-      {run.status === "queued" ? (
+      {run.status === "queued" && run.resume_count === 0 ? (
         <RemoveFromQueueModal
           projectId={project.id}
           run={run}
@@ -265,25 +270,26 @@ function InterruptedAlert({ run }: { run: RunDetail }) {
     <Alert color="orange" title={t("run.interrupted.title")}>
       <Stack gap={8} align="flex-start">
         <Text size="sm">{t("run.interrupted.body")}</Text>
-        {run.epoch !== null ? (
-          <Text size="sm" style={TABULAR}>
-            {t("run.interrupted.reached", { epoch: run.epoch, epochs: run.epochs ?? run.settings.epochs })}
-          </Text>
-        ) : null}
-        <Text size="sm">{t("run.interrupted.action")}</Text>
-        <Button variant="default" component={Link} to="../new" relative="path">
-          {t("page.new")}
-        </Button>
+        <ResumeInfo run={run} />
+        <Group gap={8}>
+          <NewTrainingButton />
+        </Group>
       </Stack>
     </Alert>
   );
 }
 
-function CancelledAlert() {
+function CancelledAlert({ run }: { run: RunDetail }) {
   const { t } = useTranslation("training");
   return (
     <Alert color="gray" title={t("run.cancelled.title")}>
-      <Text size="sm">{t("run.cancelled.body")}</Text>
+      <Stack gap={8} align="flex-start">
+        <Text size="sm">{t("run.cancelled.body")}</Text>
+        <ResumeInfo run={run} />
+        <Group gap={8}>
+          <NewTrainingButton />
+        </Group>
+      </Stack>
     </Alert>
   );
 }
@@ -296,7 +302,7 @@ function StatusCard({ run, progress }: { run: RunDetail; progress: ProgressState
     return <InterruptedAlert run={run} />;
   }
   if (run.status === "cancelled") {
-    return <CancelledAlert />;
+    return <CancelledAlert run={run} />;
   }
   return (
     <Paper p={16} radius={8} style={{ background: "var(--mantine-color-dark-6)" }}>
@@ -327,13 +333,19 @@ function PreparingBody() {
 
 function QueuedBody({ run }: { run: RunDetail }) {
   const { t } = useTranslation("training");
+  // A resumed run says where it continues, but only once the checkpoint epoch is known: until
+  // the resumed segment's train_start records it, no epoch is presented as certain.
+  const continuesAt =
+    run.resume_count > 0 && run.resume_epoch !== null ? run.resume_epoch + 1 : null;
   return (
     <>
       <Text fw={600} style={TABULAR}>
         {t("run.queued.title", { position: run.queue_position ?? 1 })}
       </Text>
       <Text size="sm" c="dark.1">
-        {t("run.queued.body")}
+        {continuesAt !== null
+          ? t("run.queued.resumeBody", { epoch: continuesAt })
+          : t("run.queued.body")}
       </Text>
     </>
   );
