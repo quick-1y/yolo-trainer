@@ -478,6 +478,215 @@ if ! grep -rEq '"sync": *false' "${DATA_DIR}/worker/ultralytics"; then
   exit 1
 fi
 
+echo "==> Cancel, no orphan, next run, resume (Phase 5 tracer, TRAN-05..TRAN-08)..."
+# Helpers for this stage. The run JSON starts with id, project_id, name, status (the
+# RunSummary field order), so the same sed extraction as the training stage works.
+smoke_run_status() {
+  printf '%s' "$1" | sed -n 's/^{"id":[0-9]*,"project_id":[0-9]*,"name":"[^"]*","status":"\([a-z]*\)".*/\1/p'
+}
+# An integer field of a run JSON; the leading quote keeps "epoch" apart from "resume_epoch"
+# and "epochs". Prints nothing when the field is null or absent.
+smoke_run_int() {
+  printf '%s' "$1" | sed -n "s/.*\"$2\":\([0-9][0-9]*\).*/\1/p"
+}
+# Starts a tiny CPU run on the smoke-train project and sets SMOKE_RUN_ID.
+start_smoke_run() {
+  local response status body
+  response=$(curl -sS -w '\n%{http_code}' -X POST "${TRAIN_URL}/runs" \
+    -H "Content-Type: application/json" -H "X-Requested-With: yolo-trainer" \
+    -d "{\"name\":\"$1\",\"base\":{\"kind\":\"official\",\"name\":\"yolo26n\"},\"epochs\":$2,\"imgsz\":64,\"batch\":2,\"device\":\"cpu\"}")
+  status=$(printf '%s' "$response" | tail -n 1)
+  body=$(printf '%s' "$response" | sed '$d')
+  if [ "$status" != "201" ]; then
+    echo "FAIL: starting run $1 returned HTTP ${status} (expected 201; body: $body)" >&2
+    exit 1
+  fi
+  SMOKE_RUN_ID=$(printf '%s' "$body" | sed -n 's/^{"id":\([0-9][0-9]*\).*/\1/p')
+  if [ -z "$SMOKE_RUN_ID" ]; then
+    echo "FAIL: could not parse the id of run $1 from: $body" >&2
+    exit 1
+  fi
+}
+# Waits until the run JSON at $1 reports status $2 within $3 seconds; any other terminal
+# status is a failure. The last answer stays in SMOKE_RUN_NOW.
+wait_for_run_status() {
+  local deadline state
+  deadline=$(( $(date +%s) + $3 ))
+  while :; do
+    SMOKE_RUN_NOW=$(curl -fsS "$1")
+    state=$(smoke_run_status "$SMOKE_RUN_NOW")
+    if [ "$state" = "$2" ]; then
+      return 0
+    fi
+    case "$state" in
+      completed | failed | interrupted | cancelled)
+        echo "FAIL: waiting for ${2}, the run ended as ${state}: ${SMOKE_RUN_NOW}" >&2
+        exit 1
+        ;;
+    esac
+    if [ "$(date +%s)" -ge "$deadline" ]; then
+      echo "FAIL: the run is still ${state} (not ${2}) after ${3}s: ${SMOKE_RUN_NOW}" >&2
+      exit 1
+    fi
+    sleep 1
+  done
+}
+
+start_smoke_run "smoke-cancel" 50
+CANCEL_RUN_ID=$SMOKE_RUN_ID
+CANCEL_RUN_URL="${TRAIN_URL}/runs/${CANCEL_RUN_ID}"
+
+echo "    waiting for run ${CANCEL_RUN_ID} to save a checkpoint while running (up to ${SMOKE_TRAIN_TIMEOUT:-600}s)..."
+CANCEL_DEADLINE=$(( $(date +%s) + ${SMOKE_TRAIN_TIMEOUT:-600} ))
+while :; do
+  SMOKE_RUN_NOW=$(curl -fsS "$CANCEL_RUN_URL")
+  CANCEL_STATE=$(smoke_run_status "$SMOKE_RUN_NOW")
+  case "$CANCEL_STATE" in
+    completed | failed | interrupted | cancelled)
+      echo "FAIL: the run to cancel ended as ${CANCEL_STATE} before it could be cancelled: ${SMOKE_RUN_NOW}" >&2
+      exit 1
+      ;;
+  esac
+  if [ "$CANCEL_STATE" = "running" ] && [ -n "$(smoke_run_int "$SMOKE_RUN_NOW" resume_epoch)" ]; then
+    break
+  fi
+  if [ "$(date +%s)" -ge "$CANCEL_DEADLINE" ]; then
+    echo "FAIL: the run is ${CANCEL_STATE} without a checkpoint after ${SMOKE_TRAIN_TIMEOUT:-600}s: ${SMOKE_RUN_NOW}" >&2
+    exit 1
+  fi
+  sleep 1
+done
+
+CANCEL_NOXHR=$(curl -s -o /dev/null -w "%{http_code}" -X POST "${CANCEL_RUN_URL}/cancel")
+if [ "$CANCEL_NOXHR" != "403" ]; then
+  echo "FAIL: POST /cancel without X-Requested-With returned HTTP ${CANCEL_NOXHR} (expected 403)" >&2
+  exit 1
+fi
+CANCEL_STATUS=$(curl -sS -o "${SMOKE_TMP}/cancel.body" -w "%{http_code}" -X POST "${CANCEL_RUN_URL}/cancel" \
+  -H "X-Requested-With: yolo-trainer")
+if [ "$CANCEL_STATUS" != "200" ]; then
+  echo "FAIL: POST /cancel returned HTTP ${CANCEL_STATUS} (expected 200; body: $(cat "${SMOKE_TMP}/cancel.body"))" >&2
+  exit 1
+fi
+wait_for_run_status "$CANCEL_RUN_URL" cancelled 30
+# The checkpoint epoch and the last finished epoch at the moment of the cancel: the resumed
+# run must get past both.
+CANCEL_RESUME_EPOCH=$(smoke_run_int "$SMOKE_RUN_NOW" resume_epoch)
+CANCEL_EPOCH=$(smoke_run_int "$SMOKE_RUN_NOW" epoch)
+if [ -z "$CANCEL_RESUME_EPOCH" ]; then
+  echo "FAIL: the cancelled run lost its resume_epoch: ${SMOKE_RUN_NOW}" >&2
+  exit 1
+fi
+CANCEL_BASELINE=$CANCEL_RESUME_EPOCH
+if [ -n "$CANCEL_EPOCH" ] && [ "$CANCEL_EPOCH" -gt "$CANCEL_BASELINE" ]; then
+  CANCEL_BASELINE=$CANCEL_EPOCH
+fi
+
+echo "    checking that no training process is left in the worker container..."
+# No process-listing tool is in the slim worker image: scan /proc with the venv Python. The needle is built
+# from two parts so this scanner's own command line (which holds the source text) never matches.
+ORPHAN_COUNT=$(MSYS_NO_PATHCONV=1 docker compose exec -T worker /app/.venv/bin/python -c "
+import glob
+needle = b'yolo_trainer_worker.' + b'train_job'
+count = 0
+for path in glob.glob('/proc/[0-9]*/cmdline'):
+    try:
+        with open(path, 'rb') as handle:
+            if needle in handle.read():
+                count += 1
+    except OSError:
+        pass
+print(count)
+" | tr -d '\r\n')
+if [ "$ORPHAN_COUNT" != "0" ]; then
+  echo "FAIL: ${ORPHAN_COUNT} yolo_trainer_worker.train_job process(es) left in the worker after the cancel" >&2
+  exit 1
+fi
+
+echo "    starting the next run to prove the queue moved on..."
+start_smoke_run "smoke-next" 1
+NEXT_RUN_URL="${TRAIN_URL}/runs/${SMOKE_RUN_ID}"
+wait_for_run_status "$NEXT_RUN_URL" completed "${SMOKE_TRAIN_TIMEOUT:-600}"
+
+echo "    resuming the cancelled run..."
+RESUME_NOXHR=$(curl -s -o /dev/null -w "%{http_code}" -X POST "${CANCEL_RUN_URL}/resume")
+if [ "$RESUME_NOXHR" != "403" ]; then
+  echo "FAIL: POST /resume without X-Requested-With returned HTTP ${RESUME_NOXHR} (expected 403)" >&2
+  exit 1
+fi
+RESUME_STATUS=$(curl -sS -o "${SMOKE_TMP}/resume.body" -w "%{http_code}" -X POST "${CANCEL_RUN_URL}/resume" \
+  -H "X-Requested-With: yolo-trainer")
+RESUME_BODY=$(cat "${SMOKE_TMP}/resume.body")
+if [ "$RESUME_STATUS" != "200" ]; then
+  echo "FAIL: POST /resume returned HTTP ${RESUME_STATUS} (expected 200; body: ${RESUME_BODY})" >&2
+  exit 1
+fi
+case "$RESUME_BODY" in
+  *'"status":"queued"'*) ;;
+  *)
+    echo "FAIL: the resumed run is not queued (got: ${RESUME_BODY})" >&2
+    exit 1
+    ;;
+esac
+
+echo "    waiting for the resumed run to get past epoch ${CANCEL_BASELINE} (up to ${SMOKE_TRAIN_TIMEOUT:-600}s)..."
+RESUME_DEADLINE=$(( $(date +%s) + ${SMOKE_TRAIN_TIMEOUT:-600} ))
+while :; do
+  SMOKE_RUN_NOW=$(curl -fsS "$CANCEL_RUN_URL")
+  RESUME_STATE=$(smoke_run_status "$SMOKE_RUN_NOW")
+  case "$RESUME_STATE" in
+    completed | failed | interrupted | cancelled)
+      echo "FAIL: the resumed run ended as ${RESUME_STATE} before passing epoch ${CANCEL_BASELINE}: ${SMOKE_RUN_NOW}" >&2
+      exit 1
+      ;;
+  esac
+  RESUME_EPOCH_NOW=$(smoke_run_int "$SMOKE_RUN_NOW" epoch)
+  if [ "$RESUME_STATE" = "running" ] && [ -n "$RESUME_EPOCH_NOW" ] && [ "$RESUME_EPOCH_NOW" -gt "$CANCEL_BASELINE" ]; then
+    break
+  fi
+  if [ "$(date +%s)" -ge "$RESUME_DEADLINE" ]; then
+    echo "FAIL: the resumed run is ${RESUME_STATE} at epoch ${RESUME_EPOCH_NOW:-none} after ${SMOKE_TRAIN_TIMEOUT:-600}s: ${SMOKE_RUN_NOW}" >&2
+    exit 1
+  fi
+  sleep 1
+done
+case "$SMOKE_RUN_NOW" in
+  *'"resume_count":1'*) ;;
+  *)
+    echo "FAIL: the resumed run does not report resume_count 1: ${SMOKE_RUN_NOW}" >&2
+    exit 1
+    ;;
+esac
+
+# Keep the smoke short: cancel the resumed run too, so no run is active afterwards.
+curl -fsS -o /dev/null -X POST "${CANCEL_RUN_URL}/cancel" -H "X-Requested-With: yolo-trainer"
+wait_for_run_status "$CANCEL_RUN_URL" cancelled 30
+
+CANCEL_PROGRESS="${DATA_DIR}/runs/${CANCEL_RUN_ID}/progress.jsonl"
+if [ ! -f "$CANCEL_PROGRESS" ]; then
+  echo "FAIL: ${CANCEL_PROGRESS} does not exist on the host" >&2
+  exit 1
+fi
+TRAIN_START_COUNT=$(grep -c '"event": "train_start"' "$CANCEL_PROGRESS" || true)
+if [ "${TRAIN_START_COUNT:-0}" -lt 2 ]; then
+  echo "FAIL: ${CANCEL_PROGRESS} has ${TRAIN_START_COUNT:-0} train_start line(s) (expected at least 2)" >&2
+  exit 1
+fi
+if ! grep -q '"resumed": true' "$CANCEL_PROGRESS"; then
+  echo "FAIL: ${CANCEL_PROGRESS} has no '\"resumed\": true' train_start" >&2
+  exit 1
+fi
+
+echo "    reading the stream of the cancelled run through nginx..."
+if ! curl -sS -N --max-time 30 -o "${SMOKE_TMP}/cancel-stream.body" "${CANCEL_RUN_URL}/stream"; then
+  echo "FAIL: the stream of a cancelled run did not finish within 30s" >&2
+  exit 1
+fi
+if ! grep -q 'event: end' "${SMOKE_TMP}/cancel-stream.body"; then
+  echo "FAIL: the stream of a cancelled run did not end with 'event: end': $(tail -c 400 "${SMOKE_TMP}/cancel-stream.body")" >&2
+  exit 1
+fi
+
 echo "==> Restarting the stack (down/up) to check persistence..."
 docker compose down
 docker compose up -d --wait --wait-timeout 600
