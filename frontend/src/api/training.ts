@@ -78,6 +78,8 @@ export interface RunMetrics {
 
 export interface RunModelRef {
   id: number;
+  /** The registered model's own name; the delete dialog names it (D-15). */
+  name: string;
   file_name: string;
   size_bytes: number;
   ultralytics_version: string | null;
@@ -365,6 +367,25 @@ export function useRemoveQueuedRun(projectId: number) {
     onSuccess: (_data, runId) => {
       queryClient.removeQueries({ queryKey: trainingKeys.run(projectId, runId) });
       void queryClient.invalidateQueries({ queryKey: trainingKeys.runs(projectId) });
+      void queryClient.invalidateQueries({ queryKey: projectKeys.detail(projectId) });
+    },
+  });
+}
+
+/**
+ * Hard-delete a finished run with its folder and its registered model (D-15, one-way). A 409 means
+ * the run is active or its model is the base of an active run; the message says which. The deleted
+ * model leaves the base-model picker, so the start-form options are refetched too.
+ */
+export function useDeleteRun(projectId: number) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (runId: number) =>
+      apiRequest<void>(`/projects/${projectId}/runs/${runId}`, { method: "DELETE" }),
+    onSuccess: (_data, runId) => {
+      queryClient.removeQueries({ queryKey: trainingKeys.run(projectId, runId) });
+      void queryClient.invalidateQueries({ queryKey: trainingKeys.runs(projectId) });
+      void queryClient.invalidateQueries({ queryKey: trainingKeys.options(projectId) });
       void queryClient.invalidateQueries({ queryKey: projectKeys.detail(projectId) });
     },
   });

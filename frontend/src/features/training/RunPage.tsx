@@ -30,6 +30,7 @@ import { useRunStream } from "./progress/useRunStream";
 import { FailureAlert } from "./FailureAlert";
 import { CancelResumeButton } from "./CancelResumeButton";
 import { CancelRunModal } from "./CancelRunModal";
+import { DeleteRunModal } from "./DeleteRunModal";
 import { NewTrainingButton, ResumeInfo, resumeDescribedBy } from "./ResumeInfo";
 import { ResumeButton } from "./ResumeButton";
 import { FinalResultsCard } from "./FinalResultsCard";
@@ -40,6 +41,9 @@ import { RunStatusBadge } from "./RunStatusBadge";
 interface ProjectOutletContext {
   project: Project;
 }
+
+/** The statuses a run can be deleted from (D-15); the server owns the same list. */
+const TERMINAL_RUN_STATUSES: readonly RunStatus[] = ["completed", "failed", "interrupted", "cancelled"];
 
 const TABULAR = { fontVariantNumeric: "tabular-nums" } as const;
 const ONE_LINE = { overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" } as const;
@@ -82,6 +86,7 @@ export function RunPage() {
   const query = useRun(project.id, runId, { streamHealthy });
   const [removeOpened, setRemoveOpened] = useState(false);
   const [cancelOpened, setCancelOpened] = useState(false);
+  const [deleteOpened, setDeleteOpened] = useState(false);
   const listPath = `/projects/${project.id}/training`;
   const streamStatus = query.data?.status;
   const resumeCount = query.data?.resume_count ?? 0;
@@ -144,6 +149,9 @@ export function RunPage() {
     );
   }
 
+  // Delete is for runs that are not active (D-15); the server refuses the others with a 409 too.
+  const canDelete = TERMINAL_RUN_STATUSES.includes(run.status);
+
   // A failed poll keeps the last data on screen (query.data survives an error).
   return (
     <Stack gap={24} maw={960}>
@@ -159,41 +167,48 @@ export function RunPage() {
           </Title>
           <RunStatusBadge run={run} />
         </Group>
-        {run.status === "completed" && run.model !== null ? (
-          <Button
-            component="a"
-            href={modelDownloadUrl(run.model.id)}
-            download={run.model.file_name}
-          >
-            {t("training:run.download")}
-          </Button>
-        ) : null}
-        {run.status === "queued" && run.resume_count === 0 ? (
-          <Button variant="light" color="red" onClick={() => setRemoveOpened(true)}>
-            {t("training:run.remove.open")}
-          </Button>
-        ) : null}
-        {run.status === "queued" && run.resume_count > 0 ? (
-          <CancelResumeButton projectId={project.id} run={run} />
-        ) : null}
-        {run.status === "interrupted" || run.status === "cancelled" || run.status === "failed" ? (
-          <ResumeButton projectId={project.id} run={run} describedBy={resumeDescribedBy(run)} />
-        ) : null}
-        {run.status === "running" && !run.cancelling ? (
-          <Button variant="light" color="red" onClick={() => setCancelOpened(true)}>
-            {t("training:run.cancel.open")}
-          </Button>
-        ) : null}
-        {run.status === "running" && run.cancelling ? (
-          <Button
-            variant="light"
-            color="red"
-            disabled
-            leftSection={<Loader size={16} color="gray" aria-hidden="true" />}
-          >
-            {t("training:status.cancelling")}
-          </Button>
-        ) : null}
+        <Group gap={8} wrap="nowrap" style={{ flexShrink: 0 }}>
+          {canDelete ? (
+            <Button variant="light" color="red" onClick={() => setDeleteOpened(true)}>
+              {t("training:run.delete.open")}
+            </Button>
+          ) : null}
+          {run.status === "completed" && run.model !== null ? (
+            <Button
+              component="a"
+              href={modelDownloadUrl(run.model.id)}
+              download={run.model.file_name}
+            >
+              {t("training:run.download")}
+            </Button>
+          ) : null}
+          {run.status === "queued" && run.resume_count === 0 ? (
+            <Button variant="light" color="red" onClick={() => setRemoveOpened(true)}>
+              {t("training:run.remove.open")}
+            </Button>
+          ) : null}
+          {run.status === "queued" && run.resume_count > 0 ? (
+            <CancelResumeButton projectId={project.id} run={run} />
+          ) : null}
+          {run.status === "interrupted" || run.status === "cancelled" || run.status === "failed" ? (
+            <ResumeButton projectId={project.id} run={run} describedBy={resumeDescribedBy(run)} />
+          ) : null}
+          {run.status === "running" && !run.cancelling ? (
+            <Button variant="light" color="red" onClick={() => setCancelOpened(true)}>
+              {t("training:run.cancel.open")}
+            </Button>
+          ) : null}
+          {run.status === "running" && run.cancelling ? (
+            <Button
+              variant="light"
+              color="red"
+              disabled
+              leftSection={<Loader size={16} color="gray" aria-hidden="true" />}
+            >
+              {t("training:status.cancelling")}
+            </Button>
+          ) : null}
+        </Group>
       </Group>
       <StatusCard run={run} progress={progress} />
       <FinalResultsCard run={run} finalMetrics={progress.finalMetrics} />
@@ -216,6 +231,18 @@ export function RunPage() {
           onClose={() => {
             setRemoveOpened(false);
             // The worker may have claimed the run while the modal was open.
+            void query.refetch();
+          }}
+        />
+      ) : null}
+      {canDelete ? (
+        <DeleteRunModal
+          projectId={project.id}
+          run={run}
+          opened={deleteOpened}
+          onClose={() => {
+            setDeleteOpened(false);
+            // The run may have been resumed while the modal was open.
             void query.refetch();
           }}
         />

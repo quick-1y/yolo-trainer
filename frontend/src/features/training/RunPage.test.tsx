@@ -21,6 +21,7 @@ const STARTED_AT = "2026-01-15T10:05:00Z";
 
 const MODEL = {
   id: 9,
+  name: "run-3",
   file_name: "plates_run-3_best.pt",
   size_bytes: 6242090,
   ultralytics_version: "8.4.159",
@@ -1978,5 +1979,143 @@ describe("RunPage queued resume", () => {
 
     expect(await screen.findByRole("button", { name: "Remove from queue" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Cancel resume" })).toBeNull();
+  });
+});
+
+const DELETE_BODY =
+  'Run "run-7" will be deleted together with its dataset snapshot, checkpoints, charts and logs. This cannot be undone.';
+const DELETE_MODEL_BODY =
+  'The model "run-3" trained by this run will be deleted too. Models trained from it keep its name as plain text.';
+
+describe("RunPage delete run", () => {
+  it("puts Delete run before Download .pt on a completed run and names the model in the dialog", async () => {
+    stubTrainingApi({ run: completed(), runs: [] });
+    const view = renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+
+    const open = await screen.findByRole("button", { name: "Delete run" });
+    expect(open).toHaveAttribute("data-variant", "light");
+    const download = screen.getByRole("link", { name: "Download .pt" });
+    expect(open.compareDocumentPosition(download) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+
+    await view.user.click(open);
+
+    const dialog = await screen.findByRole("dialog", { name: "Delete run" });
+    expect(within(dialog).getByText(DELETE_BODY)).toBeInTheDocument();
+    const modelLine = within(dialog).getByText(DELETE_MODEL_BODY);
+    expect(modelLine).toHaveStyle({ fontWeight: 600 });
+    await waitFor(() => expect(within(dialog).getByRole("button", { name: "Keep run" })).toHaveFocus());
+  });
+
+  it("leaves out the model sentence when the run has no model", async () => {
+    stubTrainingApi({ run: resumable("cancelled") });
+    const view = renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+
+    await view.user.click(await screen.findByRole("button", { name: "Delete run" }));
+
+    const dialog = await screen.findByRole("dialog", { name: "Delete run" });
+    expect(within(dialog).getByText(DELETE_BODY)).toBeInTheDocument();
+    expect(within(dialog).queryByText(/trained by this run will be deleted too/)).toBeNull();
+  });
+
+  it("deletes the run, returns to the list and confirms with a green notification", async () => {
+    const stub = stubTrainingApi({ run: completed(), runs: [] });
+    const view = renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+
+    await view.user.click(await screen.findByRole("button", { name: "Delete run" }));
+    const dialog = await screen.findByRole("dialog", { name: "Delete run" });
+    await view.user.click(within(dialog).getByRole("button", { name: "Delete run" }));
+
+    expect(await screen.findByText("No training runs yet")).toBeInTheDocument();
+    expect(stub.deletes).toEqual(["/api/projects/1/runs/7"]);
+    expect(notifications.show).toHaveBeenCalledWith(
+      expect.objectContaining({ color: "green", message: 'Run "run-7" was deleted.' }),
+    );
+  });
+
+  it("disables both buttons while the request is pending", async () => {
+    let release: () => void = () => undefined;
+    const removeGate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    stubTrainingApi({ run: completed(), runs: [], removeGate });
+    const view = renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+
+    await view.user.click(await screen.findByRole("button", { name: "Delete run" }));
+    const dialog = await screen.findByRole("dialog", { name: "Delete run" });
+    await view.user.click(within(dialog).getByRole("button", { name: "Delete run" }));
+
+    await waitFor(() => expect(within(dialog).getByRole("button", { name: "Keep run" })).toBeDisabled());
+    expect(within(dialog).getByRole("button", { name: /Delete run/ })).toBeDisabled();
+
+    release();
+    expect(await screen.findByText("No training runs yet")).toBeInTheDocument();
+  });
+
+  it("keeps the dialog open on a 409 and shows the API message", async () => {
+    const detail =
+      "The model of this run is the base of a run that is still active. Wait until that run finishes.";
+    const stub = stubTrainingApi({ run: completed(), removeStatus: 409, removeDetail: detail });
+    const view = renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+
+    await view.user.click(await screen.findByRole("button", { name: "Delete run" }));
+    const dialog = await screen.findByRole("dialog", { name: "Delete run" });
+    await view.user.click(within(dialog).getByRole("button", { name: "Delete run" }));
+
+    expect(await within(dialog).findByText(detail)).toBeInTheDocument();
+    expect(screen.getByRole("dialog", { name: "Delete run" })).toBeInTheDocument();
+    expect(notifications.show).not.toHaveBeenCalled();
+    expect(stub.deletes).toEqual(["/api/projects/1/runs/7"]);
+    expect(within(dialog).getByRole("button", { name: "Keep run" })).toBeEnabled();
+  });
+
+  it.each(["interrupted", "cancelled", "failed"] as const)(
+    "puts Delete run before Resume training on a %s run",
+    async (status) => {
+      stubTrainingApi({ run: resumable(status) });
+      renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+
+      const remove = await screen.findByRole("button", { name: "Delete run" });
+      const resume = screen.getByRole("button", { name: "Resume training" });
+      expect(remove).toHaveAttribute("data-variant", "light");
+      expect(
+        remove.compareDocumentPosition(resume) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+    },
+  );
+
+  it("is never offered for a preparing, queued or running run", async () => {
+    for (const run of [
+      makeRun({ id: 7, name: "run-7", status: "preparing", queue_position: null }),
+      queued(),
+      queued({ resume_count: 1, resume_epoch: 2 }),
+      running(),
+      running({ cancelling: true }),
+    ]) {
+      stubTrainingApi({ run });
+      const view = renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+      await screen.findByText("Settings used");
+      expect(screen.queryByRole("button", { name: "Delete run" })).toBeNull();
+      view.unmount();
+    }
+  });
+
+  it("words the dialog in Russian", async () => {
+    stubTrainingApi({ run: completed(), runs: [] });
+    const view = renderWithProviders(<AppRoutes />, { route: RUN_PATH, language: "ru" });
+
+    await view.user.click(await screen.findByRole("button", { name: "Удалить запуск" }));
+
+    const dialog = await screen.findByRole("dialog", { name: "Удаление запуска" });
+    expect(
+      within(dialog).getByText(
+        "Запуск «run-7» будет удалён вместе со снимком набора данных, контрольными точками, графиками и журналами. Это действие нельзя отменить.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(dialog).getByText(
+        "Модель «run-3», обученная этим запуском, тоже будет удалена. У моделей, дообученных на её основе, название базовой модели останется простым текстом.",
+      ),
+    ).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: "Оставить запуск" })).toBeInTheDocument();
   });
 });
