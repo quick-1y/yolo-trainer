@@ -73,6 +73,8 @@ export function makeRun(overrides: Json = {}): Json {
     cancelling: false,
     resume_count: 0,
     resume_epoch: null,
+    active_seconds: 0,
+    segment_started_at: null,
     can_resume: false,
     log_tail: null,
     ...overrides,

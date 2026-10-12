@@ -71,6 +71,15 @@ export function RunSettingsCard({ run }: { run: RunDetail }) {
     { key: "created", label: t("training:settings.created"), value: time(run.created_at) },
     { key: "started", label: t("training:settings.started"), value: time(run.started_at) },
     { key: "finished", label: t("training:settings.finished"), value: time(run.finished_at) },
+    // Omitted at zero; from the first resume on it is the number itself (D-09).
+    {
+      key: "resumes",
+      label: t("training:settings.resumes"),
+      value:
+        run.resume_count > 0 ? (
+          <span style={{ fontVariantNumeric: "tabular-nums" }}>{run.resume_count}</span>
+        ) : null,
+    },
   ];
 
   return (

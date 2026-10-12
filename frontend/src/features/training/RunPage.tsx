@@ -22,6 +22,7 @@ import type { Project } from "../../api/projects";
 import { modelDownloadUrl, useRun } from "../../api/training";
 import type { RunDetail, RunStatus } from "../../api/training";
 import { BatchProgress } from "./progress/BatchProgress";
+import { runActiveSeconds } from "./progress/duration";
 import { estimateRemainingSeconds } from "./progress/eta";
 import type { ProgressState } from "./progress/foldProgress";
 import { RunCharts } from "./progress/RunCharts";
@@ -50,8 +51,8 @@ export function formatClock(totalSeconds: number): string {
   return `${hours}:${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 }
 
-/** Seconds since `startedAt`, re-read every second (the server only reports the start). */
-function useElapsedSeconds(startedAt: string | null, active: boolean): number | null {
+/** The current time in ms, re-read every second while `active` (the server only reports stamps). */
+function useNow(active: boolean): number {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
     if (!active) {
@@ -60,11 +61,8 @@ function useElapsedSeconds(startedAt: string | null, active: boolean): number | 
     setNow(Date.now());
     const timer = window.setInterval(() => setNow(Date.now()), 1000);
     return () => window.clearInterval(timer);
-  }, [active, startedAt]);
-  if (startedAt === null) {
-    return null;
-  }
-  return Math.max(0, (now - new Date(startedAt).getTime()) / 1000);
+  }, [active]);
+  return now;
 }
 
 function parseRunId(raw: string | undefined): number | null {
@@ -343,7 +341,8 @@ function QueuedBody({ run }: { run: RunDetail }) {
 
 function RunningBody({ run, progress }: { run: RunDetail; progress: ProgressState }) {
   const { t, i18n } = useTranslation("training");
-  const elapsed = useElapsedSeconds(run.started_at, true);
+  const now = useNow(true);
+  const elapsed = runActiveSeconds(run, now);
   const epochs = run.epochs;
   const hasEpoch = run.epoch !== null && epochs !== null && epochs > 0;
   const lastRowEpoch = progress.rows.length > 0 ? progress.rows[progress.rows.length - 1].epoch : 0;
@@ -475,10 +474,8 @@ function RunningBody({ run, progress }: { run: RunDetail; progress: ProgressStat
 
 function CompletedBody({ run }: { run: RunDetail }) {
   const { t, i18n } = useTranslation("training");
-  const duration =
-    run.started_at !== null && run.finished_at !== null
-      ? formatClock((new Date(run.finished_at).getTime() - new Date(run.started_at).getTime()) / 1000)
-      : null;
+  const activeSeconds = runActiveSeconds(run, 0);
+  const duration = activeSeconds === null ? null : formatClock(activeSeconds);
   const model = run.model;
   const size =
     model === null

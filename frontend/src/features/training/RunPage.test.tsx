@@ -68,9 +68,11 @@ afterEach(() => {
 });
 
 describe("RunPage progress", () => {
-  it("shows the epoch, a progress bar, a ticking elapsed time and the latest mAP50 for a running run", async () => {
+  it("shows the epoch, a progress bar, a ticking training time and the latest mAP50 for a running run", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true, now: new Date("2026-01-15T10:06:05Z") });
-    stubTrainingApi({ run: running() });
+    stubTrainingApi({
+      run: running({ active_seconds: 100, segment_started_at: "2026-01-15T10:05:45Z" }),
+    });
     renderWithProviders(<AppRoutes />, { route: RUN_PATH });
 
     expect((await screen.findAllByText("Epoch 12 of 100")).length).toBeGreaterThan(0);
@@ -81,14 +83,31 @@ describe("RunPage progress", () => {
     expect(screen.getByText("Latest mAP50: 0.457")).toBeInTheDocument();
     expect(screen.getByText(/You can close this page\. Training continues/)).toBeInTheDocument();
 
-    const before = /Elapsed: (\d+:\d{2}:\d{2})/.exec(screen.getByText(/Elapsed:/).textContent ?? "");
+    // 100 banked seconds plus the 20 s the open segment has been running.
+    const pattern = /Training time: (\d+:\d{2}:\d{2})/;
+    const before = pattern.exec(screen.getByText(/Training time:/).textContent ?? "");
     expect(before).not.toBeNull();
-    expect(seconds(before![1])).toBeGreaterThanOrEqual(65);
+    expect(seconds(before![1])).toBeGreaterThanOrEqual(120);
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1000);
     });
-    const after = /Elapsed: (\d+:\d{2}:\d{2})/.exec(screen.getByText(/Elapsed:/).textContent ?? "");
+    const after = pattern.exec(screen.getByText(/Training time:/).textContent ?? "");
     expect(seconds(after![1])).toBeGreaterThan(seconds(before![1]));
+  });
+
+  it("counts a resumed run's training time from its banked seconds, not from its first start", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true, now: new Date("2026-01-15T10:06:05Z") });
+    stubTrainingApi({
+      run: running({
+        started_at: "2026-01-15T06:00:00Z",
+        resume_count: 1,
+        active_seconds: 100,
+        segment_started_at: "2026-01-15T10:05:45Z",
+      }),
+    });
+    renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+
+    expect(await screen.findByText(/Training time: 0:02:0\d/)).toBeInTheDocument();
   });
 
   it("shows Starting with no bar before the first epoch", async () => {
@@ -771,6 +790,22 @@ describe("RunPage result", () => {
     expect(download).toHaveAttribute("download");
   });
 
+  it("shows the active training time of a completed run, not finished minus started", async () => {
+    stubTrainingApi({ run: completed({ active_seconds: 300, resume_count: 1 }) });
+    renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+
+    expect(await screen.findByText("Duration: 0:05:00")).toBeInTheDocument();
+  });
+
+  it("falls back to finished minus started for a completed Phase 4 run", async () => {
+    stubTrainingApi({
+      run: completed({ started_at: "2026-01-15T10:00:00Z", finished_at: "2026-01-15T10:05:00Z" }),
+    });
+    renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+
+    expect(await screen.findByText("Duration: 0:05:00")).toBeInTheDocument();
+  });
+
   it("notes that the metrics of a segment project are measured on masks", async () => {
     stubTrainingApi({ run: completed({ task_type: "segment" }) });
     renderWithProviders(<AppRoutes />, { route: RUN_PATH });
@@ -1159,6 +1194,23 @@ describe("RunPage settings card", () => {
     expect(rows.has("Started")).toBe(true);
     expect(rows.has("Finished")).toBe(true);
     expect(screen.getByText("car, plate")).toHaveAttribute("title", "car, plate");
+  });
+
+  it("shows 'Times resumed' after Finished from the first resume on, and omits it at zero", async () => {
+    stubTrainingApi({ run: completed({ resume_count: 2 }) });
+    const view = renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+
+    expect(await screen.findByText("Settings used")).toBeInTheDocument();
+    const rows = settingsRows();
+    expect(rows.get("Times resumed")).toBe("2");
+    const labels = [...rows.keys()];
+    expect(labels.indexOf("Times resumed")).toBe(labels.indexOf("Finished") + 1);
+    view.unmount();
+
+    stubTrainingApi({ run: completed({ resume_count: 0 }) });
+    renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+    expect(await screen.findByText("Settings used")).toBeInTheDocument();
+    expect(settingsRows().has("Times resumed")).toBe(false);
   });
 
   it("shows a plain Auto before the worker resolved it and omits unknown times", async () => {

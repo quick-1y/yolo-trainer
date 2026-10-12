@@ -50,7 +50,7 @@
       "starting": "Запуск…",
       "startingHint": "При первом использовании официальной модели загружаются её веса.",
       "epoch": "Эпоха {{epoch}} из {{epochs}}",
-      "elapsed": "Прошло: {{time}}",
+      "elapsed": "Время обучения: {{time}}",
       "eta": "Осталось: ~{{time}}",
       "etaUnknown": "Осталось: —",
       "batch": "Батч {{batch}} из {{total}}",
@@ -124,6 +124,7 @@
     "created": "Создан",
     "started": "Начат",
     "finished": "Завершён",
+    "resumes": "Возобновлений",
     "auto": "Авто ({{value}})",
     "autoPending": "Авто",
     "dataset_counts": "Обучение {{train}} · Валидация {{valid}} · Тест {{test}}"

@@ -50,7 +50,7 @@
       "starting": "Starting…",
       "startingHint": "The first use of an official model downloads its weights.",
       "epoch": "Epoch {{epoch}} of {{epochs}}",
-      "elapsed": "Elapsed: {{time}}",
+      "elapsed": "Training time: {{time}}",
       "eta": "Time left: ~{{time}}",
       "etaUnknown": "Time left: —",
       "batch": "Batch {{batch}} of {{total}}",
@@ -124,6 +124,7 @@
     "created": "Created",
     "started": "Started",
     "finished": "Finished",
+    "resumes": "Times resumed",
     "auto": "Auto ({{value}})",
     "autoPending": "Auto",
     "dataset_counts": "Train {{train}} · Valid {{valid}} · Test {{test}}"

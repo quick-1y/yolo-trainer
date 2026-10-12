@@ -108,6 +108,10 @@ export interface RunSummary {
   resume_count: number;
   /** The epoch of the checkpoint a resume continues from; null while it is not known. */
   resume_epoch: number | null;
+  /** Seconds spent actually training, summed over the running segments (D-09). */
+  active_seconds: number;
+  /** When the current running segment began; null unless the run is running. */
+  segment_started_at: string | null;
   /** Verdict on mAP50 computed by the server (null while there is no final mAP50). */
   quality: QualityLevel | null;
 }
