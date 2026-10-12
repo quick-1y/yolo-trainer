@@ -84,10 +84,52 @@ Open the project's **Training** section and click **New training**. The defaults
 
 - **One run at a time.** Other runs wait in the queue, in order, and can be removed while they are queued.
 - **Closing the browser does not affect a run.** Reopen the run page to see the progress.
-- **Restarts:** restarting the worker (or the whole stack) marks a running run **interrupted** and keeps the queued runs. Restarting only the `api` does not interrupt a running run.
+- **Restarts:** restarting the worker (or the whole stack) marks a running run **interrupted** and keeps the queued runs. Restarting only the `api` does not interrupt a running run. An interrupted run can be resumed, see [Cancelling and resuming a run](#cancelling-and-resuming-a-run).
 - **First use of an official model downloads it** into `data/weights/`. On a host without internet access, place the file there yourself first, for example `data/weights/yolo26n.pt`.
 - **Training on a CPU is slow.** For a first try use a small model, few epochs and a small image size.
 - Ultralytics usage analytics are switched off for training runs.
+
+### Watching a run
+
+Open a run from the **Training** list to watch it. The page updates by itself, there is nothing to refresh.
+
+- **Three live charts** grow after every epoch: loss (the sum of all loss components, hover for the breakdown), mAP (mAP50 and mAP50-95, with the best epoch marked) and precision with recall. Train and validation curves are drawn separately.
+- **The status line** shows the epoch ("Epoch 7 of 100"), a **batch bar** that moves inside the epoch ("Batch 3 of 12"), the training time and the estimated **time left**. While the time left cannot be estimated yet it reads "—".
+- **After the last epoch** the status line reads "Final validation…" while the best checkpoint is checked on the validation images and the model is registered. Never "Epoch 101 of 100". When it is done, the **"Final results (best.pt)"** card shows precision, recall, mAP50 and mAP50-95 with the verdict.
+- **Reloading keeps the history.** The full chart history comes back from the run's `progress.jsonl` and then continues live. If the live connection drops the page shows "Reconnecting…" and, if it cannot recover, keeps the charts up to the last update.
+- **Charts stay for past runs.** A completed, failed, cancelled or interrupted run shows the charts it produced, so you can compare how runs went.
+
+### Cancelling and resuming a run
+
+- **Cancel is immediate.** It is offered on the run page only, with a confirmation that names the epoch. The page shows "Cancelling…" and the run becomes **cancelled** within seconds; the next queued run starts right after. The epoch that was in progress is lost, every finished epoch is kept. In Docker and on Linux the worker sends `SIGTERM` to the whole training process group and `SIGKILL` after 10 seconds if it is still alive.
+- **Resume continues the same run.** It keeps the run, its settings (device, batch size, image size), its folder and its charts, continues from the last saved epoch, and joins the **end of the queue**. The charts show a "Resumed" marker, the run's `progress.jsonl` gains a second `train_start` event with `"resumed": true`, and "Times resumed" on the run page counts the resumes. To change any setting, start a new run.
+- **Resume is offered for every interrupted, cancelled or failed run whose checkpoint (`out/train/weights/last.pt`) is still on disk.** This includes runs from before this update.
+- **Resume is disabled, with the reason shown as text on the run page, in exactly three cases:** no checkpoint was saved yet (`no_checkpoint`; start a new run), all epochs were already trained (`finished`; there is nothing left to resume), or the worker already refused this run's checkpoint because it is missing, damaged or training had already finished (`not_resumable`; it is shown as the failure's own hint after a resume attempt failed, start a new run instead).
+- **A queued resume can be cancelled** with **Cancel resume** without losing progress: the run goes back to cancelled and keeps its checkpoint and charts.
+- **No automatic resume.** After a restart an interrupted run stays interrupted until you press **Resume training**.
+- **Native Windows limitation.** When the worker runs natively on Windows (not in Docker), a cancel is an abrupt hard stop (`TerminateProcess`) and not a graceful `SIGTERM`. With DataLoader workers above 0 (the GPU path), worker child processes may survive and must be ended manually in the Task Manager. Whether GPU memory is released after a cancel is verified in Phase 12, on NVIDIA hardware.
+
+### When a run fails
+
+A failed run shows a title, a hint with the next step, **the original message and the log, always**. The title and hint come from one of these codes; anything unrecognized is shown as `unknown`.
+
+| Code | Title | What to do |
+|---|---|---|
+| `out_of_memory` | Out of memory | Start a new run with a smaller batch size or image size, or pick a smaller model. |
+| `disk_full` | Disk is full | Free up disk space in the data folder (`DATA_DIR`), then resume this run or start a new one. |
+| `invalid_dataset` | Invalid dataset | Check that the images and annotations are valid, then start a new run. |
+| `weights_download` | Could not download model weights | Check the worker's internet connection or place the weights file in `DATA_DIR/weights/`, then start a new run. |
+| `process_killed` | Training process was killed | The system stopped the process, most often because it ran out of memory. Give Docker more memory or use a smaller batch or image size, then resume or start a new run. |
+| `not_resumable` | Cannot resume | The saved checkpoint is missing, damaged, or training had already finished. Start a new run instead. |
+| `unknown` | Unexpected error | Open the log on the run page for details. If it keeps happening, start a new run. |
+
+### Run history
+
+The **Training** list is the history of all runs of the project: duration, epochs, key settings, final (or, for unfinished runs, last-epoch) mAP, dataset size, and a download for the model.
+
+- **Sort and filter.** Click a column header to sort by it (click again to reverse) and use the status filter to show only, for example, the failed runs. The sort and the filter are kept in the page address, so a reload or a bookmark keeps them.
+- **Delete a finished run** (completed, failed, interrupted or cancelled) with **Delete run**. After a confirmation that names the model, its folder (dataset snapshot, checkpoints, charts, logs) **and its model** are removed. This cannot be undone. A run that is still preparing or training must be cancelled first, and a run whose model is the **base of an active run** cannot be deleted until that run finishes. A run that is only waiting in the queue is removed with **Remove from queue**.
+- **Interim `best.pt`.** A failed, interrupted or cancelled run offers **Download interim best.pt**: the best epoch saved so far. It is **incomplete** and is never added to your models or offered as a base model; only a completed run produces a model.
 
 ### Downloading the model
 
