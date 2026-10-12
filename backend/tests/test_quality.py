@@ -42,7 +42,7 @@ class TestQualityLevel:
 def _summary(map50: float | None) -> dict:
     from datetime import UTC, datetime
 
-    from yolo_trainer_api.schemas import RunSummary
+    from yolo_trainer_api.schemas import RunSettings, RunSummary
 
     return RunSummary(
         id=1,
@@ -54,6 +54,7 @@ def _summary(map50: float | None) -> dict:
         base_name="yolo26n",
         map50=map50,
         created_at=datetime(2026, 1, 15, 10, 0, tzinfo=UTC),
+        settings=RunSettings(epochs=100, imgsz=640, batch=-1, device="auto"),
     ).model_dump(mode="json")
 
 

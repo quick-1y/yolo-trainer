@@ -186,11 +186,17 @@ def record_start(engine: Engine, run_id: int, resolved: dict, pid: int) -> int:
 
 
 def record_epoch(
-    engine: Engine, run_id: int, epoch: int, epochs: int | None, map50: float | None
+    engine: Engine,
+    run_id: int,
+    epoch: int,
+    epochs: int | None,
+    map50: float | None,
+    map50_95: float | None = None,
 ) -> int:
     values: dict[str, object] = {
         "epoch": epoch,
         "last_map50": map50,
+        "last_map50_95": map50_95,
         "progress_updated_at": utcnow(),
     }
     if epochs is not None:

@@ -224,6 +224,9 @@ class TrainingRun(Base):
     epoch: Mapped[int | None] = mapped_column(Integer, nullable=True)
     epochs: Mapped[int | None] = mapped_column(Integer, nullable=True)
     last_map50: Mapped[float | None] = mapped_column(Float, nullable=True)
+    # mAP50-95 of the last completed epoch (box metrics for detect, mask for segment), next to
+    # `last_map50`; the history table shows it for runs that did not complete.
+    last_map50_95: Mapped[float | None] = mapped_column(Float, nullable=True)
     worker_pid: Mapped[int | None] = mapped_column(Integer, nullable=True)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
     # One of `yolo_trainer_common.failures.CATEGORIES` for a failed run, else NULL (D-16). No DB

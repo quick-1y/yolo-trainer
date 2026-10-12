@@ -573,6 +573,14 @@ class RunSummary(BaseModel):
     # running, `segment_started_at` opens the current segment: the UI adds the live part.
     active_seconds: float = 0
     segment_started_at: datetime | None = None
+    # The history table reads these from the list: the final mAP50-95 of a completed run, else the
+    # last epoch's (`last_map50_95` is that stored value), the size of the dataset snapshot
+    # (train + valid + test) and the settings the run was started with. All come from the row.
+    map50_95: float | None = None
+    last_map50_95: float | None = None
+    image_count: int | None = None
+    settings: RunSettings
+    resolved: RunResolved | None = None
 
     @computed_field  # type: ignore[prop-decorator]
     @property
@@ -604,8 +612,6 @@ class ActiveRun(BaseModel):
 
 
 class RunRead(RunSummary):
-    settings: RunSettings
-    resolved: RunResolved | None = None
     dataset_counts: DatasetCounts | None = None
     class_names: list[str] | None = None
     metrics: RunMetrics | None = None
