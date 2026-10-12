@@ -102,6 +102,33 @@ def test_the_409_message_is_the_one_the_modal_shows() -> None:
     )
 
 
+def test_a_resumed_queued_run_is_not_removable_and_keeps_its_folder_and_checkpoint(
+    client: TestClient, settings: Settings
+) -> None:
+    project_id, (run,) = _queued_runs(client, 1)
+    engine = _worker_engine(settings)
+    with Session(engine) as session, session.begin():
+        session.execute(
+            update(TrainingRun)
+            .where(TrainingRun.id == run["id"])
+            .values(resume_count=1, resume_epoch=3)
+        )
+    weights = layout.last_weights(layout.run_dir(settings.data_dir, run["id"]))
+    weights.parent.mkdir(parents=True, exist_ok=True)
+    weights.write_bytes(b"last")
+
+    response = client.delete(_url(project_id, run["id"]), headers=XHR)
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == service.RUN_RESUMED_DETAIL
+    assert (
+        service.RUN_RESUMED_DETAIL
+        == "This run was resumed. Cancel the resume instead to keep its progress."
+    )
+    assert run_status(client, project_id, run["id"]) == "queued"
+    assert weights.is_file()
+
+
 def test_a_preparing_run_cannot_be_removed(client: TestClient, settings: Settings) -> None:
     project_id, (run,) = _queued_runs(client, 1)
     _force_status(_worker_engine(settings), run["id"], "preparing")

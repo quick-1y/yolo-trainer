@@ -130,7 +130,10 @@ async def cancel_run(
     request: Request,
     session: AsyncSession = Depends(get_session),
 ) -> RunRead:
-    """Ask for a running run to be cancelled. Only sets the flag the worker reads (D-07)."""
+    """Ask for a running run to be cancelled. Only sets the flag the worker reads (D-07).
+
+    A queued run that was resumed is taken back to `cancelled` here instead ("Cancel resume").
+    """
     await get_project_or_404(session, project_id)
     run = await service.cancel_run(session, project_id, run_id)
     return await service.run_read(session, run, request.app.state.settings.data_dir)

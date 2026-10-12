@@ -68,9 +68,11 @@ afterEach(() => {
 });
 
 describe("RunPage progress", () => {
-  it("shows the epoch, a progress bar, a ticking elapsed time and the latest mAP50 for a running run", async () => {
+  it("shows the epoch, a progress bar, a ticking training time and the latest mAP50 for a running run", async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true, now: new Date("2026-01-15T10:06:05Z") });
-    stubTrainingApi({ run: running() });
+    stubTrainingApi({
+      run: running({ active_seconds: 100, segment_started_at: "2026-01-15T10:05:45Z" }),
+    });
     renderWithProviders(<AppRoutes />, { route: RUN_PATH });
 
     expect((await screen.findAllByText("Epoch 12 of 100")).length).toBeGreaterThan(0);
@@ -81,14 +83,31 @@ describe("RunPage progress", () => {
     expect(screen.getByText("Latest mAP50: 0.457")).toBeInTheDocument();
     expect(screen.getByText(/You can close this page\. Training continues/)).toBeInTheDocument();
 
-    const before = /Elapsed: (\d+:\d{2}:\d{2})/.exec(screen.getByText(/Elapsed:/).textContent ?? "");
+    // 100 banked seconds plus the 20 s the open segment has been running.
+    const pattern = /Training time: (\d+:\d{2}:\d{2})/;
+    const before = pattern.exec(screen.getByText(/Training time:/).textContent ?? "");
     expect(before).not.toBeNull();
-    expect(seconds(before![1])).toBeGreaterThanOrEqual(65);
+    expect(seconds(before![1])).toBeGreaterThanOrEqual(120);
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1000);
     });
-    const after = /Elapsed: (\d+:\d{2}:\d{2})/.exec(screen.getByText(/Elapsed:/).textContent ?? "");
+    const after = pattern.exec(screen.getByText(/Training time:/).textContent ?? "");
     expect(seconds(after![1])).toBeGreaterThan(seconds(before![1]));
+  });
+
+  it("counts a resumed run's training time from its banked seconds, not from its first start", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true, now: new Date("2026-01-15T10:06:05Z") });
+    stubTrainingApi({
+      run: running({
+        started_at: "2026-01-15T06:00:00Z",
+        resume_count: 1,
+        active_seconds: 100,
+        segment_started_at: "2026-01-15T10:05:45Z",
+      }),
+    });
+    renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+
+    expect(await screen.findByText(/Training time: 0:02:0\d/)).toBeInTheDocument();
   });
 
   it("shows Starting with no bar before the first epoch", async () => {
@@ -771,6 +790,22 @@ describe("RunPage result", () => {
     expect(download).toHaveAttribute("download");
   });
 
+  it("shows the active training time of a completed run, not finished minus started", async () => {
+    stubTrainingApi({ run: completed({ active_seconds: 300, resume_count: 1 }) });
+    renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+
+    expect(await screen.findByText("Duration: 0:05:00")).toBeInTheDocument();
+  });
+
+  it("falls back to finished minus started for a completed Phase 4 run", async () => {
+    stubTrainingApi({
+      run: completed({ started_at: "2026-01-15T10:00:00Z", finished_at: "2026-01-15T10:05:00Z" }),
+    });
+    renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+
+    expect(await screen.findByText("Duration: 0:05:00")).toBeInTheDocument();
+  });
+
   it("notes that the metrics of a segment project are measured on masks", async () => {
     stubTrainingApi({ run: completed({ task_type: "segment" }) });
     renderWithProviders(<AppRoutes />, { route: RUN_PATH });
@@ -1097,7 +1132,6 @@ describe("RunPage interrupted and cancelled runs", () => {
       screen.getByText("The service was restarted while this run was training."),
     ).toBeInTheDocument();
     expect(screen.getByText("Last completed epoch: 7 of 50.")).toBeInTheDocument();
-    expect(screen.getByText("Start a new run to train again.")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "New training" })).toHaveAttribute(
       "href",
       "/projects/1/training/new",
@@ -1159,6 +1193,23 @@ describe("RunPage settings card", () => {
     expect(rows.has("Started")).toBe(true);
     expect(rows.has("Finished")).toBe(true);
     expect(screen.getByText("car, plate")).toHaveAttribute("title", "car, plate");
+  });
+
+  it("shows 'Times resumed' after Finished from the first resume on, and omits it at zero", async () => {
+    stubTrainingApi({ run: completed({ resume_count: 2 }) });
+    const view = renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+
+    expect(await screen.findByText("Settings used")).toBeInTheDocument();
+    const rows = settingsRows();
+    expect(rows.get("Times resumed")).toBe("2");
+    const labels = [...rows.keys()];
+    expect(labels.indexOf("Times resumed")).toBe(labels.indexOf("Finished") + 1);
+    view.unmount();
+
+    stubTrainingApi({ run: completed({ resume_count: 0 }) });
+    renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+    expect(await screen.findByText("Settings used")).toBeInTheDocument();
+    expect(settingsRows().has("Times resumed")).toBe(false);
   });
 
   it("shows a plain Auto before the worker resolved it and omits unknown times", async () => {
@@ -1344,10 +1395,15 @@ describe("RunPage cancelling and cancelled states", () => {
 
 describe("RunPage cancel training", () => {
   it("opens a confirmation with Keep training focused, sends the cancel and shows Cancelling…", async () => {
-    let current = running({ epoch: 2, epochs: 10, settings: { epochs: 10, imgsz: 640, batch: -1, device: "auto" } });
+    let current = running({
+      epoch: 2,
+      epochs: 10,
+      resume_epoch: 2,
+      settings: { epochs: 10, imgsz: 640, batch: -1, device: "auto" },
+    });
     const stub = stubTrainingApi({
       run: () => current,
-      cancelResult: running({ epoch: 2, epochs: 10, cancelling: true }),
+      cancelResult: running({ epoch: 2, epochs: 10, resume_epoch: 2, cancelling: true }),
     });
     const view = renderWithProviders(<AppRoutes />, { route: RUN_PATH });
 
@@ -1384,13 +1440,29 @@ describe("RunPage cancel training", () => {
   });
 
   it("caps the epoch in the confirmation at the planned total", async () => {
-    stubTrainingApi({ run: running({ epoch: 10, epochs: 10 }) });
+    stubTrainingApi({ run: running({ epoch: 10, epochs: 10, resume_epoch: 10 }) });
     const view = renderWithProviders(<AppRoutes />, { route: RUN_PATH });
 
     await view.user.click(await screen.findByRole("button", { name: "Cancel training" }));
 
     const dialog = await screen.findByRole("dialog", { name: "Cancel training" });
     expect(within(dialog).getByText(/Training will stop at epoch 10\./)).toBeInTheDocument();
+  });
+
+  it("says that nothing can be resumed when no checkpoint has been saved yet", async () => {
+    stubTrainingApi({ run: running({ epoch: null, epochs: 10, resume_epoch: null }) });
+    const view = renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+
+    await view.user.click(await screen.findByRole("button", { name: "Cancel training" }));
+
+    const dialog = await screen.findByRole("dialog", { name: "Cancel training" });
+    expect(
+      within(dialog).getByText(
+        "Training will stop now. No checkpoint has been saved yet, so this run cannot be resumed.",
+      ),
+    ).toBeInTheDocument();
+    expect(within(dialog).queryByText(/Training will stop at epoch/)).toBeNull();
+    expect(within(dialog).queryByText("The epoch in progress is not saved.")).toBeNull();
   });
 
   it("disables both buttons while the request is pending", async () => {
@@ -1460,7 +1532,7 @@ describe("RunPage cancel training", () => {
   });
 
   it("words the confirmation in Russian", async () => {
-    stubTrainingApi({ run: running({ epoch: 2, epochs: 10 }) });
+    stubTrainingApi({ run: running({ epoch: 2, epochs: 10, resume_epoch: 2 }) });
     const view = renderWithProviders(<AppRoutes />, { route: RUN_PATH, language: "ru" });
 
     await view.user.click(await screen.findByRole("button", { name: "Отменить обучение" }));
@@ -1668,5 +1740,243 @@ describe("RunPage resume training", () => {
 
     await screen.findByText("In queue: position 2");
     expect(FakeEventSource.instances).toHaveLength(0);
+  });
+});
+
+const RESUME_HINT_5 =
+  "Resuming continues from epoch 5 with the same settings. To change settings, start a new run.";
+const RESUME_HINT_UNKNOWN =
+  "Resuming continues from the last saved checkpoint with the same settings. To change settings, start a new run.";
+const NO_CHECKPOINT = "No checkpoint saved yet — start a new run.";
+const FINISHED = "All epochs were already trained, so there is nothing left to resume.";
+const NOT_RESUMABLE_HINT =
+  "The saved checkpoint is missing, damaged, or training had already finished. Start a new run instead.";
+
+/** The visible element a disabled button points at with aria-describedby. */
+function describedElement(button: HTMLElement): HTMLElement {
+  const id = button.getAttribute("aria-describedby");
+  expect(id).not.toBeNull();
+  const element = document.getElementById(id as string);
+  expect(element).not.toBeNull();
+  expect(element).toBeVisible();
+  return element as HTMLElement;
+}
+
+describe("RunPage resume lines", () => {
+  it("tells an interrupted run where Resume continues and offers a new run", async () => {
+    stubTrainingApi({
+      run: resumable("interrupted", { epoch: 4, epochs: 10, resume_epoch: 4 }),
+    });
+    renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+
+    expect(await screen.findByText("Last completed epoch: 4 of 10.")).toBeInTheDocument();
+    expect(screen.getByText(RESUME_HINT_5)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "New training" })).toHaveAttribute(
+      "href",
+      "/projects/1/training/new",
+    );
+    expect(screen.getByRole("button", { name: "Resume training" })).toBeEnabled();
+  });
+
+  it("shows the same lines on a cancelled run", async () => {
+    stubTrainingApi({
+      run: resumable("cancelled", { epoch: 4, epochs: 10, resume_epoch: 4 }),
+    });
+    renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+
+    expect(await screen.findByText("Last completed epoch: 4 of 10.")).toBeInTheDocument();
+    expect(screen.getByText(RESUME_HINT_5)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "New training" })).toBeInTheDocument();
+  });
+
+  it("names no epoch when the checkpoint epoch is unknown", async () => {
+    stubTrainingApi({
+      run: resumable("interrupted", { epoch: 3, epochs: 10, resume_epoch: null }),
+    });
+    renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+
+    expect(await screen.findByText("Last completed epoch: 3 of 10.")).toBeInTheDocument();
+    expect(screen.getByText(RESUME_HINT_UNKNOWN)).toBeInTheDocument();
+    expect(screen.queryByText(/continues from epoch/)).toBeNull();
+  });
+
+  it("explains a missing checkpoint and points the disabled button at the reason", async () => {
+    stubTrainingApi({
+      run: resumable("interrupted", {
+        can_resume: false,
+        resume_blocked: "no_checkpoint",
+        resume_epoch: null,
+      }),
+    });
+    renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+
+    const button = await screen.findByRole("button", { name: "Resume training" });
+    expect(button).toBeDisabled();
+    expect(describedElement(button)).toHaveTextContent(NO_CHECKPOINT);
+    expect(screen.queryByText(/Resuming continues/)).toBeNull();
+  });
+
+  it.each([
+    ["no_checkpoint", NO_CHECKPOINT],
+    ["finished", FINISHED],
+    ["not_resumable", NOT_RESUMABLE_HINT],
+  ] as const)(
+    "gives a failed run blocked as %s a visible reason that its disabled Resume button references",
+    async (blocked, reason) => {
+      stubTrainingApi({
+        run: resumable("failed", {
+          can_resume: false,
+          resume_blocked: blocked,
+          resume_epoch: null,
+          error_category: blocked === "not_resumable" ? "not_resumable" : "out_of_memory",
+        }),
+      });
+      renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+
+      const button = await screen.findByRole("button", { name: "Resume training" });
+      expect(button).toBeDisabled();
+      expect(describedElement(button)).toHaveTextContent(reason);
+      if (blocked !== "no_checkpoint") {
+        expect(screen.queryByText(NO_CHECKPOINT)).toBeNull();
+      }
+      expect(screen.queryByText(/Resuming continues/)).toBeNull();
+    },
+  );
+
+  it("shows a failed run's title, hint, raw message, resume line and both actions", async () => {
+    stubTrainingApi({ run: resumable("failed", { epoch: 3, epochs: 10, resume_epoch: 3 }) });
+    renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+
+    expect(await screen.findByText("Out of memory")).toBeInTheDocument();
+    expect(screen.getByText("CUDA out of memory.", { selector: "div,p" })).toBeInTheDocument();
+    expect(screen.getByText("Last completed epoch: 3 of 10.")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Resuming continues from epoch 4 with the same settings. To change settings, start a new run.",
+      ),
+    ).toBeInTheDocument();
+    const actions = screen.getByRole("link", { name: "New training" }).parentElement as HTMLElement;
+    expect(within(actions).getByRole("button", { name: "Show log" })).toBeInTheDocument();
+  });
+
+  it("words the lines in Russian", async () => {
+    stubTrainingApi({
+      run: resumable("interrupted", { epoch: 4, epochs: 10, resume_epoch: 4 }),
+    });
+    renderWithProviders(<AppRoutes />, { route: RUN_PATH, language: "ru" });
+
+    expect(await screen.findByText("Последняя завершённая эпоха: 4 из 10.")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Возобновление продолжит обучение с эпохи 5 с теми же настройками. Чтобы изменить настройки, начните новый запуск.",
+      ),
+    ).toBeInTheDocument();
+  });
+});
+
+describe("RunPage queued resume", () => {
+  function resumedQueued(overrides: Record<string, unknown> = {}) {
+    return makeRun({
+      id: 7,
+      name: "run-7",
+      status: "queued",
+      queue_position: 1,
+      epoch: 4,
+      epochs: 10,
+      resume_count: 1,
+      resume_epoch: 4,
+      started_at: STARTED_AT,
+      ...overrides,
+    });
+  }
+
+  it("continues from the checkpoint epoch, keeps the charts and offers Cancel resume instead of Remove", async () => {
+    stubTrainingApi({ run: resumedQueued() });
+    renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+
+    expect(
+      await screen.findByText(
+        "The run continues from epoch 5 when the worker is free. You can close this page.",
+      ),
+    ).toBeInTheDocument();
+    const cancel = screen.getByRole("button", { name: "Cancel resume" });
+    expect(cancel).toHaveAttribute("data-variant", "default");
+    expect(screen.queryByRole("button", { name: "Remove from queue" })).toBeNull();
+    await waitFor(() => expect(FakeEventSource.instances).toHaveLength(1));
+  });
+
+  it("uses the generic body when the checkpoint epoch is unknown", async () => {
+    stubTrainingApi({ run: resumedQueued({ resume_epoch: null }) });
+    renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+
+    expect(
+      await screen.findByText(
+        "The run starts automatically when the worker is free. You can close this page.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/continues from epoch/)).toBeNull();
+    expect(screen.getByRole("button", { name: "Cancel resume" })).toBeInTheDocument();
+  });
+
+  it("cancels the resume without a dialog and keeps the run", async () => {
+    const stub = stubTrainingApi({
+      run: resumedQueued(),
+      cancelResult: makeRun({
+        id: 7,
+        name: "run-7",
+        status: "cancelled",
+        queue_position: null,
+        epoch: 4,
+        epochs: 10,
+        resume_count: 1,
+        resume_epoch: 4,
+        can_resume: true,
+        started_at: STARTED_AT,
+        finished_at: "2026-01-15T10:20:00Z",
+      }),
+    });
+    const view = renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+
+    await view.user.click(await screen.findByRole("button", { name: "Cancel resume" }));
+
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(stub.cancels).toEqual(["/api/projects/1/runs/7/cancel"]);
+    expect(stub.deletes).toEqual([]);
+    expect(
+      await screen.findByText("Run cancelled", { selector: ".mantine-Alert-label" }),
+    ).toBeInTheDocument();
+    expect(notifications.show).toHaveBeenCalledWith(
+      expect.objectContaining({
+        color: "green",
+        message: "The resume was cancelled. The run keeps its saved progress.",
+      }),
+    );
+    expect(screen.getByRole("button", { name: "Resume training" })).toBeEnabled();
+  });
+
+  it("shows a red notification and changes nothing when the cancel is refused", async () => {
+    stubTrainingApi({
+      run: resumedQueued(),
+      cancelStatus: 409,
+      cancelDetail: "Only a running run can be cancelled.",
+    });
+    const view = renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+
+    await view.user.click(await screen.findByRole("button", { name: "Cancel resume" }));
+
+    await waitFor(() =>
+      expect(notifications.show).toHaveBeenCalledWith(
+        expect.objectContaining({ color: "red", message: "Only a running run can be cancelled." }),
+      ),
+    );
+    expect(screen.getByRole("button", { name: "Cancel resume" })).toBeInTheDocument();
+  });
+
+  it("keeps Remove from queue for a run that was never resumed", async () => {
+    stubTrainingApi({ run: queued() });
+    renderWithProviders(<AppRoutes />, { route: RUN_PATH });
+
+    expect(await screen.findByRole("button", { name: "Remove from queue" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Cancel resume" })).toBeNull();
   });
 });

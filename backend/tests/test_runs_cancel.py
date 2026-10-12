@@ -230,5 +230,72 @@ def test_a_second_cancel_while_still_running_answers_200_and_keeps_the_first_tim
     assert _requested_at(engine, run["id"]) == stamp
 
 
+def _force(engine: Engine, run_id: int, **values: object) -> None:
+    with Session(engine) as session, session.begin():
+        session.execute(update(TrainingRun).where(TrainingRun.id == run_id).values(**values))
+
+
+def _row(engine: Engine, run_id: int) -> TrainingRun:
+    with Session(engine) as session:
+        run = session.get(TrainingRun, run_id)
+        session.expunge(run)
+        return run
+
+
+def test_cancelling_a_queued_resume_keeps_the_progress_of_the_run(
+    client: TestClient, settings: Settings
+) -> None:
+    project_id, (run,) = _queued_runs(client, 1)
+    engine = queue.create_worker_engine(worker_settings(settings))
+    _force(engine, run["id"], resume_count=1, resume_epoch=4, epoch=4, active_seconds=12.5)
+    weights = layout.last_weights(layout.run_dir(settings.data_dir, run["id"]))
+    weights.parent.mkdir(parents=True, exist_ok=True)
+    weights.write_bytes(b"last")
+
+    response = _cancel(client, project_id, run["id"])
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["status"] == "cancelled"
+    assert body["cancelling"] is False
+    assert (body["resume_count"], body["resume_epoch"], body["active_seconds"]) == (1, 4, 12.5)
+    assert body["finished_at"] is not None
+    assert body["can_resume"] is True  # the resume can be started again
+    row = _row(engine, run["id"])
+    assert row.cancel_requested_at is None
+    assert (row.resume_count, row.resume_epoch, row.epoch) == (1, 4, 4)
+    assert weights.is_file()
+    assert layout.run_dir(settings.data_dir, run["id"]).is_dir()
+    assert queue.claim_next(engine) is None  # it left the queue
+
+
+def test_a_never_resumed_queued_run_still_cannot_be_cancelled(
+    client: TestClient, settings: Settings
+) -> None:
+    project_id, (run,) = _queued_runs(client, 1)
+    engine = queue.create_worker_engine(worker_settings(settings))
+
+    response = _cancel(client, project_id, run["id"])
+
+    assert response.status_code == 409
+    assert response.json()["detail"] == service.RUN_NOT_CANCELLABLE_DETAIL
+    assert _row(engine, run["id"]).status == "queued"
+
+
+def test_a_resume_claimed_by_the_worker_first_is_cancelled_the_normal_way(
+    client: TestClient, settings: Settings
+) -> None:
+    project_id, (run,) = _queued_runs(client, 1)
+    engine = queue.create_worker_engine(worker_settings(settings))
+    _force(engine, run["id"], resume_count=1, resume_epoch=2)
+    assert queue.claim_next(engine) == run["id"]
+
+    response = _cancel(client, project_id, run["id"])
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "running"
+    assert response.json()["cancelling"] is True  # the flag path of a running run
+
+
 def test_the_not_cancellable_message_is_the_one_the_modal_shows() -> None:
     assert service.RUN_NOT_CANCELLABLE_DETAIL == "Only a running run can be cancelled."

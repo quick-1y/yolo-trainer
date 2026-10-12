@@ -66,6 +66,7 @@ logger = logging.getLogger(__name__)
 
 RUN_NOT_FOUND_DETAIL = "Run not found."
 RUN_NOT_QUEUED_DETAIL = "This run has already started and can no longer be removed from the queue."
+RUN_RESUMED_DETAIL = "This run was resumed. Cancel the resume instead to keep its progress."
 RUN_NOT_CANCELLABLE_DETAIL = "Only a running run can be cancelled."
 RUN_NOT_RESUMABLE_STATUS_DETAIL = "Only an interrupted, cancelled or failed run can be resumed."
 RUN_NO_CHECKPOINT_DETAIL = "No checkpoint was saved for this run yet. Start a new run instead."
@@ -310,30 +311,35 @@ async def queue_positions(session: AsyncSession) -> dict[int, int]:
 async def remove_queued_run(
     session: AsyncSession, settings: Settings, project_id: int, run_id: int
 ) -> None:
-    """Take a `queued` run out of the queue (D-11); anything else is refused with 409.
+    """Take a never-resumed `queued` run out of the queue (D-11); anything else is refused with 409.
 
-    One DELETE guarded by `status = 'queued'` races the worker's claim, which is one
-    UPDATE guarded by the same condition, so exactly one of the two can win. The row goes
-    first and the files after; a leftover folder is swept by the startup cleanup.
+    One DELETE guarded by `status = 'queued'` and `resume_count = 0` races the worker's claim,
+    which is one UPDATE guarded by the same status, so exactly one of the two can win. A queued
+    run that was resumed has history (checkpoint, charts): it is never deleted here and answers
+    409 `RUN_RESUMED_DETAIL`, "Cancel resume" being the way to take it back (T-05-21). The row
+    goes first and the files after; a leftover folder is swept by the startup cleanup.
     """
     result = await session.execute(
         delete(TrainingRun).where(
             TrainingRun.id == run_id,
             TrainingRun.project_id == project_id,
             TrainingRun.status == "queued",
+            TrainingRun.resume_count == 0,
         )
     )
     await session.commit()
     if result.rowcount == 0:
-        exists = (
+        found = (
             await session.execute(
-                select(TrainingRun.id).where(
+                select(TrainingRun.status, TrainingRun.resume_count).where(
                     TrainingRun.id == run_id, TrainingRun.project_id == project_id
                 )
             )
-        ).scalar_one_or_none()
-        if exists is None:
+        ).first()
+        if found is None:
             raise HTTPException(status_code=404, detail=RUN_NOT_FOUND_DETAIL)
+        if found.status == "queued" and found.resume_count > 0:
+            raise HTTPException(status_code=409, detail=RUN_RESUMED_DETAIL)
         raise HTTPException(status_code=409, detail=RUN_NOT_QUEUED_DETAIL)
     await _remove_folder(settings, run_id)
 
@@ -345,17 +351,34 @@ async def cancel_run(session: AsyncSession, project_id: int, run_id: int) -> Tra
     finished a moment earlier is never touched. The api signals nothing: the worker supervisor
     reads the flag in its next tick, stops its own child and writes `cancelled`. A second request
     while the run is still running changes nothing and answers 200 (idempotent).
+
+    A `queued` run that was resumed (`resume_count > 0`) is "Cancel resume": one UPDATE guarded
+    by both conditions puts it back to `cancelled` and changes nothing else, so its checkpoint,
+    charts and counters stay. It races the worker's claim, which is one UPDATE guarded by
+    `status = 'queued'`, so exactly one wins; when the claim wins this falls through to the flag
+    of a running run. A never-resumed queued run is still refused (it has "Remove from queue").
     """
     result = await session.execute(
         update(TrainingRun)
         .where(
             TrainingRun.id == run_id,
             TrainingRun.project_id == project_id,
-            TrainingRun.status == "running",
-            TrainingRun.cancel_requested_at.is_(None),
+            TrainingRun.status == "queued",
+            TrainingRun.resume_count > 0,
         )
-        .values(cancel_requested_at=utcnow())
+        .values(status="cancelled", finished_at=utcnow())
     )
+    if result.rowcount == 0:
+        result = await session.execute(
+            update(TrainingRun)
+            .where(
+                TrainingRun.id == run_id,
+                TrainingRun.project_id == project_id,
+                TrainingRun.status == "running",
+                TrainingRun.cancel_requested_at.is_(None),
+            )
+            .values(cancel_requested_at=utcnow())
+        )
     await session.commit()
     run = (
         await session.execute(
@@ -440,6 +463,11 @@ async def resume_run(
         raise HTTPException(status_code=409, detail=RUN_NO_CHECKPOINT_DETAIL)
     if state.blocked is not None:
         raise HTTPException(status_code=409, detail=RUN_CHECKPOINT_NOT_RESUMABLE_DETAIL)
+    # The host may have changed since the start: a GPU run needs a GPU again, same refusal as a
+    # start (D-11). Imported here because options imports this module.
+    from yolo_trainer_api.training.options import ensure_device_available
+
+    ensure_device_available(settings, run.settings["device"])
 
     values: dict[str, object] = {
         "status": "queued",
@@ -590,6 +618,7 @@ async def run_read(session: AsyncSession, run: TrainingRun, data_dir: Path) -> R
     return RunRead(
         **fields,
         can_resume=resume.can_resume if resume is not None else False,
+        resume_blocked=resume.blocked if resume is not None else None,
         settings=RunSettings(**run.settings),
         resolved=RunResolved(**run.resolved) if run.resolved else None,
         dataset_counts=DatasetCounts(**run.dataset_counts) if run.dataset_counts else None,

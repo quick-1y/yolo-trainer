@@ -614,6 +614,10 @@ class RunRead(RunSummary):
     # Single-run read only (the history list never touches the filesystem per row): the run is in
     # a resumable status, its last.pt exists and its checkpoint is not known to be finished/refused.
     can_resume: bool = False
+    # Why `can_resume` is false for a run in a resumable status: `no_checkpoint` only when last.pt
+    # is missing, `finished` when the progress events show the training loop ended, `not_resumable`
+    # when the worker already refused this checkpoint. Null otherwise (D-10).
+    resume_blocked: Literal["no_checkpoint", "finished", "not_resumable"] | None = None
 
 
 # --------------------------------------------------------------------------

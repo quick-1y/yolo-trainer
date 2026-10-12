@@ -108,9 +108,16 @@ export interface RunSummary {
   resume_count: number;
   /** The epoch of the checkpoint a resume continues from; null while it is not known. */
   resume_epoch: number | null;
+  /** Seconds spent actually training, summed over the running segments (D-09). */
+  active_seconds: number;
+  /** When the current running segment began; null unless the run is running. */
+  segment_started_at: string | null;
   /** Verdict on mAP50 computed by the server (null while there is no final mAP50). */
   quality: QualityLevel | null;
 }
+
+/** The reasons a run in a resumable status cannot be resumed (D-10). */
+export type ResumeBlocked = "no_checkpoint" | "finished" | "not_resumable";
 
 export interface RunDetail extends RunSummary {
   settings: RunSettings;
@@ -122,6 +129,12 @@ export interface RunDetail extends RunSummary {
   log_tail: string | null;
   /** Detail only: the run is resumable and its checkpoint is not known to be finished or refused. */
   can_resume: boolean;
+  /**
+   * Why a run in a resumable status cannot be resumed: `no_checkpoint` only when last.pt is
+   * missing, `finished` when the training loop ended, `not_resumable` when the worker already
+   * refused the checkpoint. Null otherwise (D-10).
+   */
+  resume_blocked: ResumeBlocked | null;
 }
 
 export interface OfficialModelOption {

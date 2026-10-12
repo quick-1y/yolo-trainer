@@ -21,8 +21,10 @@ export function CancelRunModal({ projectId, run, opened, onClose }: CancelRunMod
   // A ref blocks a rapid second Enter/click before React re-renders the disabled state.
   const isSubmittingRef = useRef(false);
   const planned = run.epochs ?? run.settings.epochs;
-  // The epoch in progress is the one after the last finished epoch, never above the total.
-  const epoch = Math.min((run.epoch ?? 0) + 1, planned);
+  // Without a saved checkpoint nothing can be resumed, so no epoch is promised (D-10).
+  const hasCheckpoint = run.resume_epoch !== null;
+  // The epoch in progress is the one after the last saved checkpoint, never above the total.
+  const epoch = Math.min((run.resume_epoch ?? 0) + 1, planned);
 
   function handleClose() {
     if (cancel.isPending) {
@@ -65,10 +67,16 @@ export function CancelRunModal({ projectId, run, opened, onClose }: CancelRunMod
     >
       <Stack gap={16}>
         <Stack gap={8}>
-          <Text size="sm">{t("training:run.cancel.body", { epoch })}</Text>
-          <Text fz={12} c="dark.1">
-            {t("training:run.cancel.note")}
-          </Text>
+          {hasCheckpoint ? (
+            <>
+              <Text size="sm">{t("training:run.cancel.body", { epoch })}</Text>
+              <Text fz={12} c="dark.1">
+                {t("training:run.cancel.note")}
+              </Text>
+            </>
+          ) : (
+            <Text size="sm">{t("training:run.cancel.bodyNoCheckpoint")}</Text>
+          )}
         </Stack>
         {errorMessage !== null ? (
           <Alert color="red" title={t("common:error.title")}>
