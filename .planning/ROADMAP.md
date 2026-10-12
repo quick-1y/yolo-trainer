@@ -274,7 +274,7 @@ Plans:
   4. User sees a history of all runs in a project with status, settings, duration, and final metrics
   5. A failing run (e.g. out of memory, invalid dataset) ends in a failed state with an understandable error message in the UI, not a silent stop
 
-**Plans:** 6/10 plans executed
+**Plans:** 7/10 plans executed
 
 Plans:
 **Wave 1**
@@ -303,7 +303,7 @@ Plans:
 
 **Wave 7** *(blocked on Wave 6 completion)*
 
-- [ ] 05-07-PLAN.md — Active-time durations across segments, resume gates and reasons, device re-check, "Cancel resume" for queued resumed runs (wave 7)
+- [x] 05-07-PLAN.md — Active-time durations across segments, resume gates and reasons, device re-check, "Cancel resume" for queued resumed runs (wave 7)
 
 **Wave 8** *(blocked on Wave 7 completion)*
 
@@ -492,7 +492,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 2. Image Upload & Classes | 13/13 | Complete    | 2026-10-03 |
 | 3. Box Annotation Editor | 13/13 | Complete    | 2026-10-04 |
 | 4. Train & Download | 11/11 | Complete    | 2026-10-11 |
-| 5. Live Training Monitoring & Control | 6/10 | In Progress | - |
+| 5. Live Training Monitoring & Control | 7/10 | In Progress | - |
 | 6. Polygons & Segmentation Projects | 0/TBD | Not started | - |
 | 7. Model Library | 0/TBD | Not started | - |
 | 8. AI-Assisted Annotation | 0/TBD | Not started | - |
