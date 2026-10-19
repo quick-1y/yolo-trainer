@@ -1,55 +1,52 @@
 ---
-status: testing
+status: complete
 phase: 05-live-training-monitoring-control
 source: [05-VERIFICATION.md]
 started: 2026-10-12T08:11:08Z
-updated: 2026-10-12T08:11:08Z
+updated: 2026-10-19T06:44:41.740Z
 ---
 
 ## Current Test
 
-number: 1
-name: Live charts on a real CPU run in a real browser (success criterion 1)
-expected: |
-  Start a CPU run with 6+ epochs. The mAP, loss and precision/recall charts grow after each epoch without a refresh. Reloading the page mid-run restores the whole curve and keeps updating. After the last epoch the card reads 'Final validation…' (never 'Epoch Y+1'), and a 'Final results (best.pt)' card then appears.
-awaiting: user response
+[testing complete]
 
 ## Tests
 
-### 1. Live charts on a real CPU run in a real browser (success criterion 1)
-expected: Start a CPU run with 6+ epochs. The mAP, loss and precision/recall charts grow after each epoch without a refresh. Reloading the page mid-run restores the whole curve and keeps updating. After the last epoch the card reads 'Final validation…' (never 'Epoch Y+1'), and a 'Final results (best.pt)' card then appears.
-result: [pending]
+### 1. Живые графики на реальном CPU-запуске в настоящем браузере (критерий успеха 1)
+expected: Запустите обучение на CPU на 6+ эпох. Графики mAP, loss и precision/recall растут после каждой эпохи без обновления страницы. Перезагрузка страницы посреди запуска восстанавливает всю кривую, и обновления продолжаются. После последней эпохи карточка показывает 'Final validation…' (а не 'Epoch Y+1'), затем появляется карточка 'Final results (best.pt)'.
+result: pass
 
-### 2. Held-out visual checks at 1024 and 1280 px in en and ru (six backstop statements from plans 05-02, 05-03, 05-04, 05-08)
-expected: At 1200 px and wider the three chart panels fit the 960 column and stack below that, with no clipped axis labels or legend. The running headline (epoch on the left, time and ETA on the right) stays on one line with a 3-digit epoch count. The ru final-validation title and hint wrap inside the card. A 10,000-character error message and a 5,000-character log line wrap without widening the page. A 100-character run name and ru header labels (Длительность, Изображений, Базовая модель) fit the history table.
-result: [pending]
+### 2. Визуальные проверки при 1024 и 1280 px на en и ru (шесть контрольных утверждений из планов 05-02, 05-03, 05-04, 05-08)
+expected: При ширине 1200 px и больше три панели графиков помещаются в колонку 960, а уже — складываются друг под другом; подписи осей и легенда не обрезаются. Заголовок активного запуска (эпоха слева, время и ETA справа) остаётся в одну строку даже при трёхзначном числе эпох. Русские заголовок и подсказка финальной валидации переносятся внутри карточки. Сообщение об ошибке из 10 000 символов и строка лога из 5 000 символов переносятся, не расширяя страницу. Имя запуска из 100 символов и русские заголовки колонок (Длительность, Изображений, Базовая модель) помещаются в таблицу истории.
+result: pass
 
-### 3. Cancel from the UI during a real run, then start another run (success criterion 2)
-expected: Press Cancel, confirm. The page shows 'Cancelling…' and then 'Cancelled' within seconds. No `yolo_trainer_worker.train_job` process is left (Docker: `docker compose exec worker ps`). A newly started run is claimed at once.
-result: [pending]
+### 3. Отмена из интерфейса во время реального запуска, затем запуск следующего (критерий успеха 2)
+expected: Нажмите Cancel и подтвердите. Страница показывает 'Cancelling…', а через несколько секунд — 'Cancelled'. Процесса `yolo_trainer_worker.train_job` не остаётся (в Docker: `docker compose exec worker ps`). Новый запуск подхватывается воркером сразу.
+result: pass
 
-### 4. Resume from the UI after cancel and after `kill -9` of the training process (success criteria 3 and 5)
-expected: Resume the cancelled run: it is queued, then runs again as the same run with a 'Resumed' marker on the charts, and its first epoch is the checkpoint epoch + 1, not 1. After `kill -9` of the training process the run ends 'failed' with the 'Training process was killed' title and hint, the original message and the log tail, and Resume is offered.
-result: [pending]
+### 4. Возобновление из интерфейса после отмены и после `kill -9` процесса обучения (критерии успеха 3 и 5)
+expected: Возобновите отменённый запуск: он встаёт в очередь, затем продолжается как тот же запуск с меткой 'Resumed' на графиках, и его первая эпоха — эпоха чекпоинта + 1, а не 1. После `kill -9` процесса обучения запуск завершается со статусом 'failed', заголовком и подсказкой 'Training process was killed', исходным сообщением и хвостом лога, и предлагается Resume.
+result: pass
 
-### 5. Run page for interim, delete and queued-resume states; history table in the browser
-expected: A cancelled or failed run offers 'Download interim best.pt' with the 'incomplete' note, and the file is not in the model list. 'Delete run' names the model in bold. A queued resume shows 'Cancel resume' and no 'Remove from queue'. The history table sorts by every sortable column and filters by status, and the choice survives a reload (?sort, ?dir, ?status).
-result: [pending]
+### 5. Страница запуска для промежуточного результата, удаления и возобновления в очереди; таблица истории в браузере
+expected: Отменённый или упавший запуск предлагает 'Download interim best.pt' с пометкой 'incomplete', и этого файла нет в списке моделей. Диалог 'Delete run' называет модель жирным шрифтом. Возобновление в очереди показывает 'Cancel resume' и не показывает 'Remove from queue'. Таблица истории сортируется по каждой сортируемой колонке и фильтруется по статусу, а выбор сохраняется после перезагрузки (?sort, ?dir, ?status).
+result: pass
 
-### 6. Decision on code review WR-01 (project delete vs a base model used by an active run of another project)
-expected: Decide: accept as a known limitation or fix before closing the phase. Deleting project A removes its models even when an active (queued or preparing) run of project B uses one as its base. The queued run then fails with the categorized 'The base model file is missing.' message instead of being protected.
-result: [pending]
+### 6. Решение по замечанию код-ревью WR-01 (удаление проекта при базовой модели, используемой активным запуском другого проекта)
+expected: Решите: принять как известное ограничение или исправить до закрытия фазы. Удаление проекта A удаляет его модели, даже если активный (queued или preparing) запуск проекта B использует одну из них как базовую. Такой запуск в очереди затем падает с категоризированным сообщением 'The base model file is missing.', вместо того чтобы модель была защищена от удаления.
+result: pass
+note: WR-01 принято пользователем как известное ограничение (не исправляется в фазе 05)
 
-### 7. Re-run `bash scripts/compose_smoke_test.sh` once on the final tree
-expected: 'SMOKE OK'. The Phase 5 stage covers cancel, no orphan, next run, resume and the SSE end frame through nginx.
-result: [pending]
+### 7. Повторный запуск `bash scripts/compose_smoke_test.sh` на финальном дереве
+expected: Вывод 'SMOKE OK'. Этап Phase 5 покрывает отмену, отсутствие осиротевших процессов, следующий запуск, возобновление и финальный SSE-кадр через nginx.
+result: pass
 
 ## Summary
 
 total: 7
-passed: 0
+passed: 7
 issues: 0
-pending: 7
+pending: 0
 skipped: 0
 blocked: 0
 
