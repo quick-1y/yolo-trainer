@@ -33,6 +33,10 @@ The full loop works end-to-end in the browser: **upload images → annotate them
 - ✓ User can assign train/valid/test splits by hand (bulk or in the editor) or by a seeded, preview-then-confirm auto-split — Phase 4
 - ✓ User can start training from the browser with basic settings (base model, epochs, image size, batch, device) from an official auto-downloaded pretrained model or a model trained in the service — Phase 4
 - ✓ Finished runs register their model automatically (metrics, classes, task, source run); user downloads a `.pt` that loads and predicts via `YOLO(path)` in the downstream project — Phase 4
+- ✓ User sees live progress (epoch, losses, mAP, precision/recall) with charts streamed over SSE; a reload mid-run restores the full curve and final validation is labeled separately — Phase 5
+- ✓ User can cancel a running training job cleanly (no orphaned training process; the next queued run starts) — Phase 5
+- ✓ User can resume a cancelled, interrupted or killed run from its last checkpoint as the same run — Phase 5
+- ✓ Training history persists (status, settings, duration, final metrics, resulting model), sortable and filterable with URL-persisted state; failures are categorized with an understandable message and log tail — Phase 5
 
 ### Active
 
@@ -66,9 +70,6 @@ The full loop works end-to-end in the browser: **upload images → annotate them
 
 **Training**
 - [ ] User can tune training via an "Advanced" section (basic settings shipped in Phase 4) (lr0/lrf, patience, optimizer, augmentations, etc.)
-- [ ] User sees live progress (epoch, losses, mAP) with charts while training runs
-- [ ] User can cancel a running training job cleanly
-- [ ] Training history persists: past runs, their settings, final metrics, and resulting model
 - [ ] User can see which device (CPU/GPU) is available and used
 
 ### Out of Scope
@@ -120,6 +121,8 @@ The full loop works end-to-end in the browser: **upload images → annotate them
 | Unannotated and background stay distinct statuses | An unannotated image must never become an empty-label negative example | ✓ Good (Phase 3) |
 | Job queue = worker polls SQLite with an atomic claim; supervisor is the single writer of run state | No Redis/Celery; API container cannot spawn into the worker container; one run at a time | ✓ Good (Phase 4 UAT: api/worker restart mid-run) |
 | Each run trains on an immutable dataset snapshot; only annotated images with a split are used | Later edits never change what a run recorded; unannotated images never become negatives | ✓ Good (Phase 4) |
+| Resume continues the same run from `last.pt` (same run id, epoch = checkpoint + 1) instead of creating a new run | History stays one row per training; charts mark the resume point | ✓ Good (Phase 5 UAT: resume after cancel and after `kill -9`) |
+| Deleting a project removes its models even when another project's active run uses one as its base (WR-01) | Accepted as a known limitation; the queued run fails with a categorized 'base model file is missing' error | ⚠️ Revisit (accepted in Phase 5 UAT) |
 | Existing `docs/roadmap.md` retained as detailed technical reference | Avoid losing research; GSD ROADMAP.md becomes the execution plan | — Pending |
 
 ## Evolution
@@ -140,4 +143,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-10-11 after Phase 4*
+*Last updated: 2026-10-19 after Phase 5*

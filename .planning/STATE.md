@@ -1,44 +1,44 @@
 ---
 gsd_state_version: "1.0"
-current_phase: 05
-current_phase_name: Live Training Monitoring & Control
-status: executing
-stopped_at: Phase 5 UI-SPEC approved
-last_updated: "2026-10-12T05:54:57.113Z"
-last_activity: 2026-10-12
-last_activity_desc: Phase 05 execution resumed (wave continue)
-state_head: 09484870f815eaaee1fbfd7699e1995d8d5402ac
+current_phase: 6
+current_phase_name: Polygons & Segmentation Projects
+status: planning
+stopped_at: Phase 05 complete, ready to plan Phase 6
+last_updated: "2026-10-19T06:47:21.940Z"
+last_activity: 2026-10-19
+last_activity_desc: Phase 05 complete, transitioned to Phase 6
+state_head: 8039649d299b47284ff847f6a59036b5e6479d3f
 progress:
   total_phases: 12
-  completed_phases: 4
+  completed_phases: 5
   total_plans: 57
-  completed_plans: 53
-  percent: 33
+  completed_plans: 57
+  percent: 42
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-10-11)
+See: .planning/PROJECT.md (updated 2026-10-19)
 
 **Core value:** The full loop works end-to-end in the browser: upload images → annotate → train with configurable settings → download a working `.pt`
-**Current focus:** Phase 05 — Live Training Monitoring & Control
+**Current focus:** Phase 6 — Polygons & Segmentation Projects
 
 ## Current Position
 
-Phase: 05 (Live Training Monitoring & Control) — EXECUTING
-Plan: 1 of 10
-Status: Executing Phase 05
-Last activity: 2026-10-12 — Phase 05 execution resumed (wave continue)
+Phase: 6 — Polygons & Segmentation Projects
+Plan: Not started
+Status: Ready to plan
+Last activity: 2026-10-19 — Phase 05 complete, transitioned to Phase 6
 
-Progress: [███░░░░░░░] 33%
+Progress: [████░░░░░░] 42%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 47
+- Total plans completed: 57
 - Average duration: -
 - Total execution time: 0.0 hours
 
@@ -50,6 +50,7 @@ Progress: [███░░░░░░░] 33%
 | 02 | 13 | - | - |
 | 3 | 13 | - | - |
 | 04 | 11 | - | - |
+| 05 | 10 | - | - |
 
 **Recent Trend:**
 
@@ -178,6 +179,8 @@ None yet.
 - [Phase 6]: Prior research does not cover click-to-segment (SAM). It needs phase research on model choice and CPU latency.
 - [Phase 03 known limitations, accepted in UAT 2026-10-04]: a store-registry entry in conflict state counts as not dirty and can be evicted past MAX_ENTRIES = 30 (03-REVIEW WR-02); 408/429 on save are treated as rejections and resync instead of retrying (WR-03).
 - [Phase 03 UI review]: minor spacing follow-ups (ZoomOverlay gap 4 vs 8, background button icon gap, ClassPanel add-form spacing) — see 03-UI-REVIEW.md, 23/24.
+- [Phase 05 known limitation, accepted in UAT 2026-10-19]: deleting a project removes its models even when another project's active run uses one as its base model; that run then fails with 'The base model file is missing.' (05-REVIEW WR-01).
+- [Phase 05 UI review, 19/24]: open follow-ups: a user cancel can end as `failed` (WR-03), browser-clock drift in Duration/Training time (WR-05), and `Divider my={6}` in ChartTooltip.tsx should be `my={8}`. See 05-UI-REVIEW.md.
 - [Phase 02 follow-up]: CSRF hardening of `POST /images/delete` (02-REVIEW WR-03) is still open; the route relies on the JSON CORS preflight (accepted as T-02-13-05).
 
 ### Quick Tasks Completed
@@ -197,6 +200,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-10-11T09:11:01.044Z
-Stopped at: Phase 5 UI-SPEC approved
-Resume file: .planning/phases/05-live-training-monitoring-control/05-UI-SPEC.md
+Last session: 2026-10-19
+Stopped at: Phase 05 complete, ready to plan Phase 6
+Resume file: None

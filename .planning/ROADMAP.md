@@ -19,7 +19,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 2: Image Upload & Classes** - User uploads images from the browser, browses them in a fast grid, and defines the project's classes (completed 2026-10-03)
 - [x] **Phase 3: Box Annotation Editor** - User annotates images one by one with bounding boxes, autosave, undo/redo, shortcuts, and image status (completed 2026-10-04)
 - [x] **Phase 4: Train & Download** - User splits the dataset, trains from the browser in a background worker, and downloads a working `.pt` (core loop complete) (completed 2026-10-11)
-- [ ] **Phase 5: Live Training Monitoring & Control** - User watches live metrics charts, cancels/resumes runs, sees run history and understandable failures
+- [x] **Phase 5: Live Training Monitoring & Control** - User watches live metrics charts, cancels/resumes runs, sees run history and understandable failures (completed 2026-10-19)
 - [ ] **Phase 6: Polygons & Segmentation Projects** - User annotates with polygons and click-to-segment, and segment projects train end-to-end
 - [ ] **Phase 7: Model Library** - User uploads their own `.pt`, manages models, gets task-type protection, and test-predicts on an image
 - [ ] **Phase 8: AI-Assisted Annotation** - A chosen model proposes shapes on the current image; user accepts, edits, or rejects them
@@ -274,7 +274,7 @@ Plans:
   4. User sees a history of all runs in a project with status, settings, duration, and final metrics
   5. A failing run (e.g. out of memory, invalid dataset) ends in a failed state with an understandable error message in the UI, not a silent stop
 
-**Plans:** 10/10 plans executed
+**Plans:** 10/10 plans complete
 
 Plans:
 **Wave 1**
@@ -492,7 +492,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 2. Image Upload & Classes | 13/13 | Complete    | 2026-10-03 |
 | 3. Box Annotation Editor | 13/13 | Complete    | 2026-10-04 |
 | 4. Train & Download | 11/11 | Complete    | 2026-10-11 |
-| 5. Live Training Monitoring & Control | 10/10 | In Progress | - |
+| 5. Live Training Monitoring & Control | 10/10 | Complete    | 2026-10-19 |
 | 6. Polygons & Segmentation Projects | 0/TBD | Not started | - |
 | 7. Model Library | 0/TBD | Not started | - |
 | 8. AI-Assisted Annotation | 0/TBD | Not started | - |

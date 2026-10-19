@@ -77,13 +77,13 @@ Detailed technical background for every category: `docs/roadmap.md`, `docs/phase
 - [ ] **TRAN-02**: User can open an "Advanced" section to set further hyperparameters (lr0/lrf, patience, optimizer, augmentation parameters, etc.) with sensible defaults shown
 - [x] **TRAN-03**: Each training run records a snapshot of the dataset state and settings it used, so it's reproducible
 - [x] **TRAN-04**: Training runs in the background; the UI stays responsive and the job keeps running if the browser is closed
-- [ ] **TRAN-05**: User sees live progress: current epoch, losses, and mAP metrics with charts updating in real time (final-validation event labeled correctly)
-- [ ] **TRAN-06**: User can cancel a running training job; the process stops cleanly and frees resources
-- [ ] **TRAN-07**: User can resume an interrupted/cancelled training run from its last checkpoint
-- [ ] **TRAN-08**: User can see a history of training runs with status, settings, duration, and final metrics
+- [x] **TRAN-05**: User sees live progress: current epoch, losses, and mAP metrics with charts updating in real time (final-validation event labeled correctly)
+- [x] **TRAN-06**: User can cancel a running training job; the process stops cleanly and frees resources
+- [x] **TRAN-07**: User can resume an interrupted/cancelled training run from its last checkpoint
+- [x] **TRAN-08**: User can see a history of training runs with status, settings, duration, and final metrics
 - [ ] **TRAN-09**: After training, user sees validation results: per-class metrics, confusion matrix, PR curves
 - [ ] **TRAN-10**: User can compare metrics and settings of several training runs side by side
-- [ ] **TRAN-11**: Training failures (e.g. out-of-memory, invalid dataset) are shown to the user with an understandable error, not a silent stop
+- [x] **TRAN-11**: Training failures (e.g. out-of-memory, invalid dataset) are shown to the user with an understandable error, not a silent stop
 
 ## v2 Requirements
 
@@ -178,13 +178,13 @@ Which phases cover which requirements. Updated during roadmap creation.
 | TRAN-02 | Phase 11 | Pending |
 | TRAN-03 | Phase 4 | Complete |
 | TRAN-04 | Phase 4 | Complete |
-| TRAN-05 | Phase 5 | Pending |
-| TRAN-06 | Phase 5 | Pending |
-| TRAN-07 | Phase 5 | Pending |
-| TRAN-08 | Phase 5 | Pending |
+| TRAN-05 | Phase 5 | Complete |
+| TRAN-06 | Phase 5 | Complete |
+| TRAN-07 | Phase 5 | Complete |
+| TRAN-08 | Phase 5 | Complete |
 | TRAN-09 | Phase 11 | Pending |
 | TRAN-10 | Phase 11 | Pending |
-| TRAN-11 | Phase 5 | Pending |
+| TRAN-11 | Phase 5 | Complete |
 
 **Coverage:**
 
