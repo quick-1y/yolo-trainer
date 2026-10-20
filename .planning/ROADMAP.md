@@ -338,42 +338,65 @@ Plans:
   3. Tools follow the project task type: a detect project stores boxes; a segment project stores polygons and converts a drawn box into a 4-point polygon; the server refuses geometry that violates the project's task type
   4. A segment project annotated in the UI trains end-to-end, and its live charts show mask metrics, using exact keys captured from this first real segment run
 
-**Plans:** 13 plans
+**Plans:** 21 plans
 
 Plans:
 **Wave 1**
 
-- [ ] 06-01-PLAN.md — Tracer: draw a polygon in a segment project, autosave it as `polygons` (migration 0010 points column, derived bbox), reload it; server validation, caps and idempotent retry (wave 1)
-- [ ] 06-07-PLAN.md — Click-to-segment service: MobileSAM child process in the worker (pinned SHA-256, cached embedding, largest contour), api proxy routes, compose wiring (wave 1)
+- [ ] 06-01-PLAN.md — Tracer, server half: polygons saved and returned through the whole-set CAS save (migration 0010 points column, derived bbox); validation, caps and idempotent retry (wave 1)
+- [ ] 06-07-PLAN.md — Click-to-segment service slice: api routes -> HTTP -> segmenter app with an injectable engine; integer-only wire, error mapping, torch-free api (wave 1)
 
 **Wave 2** *(blocked on Wave 1 completion)*
 
-- [ ] 06-02-PLAN.md — Drawing keys (Enter, Backspace, Esc, P), tool options panel, box drawn in a segment project saved as a 4-point polygon (D-11), limits, default tool per task type (wave 2)
+- [ ] 06-14-PLAN.md — Tracer, browser half: stored polygons load, render (closed outline + chip) and survive every editor save; store `createPolygon` within the caps (wave 2)
 - [ ] 06-05-PLAN.md — Segment training from stored polygon points (labels, snapshot, manifest v2), real CPU yolo26n-seg run, captured metric keys fixture and docs (D-13) (wave 2)
-- [ ] 06-10-PLAN.md — Segmenter hardening (busy 429, huge/exotic/unreadable images, crash backoff) and the real MobileSAM latency/IoU proof (D-06) (wave 2)
+- [ ] 06-17-PLAN.md — Real MobileSAM engine (SHA-256 pinned to GitHub's published asset digest, cached embedding, largest contour) and the worker-hosted segmenter process with compose wiring (wave 2)
+- [ ] 06-18-PLAN.md — Browser segmentation client: api module, one-in-flight latest-wins request loop, outline simplification (RDP, Detail) (wave 2)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
-- [ ] 06-03-PLAN.md — Vertex editing: drag vertices, midpoint handles, Alt/right-click delete (min 3), whole move, class change, delete (D-02) (wave 3)
-- [ ] 06-06-PLAN.md — One-way decision checkpoint, then migration 0011 (segment boxes to polygons, D-09) and the pre-CAS wrong-kind 422 (D-12) (wave 3)
+- [ ] 06-15-PLAN.md — Polygon tool: click vertices, close on the first point, autosave, back after a reload; tool bar follows the task type (D-01, D-10) (wave 3)
+- [ ] 06-10-PLAN.md — Segmenter hardening (busy 429, huge/exotic/unreadable images, crash backoff) and the real MobileSAM latency/IoU proof (D-06) (wave 3)
 - [ ] 06-11-PLAN.md — Segment run charts: `secondary` box metrics from Python, mask solid / box dashed, seg in the loss breakdown, sem excluded (D-13) (wave 3)
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
-- [ ] 06-04-PLAN.md — Object list rows for polygons, self-crossing warning (D-03), task-type empty state and "object" wording (wave 4)
-- [ ] 06-12-PLAN.md — Final results card, verdict, running caption and history table use mask metrics with a box line (D-14) (wave 4)
+- [ ] 06-02-PLAN.md — Drawing keys (Enter, Backspace, Esc, P), double-click and tiny-contour guards, shortcut reference group (D-01) (wave 4)
+- [ ] 06-12-PLAN.md — Run page uses mask metrics: `box_metrics` in the run API, Final results card, verdict and running caption with a box line (D-14) (wave 4)
+- [ ] 06-21-PLAN.md — History table of segment projects: "(masks)" headers, 112/128 px columns, 1360 px minimum (D-14) (wave 4)
 
 **Wave 5** *(blocked on Wave 4 completion)*
 
-- [ ] 06-08-PLAN.md — Click-to-segment tool in the browser: click, preview, Enter/Accept saves a polygon (segment) or box (detect, D-10), Esc/Discard (wave 5)
+- [ ] 06-16-PLAN.md — Box drawn in a segment project saved as a 4-point polygon (D-11), polygon helper unit tests, tool options panel, limits, default tool per task type (wave 5)
 
 **Wave 6** *(blocked on Wave 5 completion)*
 
-- [ ] 06-09-PLAN.md — Not-object points, Backspace, 20-point cap, Detail slider (D-08), service states, errors with Try again, training note (D-07) (wave 6)
+- [ ] 06-03-PLAN.md — Vertex editing: drag vertices, midpoint handles, Alt/right-click delete (min 3), whole move, class change, delete (D-02) (wave 6)
+- [ ] 06-06-PLAN.md — One-way decision checkpoint (proceed with D-09 or reopen it), then migration 0011 (segment boxes to polygons, D-09) and the pre-CAS wrong-kind 422 (D-12) (wave 6)
 
 **Wave 7** *(blocked on Wave 6 completion)*
 
-- [ ] 06-13-PLAN.md — Real-stack smoke (polygons, refusals, click-to-segment, segment training through nginx), README en/ru, full gate, UAT list (wave 7)
+- [ ] 06-04-PLAN.md — Object list rows for polygons, self-crossing warning (D-03), task-type empty state and "object" wording (wave 7)
+
+**Wave 8** *(blocked on Wave 7 completion)*
+
+- [ ] 06-08-PLAN.md — Click-to-segment tool: click, preview, Enter/Accept saves a polygon (segment) or box (detect, D-10), Discard (wave 8)
+
+**Wave 9** *(blocked on Wave 8 completion)*
+
+- [ ] 06-19-PLAN.md — Click-to-segment Esc and reset paths, inert shapes, read-only rules, S key (wave 9)
+
+**Wave 10** *(blocked on Wave 9 completion)*
+
+- [ ] 06-09-PLAN.md — Not-object points, Backspace, 20-point cap, stale and empty previews, complete shortcut reference (D-05) (wave 10)
+
+**Wave 11** *(blocked on Wave 10 completion)*
+
+- [ ] 06-20-PLAN.md — Segmentation panel: download/load/prepare/working/slow states, prewarm, training note (D-07), errors with Try again, Detail slider (D-08) (wave 11)
+
+**Wave 12** *(blocked on Wave 11 completion)*
+
+- [ ] 06-13-PLAN.md — Real-stack smoke (polygons, refusals, click-to-segment, segment training through nginx), README en/ru, full gate, UAT list (wave 12)
 
 **UI hint**: yes
 **Notes**:
@@ -529,7 +552,7 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 3. Box Annotation Editor | 13/13 | Complete    | 2026-10-04 |
 | 4. Train & Download | 11/11 | Complete    | 2026-10-11 |
 | 5. Live Training Monitoring & Control | 10/10 | Complete    | 2026-10-19 |
-| 6. Polygons & Segmentation Projects | 0/13 | Planned | - |
+| 6. Polygons & Segmentation Projects | 0/21 | Planned | - |
 | 7. Model Library | 0/TBD | Not started | - |
 | 8. AI-Assisted Annotation | 0/TBD | Not started | - |
 | 9. Dataset Import & Export | 0/TBD | Not started | - |
