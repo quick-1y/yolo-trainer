@@ -1,0 +1,1 @@
+No external API integration: the detector matched the UI copy "message wraps"; the phase only uses the already-pinned local Ultralytics 8.4.159 library (SAM Predictor) and downloads one SHA-256-pinned weights file, with no external service API or SDK capability set to cover.
