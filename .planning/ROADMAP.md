@@ -338,7 +338,7 @@ Plans:
   3. Tools follow the project task type: a detect project stores boxes; a segment project stores polygons and converts a drawn box into a 4-point polygon; the server refuses geometry that violates the project's task type
   4. A segment project annotated in the UI trains end-to-end, and its live charts show mask metrics, using exact keys captured from this first real segment run
 
-**Plans:** 21 plans
+**Plans:** 24 plans
 
 Plans:
 **Wave 1**
@@ -349,54 +349,60 @@ Plans:
 **Wave 2** *(blocked on Wave 1 completion)*
 
 - [ ] 06-14-PLAN.md — Tracer, browser half: stored polygons load, render (closed outline + chip) and survive every editor save; store `createPolygon` within the caps (wave 2)
-- [ ] 06-05-PLAN.md — Segment training from stored polygon points (labels, snapshot, manifest v2), real CPU yolo26n-seg run, captured metric keys fixture and docs (D-13) (wave 2)
-- [ ] 06-17-PLAN.md — Real MobileSAM engine (SHA-256 pinned to GitHub's published asset digest, cached embedding, largest contour) and the worker-hosted segmenter process with compose wiring (wave 2)
+- [ ] 06-05-PLAN.md — Segment dataset from stored polygon points (label rows, snapshot, manifest v2) and genuine-polygon test helpers (wave 2)
+- [ ] 06-17-PLAN.md — Real MobileSAM engine (SHA-256 pinned to GitHub's published asset digest, checked before the pin is committed, cached embedding, largest contour) and the worker-hosted segmenter process with compose wiring (wave 2)
 - [ ] 06-18-PLAN.md — Browser segmentation client: api module, one-in-flight latest-wins request loop, outline simplification (RDP, Detail) (wave 2)
 
 **Wave 3** *(blocked on Wave 2 completion)*
 
 - [ ] 06-15-PLAN.md — Polygon tool: click vertices, close on the first point, autosave, back after a reload; tool bar follows the task type (D-01, D-10) (wave 3)
 - [ ] 06-10-PLAN.md — Segmenter hardening (busy 429, huge/exotic/unreadable images, crash backoff) and the real MobileSAM latency/IoU proof (D-06) (wave 3)
-- [ ] 06-11-PLAN.md — Segment run charts: `secondary` box metrics from Python, mask solid / box dashed, seg in the loss breakdown, sem excluded (D-13) (wave 3)
+- [ ] 06-24-PLAN.md — Real CPU yolo26n-seg run from polygons through the app; captured metric keys fixture, default-suite pin and Phase 0 docs (D-13) (wave 3)
 
 **Wave 4** *(blocked on Wave 3 completion)*
 
 - [ ] 06-02-PLAN.md — Drawing keys (Enter, Backspace, Esc, P), double-click and tiny-contour guards, shortcut reference group (D-01) (wave 4)
-- [ ] 06-12-PLAN.md — Run page uses mask metrics: `box_metrics` in the run API, Final results card, verdict and running caption with a box line (D-14) (wave 4)
-- [ ] 06-21-PLAN.md — History table of segment projects: "(masks)" headers, 112/128 px columns, 1360 px minimum (D-14) (wave 4)
+- [ ] 06-11-PLAN.md — Segment run stream and mAP chart: `secondary` box metrics from Python, fold box fields, mask solid / box dashed mAP lines (D-13) (wave 4)
 
 **Wave 5** *(blocked on Wave 4 completion)*
 
 - [ ] 06-16-PLAN.md — Box drawn in a segment project saved as a 4-point polygon (D-11), polygon helper unit tests, tool options panel, limits, default tool per task type (wave 5)
+- [ ] 06-23-PLAN.md — Segment precision/recall chart, tooltip for every series, seg in the loss breakdown, sem excluded with its caption (D-13) (wave 5)
+- [ ] 06-21-PLAN.md — History table of segment projects: "(masks)" headers, 112/128 px columns, 1360 px minimum (D-14) (wave 5)
 
 **Wave 6** *(blocked on Wave 5 completion)*
 
-- [ ] 06-03-PLAN.md — Vertex editing: drag vertices, midpoint handles, Alt/right-click delete (min 3), whole move, class change, delete (D-02) (wave 6)
-- [ ] 06-06-PLAN.md — One-way decision checkpoint (proceed with D-09 or reopen it), then migration 0011 (segment boxes to polygons, D-09) and the pre-CAS wrong-kind 422 (D-12) (wave 6)
+- [ ] 06-03-PLAN.md — Vertex editing, reshape: select a polygon, drag vertices, pull a vertex from a midpoint handle, move the whole polygon (D-02) (wave 6)
+- [ ] 06-06-PLAN.md — Confirmation-only checkpoint for the one-way D-09 door, then migration 0011 (segment boxes to polygons, D-09) and the pre-CAS wrong-kind 422 (D-12) (wave 6)
+- [ ] 06-12-PLAN.md — Run page uses mask metrics: `box_metrics` in the run API, Final results card, verdict and running caption with a box line (D-14) (wave 6)
 
 **Wave 7** *(blocked on Wave 6 completion)*
 
-- [ ] 06-04-PLAN.md — Object list rows for polygons, self-crossing warning (D-03), task-type empty state and "object" wording (wave 7)
+- [ ] 06-22-PLAN.md — Vertex editing, finish: Alt/right-click vertex delete (min 3), class change, delete, selected-polygon hint and vertex gesture rows (D-02) (wave 7)
 
 **Wave 8** *(blocked on Wave 7 completion)*
 
-- [ ] 06-08-PLAN.md — Click-to-segment tool: click, preview, Enter/Accept saves a polygon (segment) or box (detect, D-10), Discard (wave 8)
+- [ ] 06-04-PLAN.md — Object list rows for polygons, self-crossing warning (D-03), task-type empty state and "object" wording (wave 8)
 
 **Wave 9** *(blocked on Wave 8 completion)*
 
-- [ ] 06-19-PLAN.md — Click-to-segment Esc and reset paths, inert shapes, read-only rules, S key (wave 9)
+- [ ] 06-08-PLAN.md — Click-to-segment tool: click, preview, Enter/Accept saves a polygon (segment) or box (detect, D-10), Discard (wave 9)
 
 **Wave 10** *(blocked on Wave 9 completion)*
 
-- [ ] 06-09-PLAN.md — Not-object points, Backspace, 20-point cap, stale and empty previews, complete shortcut reference (D-05) (wave 10)
+- [ ] 06-19-PLAN.md — Click-to-segment Esc and reset paths, inert shapes, read-only rules, S key (wave 10)
 
 **Wave 11** *(blocked on Wave 10 completion)*
 
-- [ ] 06-20-PLAN.md — Segmentation panel: download/load/prepare/working/slow states, prewarm, training note (D-07), errors with Try again, Detail slider (D-08) (wave 11)
+- [ ] 06-09-PLAN.md — Not-object points, Backspace, 20-point cap and empty-answer copy, stale previews, complete shortcut reference (D-05) (wave 11)
 
 **Wave 12** *(blocked on Wave 11 completion)*
 
-- [ ] 06-13-PLAN.md — Real-stack smoke (polygons, refusals, click-to-segment, segment training through nginx), README en/ru, full gate, UAT list (wave 12)
+- [ ] 06-20-PLAN.md — Segmentation panel: download/load/prepare/working/slow states, point-limit and empty lines, prewarm, training note (D-07), errors with Try again, Detail slider (D-08) (wave 12)
+
+**Wave 13** *(blocked on Wave 12 completion)*
+
+- [ ] 06-13-PLAN.md — Real-stack smoke (polygons, refusals, click-to-segment, segment training through nginx), README en/ru, full gate, UAT list (wave 13)
 
 **UI hint**: yes
 **Notes**:
