@@ -1,7 +1,7 @@
 ---
 phase: "06"
 slug: "polygons-segmentation-projects"
-status: draft
+status: approved
 shadcn_initialized: false
 preset: none
 created: "2026-10-20"
@@ -441,7 +441,7 @@ Binding rules: `P`, `S` and `Enter` are new rows in `SHORTCUTS` (`usePhysicalKey
 
 Authored by gsd-ui-researcher; the ui-phase UI-consideration probe (Step 9.5) reconciles this table and replaces rows idempotently. Status legend: ✅ covered — the Resolution column is the truth to lift into `must_haves.truths`; 🧪 backstop — lift as `{ statement: <Resolution>, verification: backstop }`; ➖ dismissed — not applicable, reason given, not lifted. Empty/error COPY lives in the Copywriting Contract; rows below reference it.
 
-Applicable state considerations resolved: 34 covered, 5 backstop, 0 unresolved; 5 dismissed
+Applicable state considerations resolved: 38 covered, 5 backstop, 0 unresolved; 22 dismissed (reconciled by the Step 9.5 probe on 2026-10-20: 12 elements, user-confirmed resolutions)
 
 | Category | Element | Status | Resolution / Reason |
 |----------|---------|--------|---------------------|
@@ -489,6 +489,27 @@ Applicable state considerations resolved: 34 covered, 5 backstop, 0 unresolved; 
 | loading | FinalResultsCard | ➖ dismissed | Unchanged: tiles render from the final-validation event, the verdict after the run refresh |
 | empty | ToolBar | ➖ dismissed | A fixed tool set of three or four tools, never empty |
 | loading | ObjectList | ➖ dismissed | Unchanged: three skeleton rows until the annotation set is loaded |
+| empty | PolygonShape | ✅ covered | An image with zero objects shows only the image on the canvas matte; the empty-state copy lives in the ObjectList row |
+| overflow | ObjectList | ✅ covered | Rows scroll inside the panel's existing ScrollArea; the 320px panel never widens |
+| zero-one-many | ObjectList | ✅ covered | Zero objects shows the empty state; one up to 2000 objects use the same 40px row inside the scroll area |
+| partial | HistoryTable (segment) | ✅ covered | A segment run with no stored mask headline shows "—" in the mAP50 and mAP50-95 (masks) cells |
+| loading | PolygonShape | ➖ dismissed | Shapes render only from the loaded annotation set; loading is owned by the ObjectList and tool rows |
+| error | PolygonShape | ➖ dismissed | Save failures are owned by the Wrong-kind save (422) row |
+| error | ObjectList | ➖ dismissed | Unchanged from Phase 3 |
+| long-text | ToolBar | ➖ dismissed | Icon-only buttons; tooltips are short fixed keys |
+| empty | ShortcutsModal | ➖ dismissed | Static content, never empty |
+| loading | ShortcutsModal | ➖ dismissed | Static content, nothing to load |
+| error | ShortcutsModal | ➖ dismissed | Static content, no request can fail |
+| partial | ShortcutsModal | ➖ dismissed | Static content, no partial data |
+| zero-one-many | ShortcutsModal | ➖ dismissed | Fixed set of groups and rows |
+| empty | FinalResultsCard (segment) | ➖ dismissed | Unchanged from Phase 5 |
+| error | FinalResultsCard (segment) | ➖ dismissed | Unchanged from Phase 5 |
+| zero-one-many | FinalResultsCard (segment) | ➖ dismissed | Fixed four tiles plus one box line |
+| overflow | FinalResultsCard (segment) | ➖ dismissed | Owned by the FinalResultsCard box line long-text backstop row |
+| empty | HistoryTable (segment) | ➖ dismissed | Unchanged from Phases 4 and 5 |
+| loading | HistoryTable (segment) | ➖ dismissed | Unchanged from Phases 4 and 5 |
+| error | HistoryTable (segment) | ➖ dismissed | Unchanged from Phases 4 and 5 |
+| zero-one-many | HistoryTable (segment) | ➖ dismissed | Unchanged from Phases 4 and 5 |
 
 ---
 
@@ -534,11 +555,11 @@ Route shapes are the planner's discretion (06-RESEARCH.md Patterns 1, 2, 5); the
 
 ---
 
-## Defaults to confirm (chosen by this spec; the first three need the user's eye)
+## Defaults to confirm (chosen by this spec; items 1-3 confirmed by the user on 2026-10-20)
 
-1. `sem` loss is excluded from the Train and Validation loss sums and from the tooltip grid for segment runs, with an explanatory caption (06-RESEARCH.md Open Question 1).
-2. Segment-run chart encoding: color = metric, solid = mask, dashed = box, with "(masks)" and "(boxes)" in the legend (06-RESEARCH.md Open Question 2).
-3. The not-object point is orange with a minus glyph (red stays reserved for errors), and the positive point is green with a plus.
+1. **Confirmed.** `sem` loss is excluded from the Train and Validation loss sums and from the tooltip grid for segment runs, with an explanatory caption (06-RESEARCH.md Open Question 1).
+2. **Confirmed.** Segment-run chart encoding: color = metric, solid = mask, dashed = box, with "(masks)" and "(boxes)" in the legend (06-RESEARCH.md Open Question 2).
+3. **Confirmed.** The not-object point is orange with a minus glyph (red stays reserved for errors), and the positive point is green with a plus.
 4. Tool order: Select, Box, Polygon, Click-to-segment; default tool is Box in detect projects and Polygon in segment projects.
 5. Keys: P polygon, S click-to-segment, Enter close/accept; Backspace also removes the last segmentation point.
 6. The Detail slider default is 55 (tolerance about 0.0015 × perimeter) and its value is remembered for the session; it is hidden in detect projects.
@@ -551,12 +572,12 @@ Route shapes are the planner's discretion (06-RESEARCH.md Patterns 1, 2, 5); the
 
 ## Checker Sign-Off
 
-- [ ] Dimension 1 Copywriting: PASS
-- [ ] Dimension 2 Visuals: PASS
-- [ ] Dimension 3 Color: PASS
-- [ ] Dimension 4 Typography: PASS
-- [ ] Dimension 5 Spacing: PASS
-- [ ] Dimension 6 Registry Safety: PASS
-- [ ] Dimension 7 Inventory Provenance: PASS
+- [x] Dimension 1 Copywriting: PASS
+- [x] Dimension 2 Visuals: PASS
+- [x] Dimension 3 Color: PASS
+- [x] Dimension 4 Typography: PASS
+- [x] Dimension 5 Spacing: PASS
+- [x] Dimension 6 Registry Safety: PASS
+- [x] Dimension 7 Inventory Provenance: PASS
 
-**Approval:** pending
+**Approval:** approved 2026-10-20 (gsd-ui-checker, revision 2)
