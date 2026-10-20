@@ -38,19 +38,30 @@ No upstream design question was left open and this agent runs without a user cha
 
 Enumerated by `ls node_modules/@mantine/core/esm/components | wc -l` (run in `frontend/`) — 116 component directories (includes internal building blocks such as ModalBase, Portal, Overlay) — @mantine/core@9.6.3 (resolved via `grep '"version"' node_modules/@mantine/core/package.json`, run in `frontend/`; `require('@mantine/core/package.json')` is blocked by the package `exports` map) — 2026-10-20.
 
-Presence of every Mantine component in the table below was confirmed on 2026-10-20 with `test -d node_modules/@mantine/core/esm/components/<Name>` (all found). The canvas versions were read from `node_modules/{konva,react-konva,recharts}/package.json` the same day: konva 10.7.0, react-konva 19.3.0, recharts 3.10.1. This table is a non-exhaustive list of known-good components, not a closed allowlist.
+Presence of every Mantine component in the first table below was confirmed on 2026-10-20 with `test -d node_modules/@mantine/core/esm/components/<Name>` (all found). Both tables are non-exhaustive lists of known-good components, not closed allowlists.
+
+### Mantine components
 
 | Component | Import path | Notes |
 |-----------|-------------|-------|
-| ActionIcon, Button | `@mantine/core` | Tool bar buttons (`ActionIcon` 40 x 40, `aria-pressed`), the segment panel's `Accept` (filled) and `Discard` (default), "Try again" |
+| ActionIcon, Button | `@mantine/core` | Tool bar buttons (`ActionIcon` 40 x 40, `aria-pressed`), the segment panel's `Accept mask` (filled) and `Discard mask` (default), "Try again" |
 | Slider | `@mantine/core` | NEW use: the outline "Detail" slider in the segment panel (`color="gray"`, `size="sm"`, `thumbSize={16}`, `label={null}`, `min={0}` `max={100}` `step={1}`, 160 px wide). Accent is not used for it |
 | Paper, Group, Stack, Box, Text, Divider | `@mantine/core` | The tool options panel (a `Paper` overlay), layout |
 | Alert | `@mantine/core` | Inline failure inside the segment panel (`color="red" variant="light"`, compact, `role="alert"`) |
 | Loader | `@mantine/core` | 12 px loaders in the segment panel states |
-| Tooltip, Kbd | `@mantine/core` | Tool bar tooltips (label + `Kbd`, 400 ms delay, as P3); `Kbd` inside the `Accept` and `Discard` buttons |
+| Tooltip, Kbd | `@mantine/core` | Tool bar tooltips (label + `Kbd`, 400 ms delay, as P3); `Kbd` inside the `Accept mask` and `Discard mask` buttons |
 | Select, Virtuoso, EmptyState, Skeleton | `@mantine/core`, `react-virtuoso` | Object list rows (unchanged), segment-project empty state |
 | Modal, ScrollArea | `@mantine/core` | Shortcut reference (gains a seventh group) |
 | notifications | `@mantine/notifications` | Gray limit notifications (`canvas.minVertices`, `canvas.pointLimit`, `canvas.pointsTotalLimit`), red 422 notification (P3 rule) |
+
+### Canvas and chart libraries
+
+Enumerated by `cd frontend && node -e "console.log(Object.keys(require('react-konva')).length)"` — 27 exports — react-konva@19.3.0 (resolved via `grep -m1 '"version"' node_modules/react-konva/package.json`; the underlying `konva` is 10.7.0 by the same command) — 2026-10-20. Presence of the eleven react-konva rows below was confirmed by the same `require` (`['Stage','Layer','Image','Rect','Line','Circle','Group','Label','Tag','Text','Transformer'].every(n => n in require('react-konva'))` returned `true`).
+
+Enumerated by `cd frontend && node -e "console.log(Object.keys(require('recharts')).length)"` — 101 exports — recharts@3.10.1 (resolved via `grep -m1 '"version"' node_modules/recharts/package.json`) — 2026-10-20. Presence of the nine recharts rows below was confirmed by the same `require` (`.every(n => n in require('recharts'))` returned `true`).
+
+| Component | Import path | Notes |
+|-----------|-------------|-------|
 | Stage, Layer, Image, Rect, Line, Circle, Group, Label, Tag, Text, Transformer | `react-konva` | Canvas. NEW this phase: `Line` with `closed` for polygons, `Circle` for vertex and midpoint handles and for segmentation points. `Transformer` stays for boxes only (detect projects) |
 | ResponsiveContainer, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ReferenceDot, ReferenceLine | `recharts` | Existing charts; segment runs add four dashed `Line`s per chart where applicable |
 
@@ -74,7 +85,8 @@ Do not use Mantine's `xs` (10px), `sm` (12px) or `lg` (20px) spacing tokens or `
 
 Exceptions (fixed component sizes, all multiples of 4 except borders and canvas drawing units):
 - Tool options panel: top-center of the canvas, 16 from the canvas top edge, padding 8px 16px, radius 8, `max-width: min(560px, calc(100% - 32px))`, 1px `dark-4` border. Idle hint chips use the same Paper at one line (about 36 high, content-driven).
-- Detail slider: 160 wide, thumb 16. Panel buttons: `Button size="compact-sm"` (26 high). Kbd inside buttons: `size="xs"`.
+- Detail slider: 160 wide, thumb 16. Panel buttons (`Accept mask`, `Discard mask`, `Try again`): `Button size="compact-sm" h={28}` — the explicit `h={28}` overrides the Mantine `compact-sm` default height of 26 so the height is a multiple of 4. Kbd inside buttons: `size="xs"`.
+- Chart column width: the three-column chart grid (`SimpleGrid cols={3} spacing={16}`, inherited unchanged from P5) is content-driven. Each column is about 309 px, derived as (960 column − 2 × 16 gap) / 3. 309 is a computed result of the grid, not a declared size, so it is not a spacing token; no element is given a fixed 309 width. The legend `min-height: 40` below is the only fixed size that depends on it.
 - Tool bar gains two more 40 x 40 buttons (8 gap): Select, Box, Polygon (segment projects only), Click-to-segment, divider, Undo, Redo.
 - Object list row stays 40 high. The new warning slot is 16 x 16 icon inside a 24 wide cell between the class `Select` and the delete button, 8 gap.
 - Canvas drawing units (Konva), in screen pixels via `1/scale` sizing and `strokeScaleEnabled={false}`: polygon stroke 2 (3 hovered); vertex handle 10 (radius 5; radius 6 hovered); midpoint handle 8 (radius 4); first-vertex close target hit radius 8; segmentation point 16 (radius 8); draft placed vertex radius 4; minimum accepted draft size 4 screen px; duplicate-click guard 4 screen px; midpoint handles are hidden for edges shorter than 16 screen px.
@@ -113,7 +125,7 @@ Values are Mantine dark-scheme tokens already in effect (P2-P5). No new theme co
 Accent reserved for:
 1. The active tool button in the tool bar (filled accent, 40 x 40, radius 8) — now one of up to four tools.
 2. The 2px inset ring on the active-class row and on the selected row in the object list (unchanged).
-3. Filled primary buttons: the existing "Annotate next", "Retry", "Add class", "New training", "Download .pt", "Resume training", **and the new "Accept" button in the click-to-segment panel (the single filled control of the editor while a preview exists)**.
+3. Filled primary buttons: the existing "Annotate next", "Retry" (the P3 leave-dialog button `editor:leave.retry` that retries saving; a different control from the segment panel's "Try again"), "Add class", "New training", "Download .pt", "Resume training", **and the new "Accept mask" button in the click-to-segment panel (the single filled control of the editor while a preview exists)**. The segment panel's "Try again" (`common:retry`) is a `subtle` button and never uses accent.
 4. Keyboard focus rings (Mantine default).
 
 Never for: hover states, status badges, the Detail slider (it is `color="gray"`), polygon strokes or fills, vertex handles, point markers, chart series, the warning icon, links.
@@ -163,8 +175,8 @@ All strings live in the existing `editor` and `training` i18n namespaces (en/ru)
 
 | Element | en | ru |
 |---------|----|----|
-| Primary CTA (editor, with a segmentation preview) | Accept | Принять |
-| Secondary action (same panel) | Discard | Отменить |
+| Primary CTA (editor, with a segmentation preview) | Accept mask | Принять маску |
+| Secondary action (same panel) | Discard mask | Отменить маску |
 | Empty state heading (object list, either type) | No objects on this image | На изображении нет объектов |
 | Empty state body (object list, detect) | Press B and drag on the image to draw a box, or press S and click on an object. If the image contains nothing, mark it as background. | Нажмите B и протяните мышью по изображению, чтобы нарисовать рамку, или нажмите S и щёлкните по объекту. Если на изображении ничего нет, отметьте его как фон. |
 | Empty state body (object list, segment) | Press P and click to place the points of a polygon, or press S and click on an object. If the image contains nothing, mark it as background. | Нажмите P и щёлкайте по изображению, чтобы ставить точки полигона, или нажмите S и щёлкните по объекту. Если на изображении ничего нет, отметьте его как фон. |
@@ -205,8 +217,8 @@ Confirmation approach: none new. Deleting a vertex goes through the normal histo
 | segment.detail | Detail | Детализация |
 | segment.detailAria | Outline detail | Детализация контура |
 | segment.vertices | Points: {{count}} | Точек: {{count}} |
-| segment.accept | Accept | Принять |
-| segment.discard | Discard | Отменить |
+| segment.accept | Accept mask | Принять маску |
+| segment.discard | Discard mask | Отменить маску |
 | segment.error.title | Click to segment is unavailable | Сегментация по клику недоступна |
 | segment.error.failed | Segmentation failed | Сегментация не удалась |
 | objects.selfIntersect | Contour crosses itself | Контур пересекает сам себя |
@@ -263,6 +275,8 @@ Shortcut key display: unchanged (`Mod` is Ctrl or the Command key; the cap is th
 ---
 
 ## Screen and Interaction Contract
+
+**Focal point.** The editor's primary visual anchor is the image on the `#141414` canvas matte, with the class-colored shapes on it (polygon outlines, the draft, the segmentation points and the dashed preview); the tool options panel at the top center is the secondary anchor and carries the one filled accent control (`Accept mask`) only while a preview exists. On the run page the anchor is unchanged from P5: the Final results card tiles (26px/600 values) while a run is finished, the loss and mAP charts while it runs.
 
 ### Tool bar by task type (ANNO-11, D-10, D-11)
 
@@ -330,10 +344,10 @@ Interaction (the Roboflow Smart Polygon pattern):
 1. **Select the tool** (S or the tool bar). The editor asks the api to prepare the segmentation service (idempotent) and, once ready, to encode the current image in the background, so the first click is fast. While this happens the panel shows the matching state line.
 2. **Click on the object** adds an "object" point (green disc with `+`). **Shift+click or right-click** adds a "not object" point (orange disc with `−`). The point marker appears immediately at the click. At most 20 points per object; the 21st is refused with the panel line `segment.pointLimit`.
 3. **Live preview.** After each point the preview is recomputed (see Latency and states). In a segment project the preview is the simplified polygon (dashed outline, fill 30%); in a detect project it is the mask's bounding box (dashed rectangle) with the mask outline as a thin white line.
-4. **Accept** with Enter or the `Accept` button: the preview becomes an ordinary object with the active class. Segment project: a polygon simplified at the current Detail value. Detect project: a box from the mask's bounding box. It is selected in the object list and scrolled into view, saved, and one history entry. The points and the preview clear, and the tool stays active for the next object.
-5. **Discard** with Esc or the `Discard` button, or Backspace to remove only the last point (the preview recomputes; with no points left the preview clears). Changing tool or image clears everything. A preview is never autosaved.
+4. **Accept** with Enter or the `Accept mask` button: the preview becomes an ordinary object with the active class. Segment project: a polygon simplified at the current Detail value. Detect project: a box from the mask's bounding box. It is selected in the object list and scrolled into view, saved, and one history entry. The points and the preview clear, and the tool stays active for the next object.
+5. **Discard** with Esc or the `Discard mask` button, or Backspace to remove only the last point (the preview recomputes; with no points left the preview clears). Changing tool or image clears everything. A preview is never autosaved.
 
-Existing shapes are non-interactive while this tool is active (a click always adds a point). Zoom, pan and fit work as always. Digit keys still change the active class, which only affects the Accept result.
+Existing shapes are non-interactive while this tool is active (a click always adds a point). Zoom, pan and fit work as always. Digit keys still change the active class, which only affects the Accept mask result.
 
 **Segmentation panel** (inside the tool options panel; `Stack gap={8}`):
 
@@ -341,7 +355,7 @@ Existing shapes are non-interactive while this tool is active (a click always ad
 |-----|---------|
 | 1. State line (14px; 12px `dark-1` for hints) | one of the states below, with a 12px `Loader` for the in-progress ones |
 | 2. Training note (12px `dark-1`) | `segment.trainingNote`, shown only while the existing `/training/active` query reports an active run (D-07). Informational, non-blocking; the tool works regardless |
-| 3. Controls (only while a preview exists) | `Group gap={16}`: `segment.detail` label (12px `dark-1`) + Detail `Slider` (160 wide) + `segment.vertices` count (12px, tabular); right-aligned `Group gap={8}`: `Discard` (`variant="default"`, `size="compact-sm"`, `Kbd Esc`) and `Accept` (filled accent, `size="compact-sm"`, `Kbd Enter`) |
+| 3. Controls (only while a preview exists) | `Group gap={16}`: `segment.detail` label (12px `dark-1`) + Detail `Slider` (160 wide) + `segment.vertices` count (12px, tabular); right-aligned `Group gap={8}`: `Discard mask` (`variant="default"`, `size="compact-sm"`, `h={28}`, `Kbd Esc`) and `Accept mask` (filled accent, `size="compact-sm"`, `h={28}`, `Kbd Enter`) |
 
 The Detail slider is shown in segment projects only (a detect project's box does not depend on detail). It spans 0 to 100, higher = more points, and maps to a closed-contour Ramer-Douglas-Peucker tolerance of `0.006 × (0.0005 / 0.006)^(value / 100)` times the contour perimeter (06-RESEARCH.md Pattern 3). The default value is 55 (tolerance about 0.0015 × perimeter, which lands near 20-60 vertices on typical masks). Moving it recomputes the preview locally from the cached dense contour with no request, updates the point count live, and never adds a history entry. The chosen value is remembered for the rest of the session. If simplification would leave fewer than 3 vertices, the result falls back to the 4 corners of the contour's bounding box. The Accept button and Enter are disabled while no preview exists or the editor is read-only.
 
@@ -358,7 +372,7 @@ The Detail slider is shown in segment projects only (a detect project's box does
 | Preview ready | Preview on the canvas, controls row visible, state line `segment.hint.refine` | |
 | Empty mask | `segment.empty` (12px `dark-1`), no preview; the points stay | Not an error |
 | Point limit | `segment.pointLimit` for as long as the user keeps clicking; cleared by the next accepted point removal | |
-| Service not running (503) / weights failed (502) | `Alert color="red" variant="light"` with title `segment.error.title`, the API message as received, and a `Button variant="subtle" size="compact-sm"` `common:retry` that asks the api to prepare again | The editor and every other tool stay usable |
+| Service not running (503) / weights failed (502) | `Alert color="red" variant="light"` with title `segment.error.title`, the API message as received, and a `Button variant="subtle" size="compact-sm" h={28}` `common:retry` ("Try again", the one retry label of the segment panel) that asks the api to prepare again | The editor and every other tool stay usable |
 | Request failed or timed out (504, 5xx) | `Alert` with title `segment.error.failed`, the API message, and Try again, which re-sends the latest points | The points stay on the image |
 | Image orientation mismatch (409) or editor read-only | The tool is disabled with the read-only reason (P3 rule) | |
 
@@ -401,7 +415,7 @@ Binding rules: `P`, `S` and `Enter` are new rows in `SHORTCUTS` (`usePhysicalKey
 - **Precision/recall panel:** four lines, legend order Precision (masks), Recall (masks), Precision (boxes), Recall (boxes).
 - **Loss panel:** still two lines (Train sum, Validation sum). The components are discovered from the events, so `seg` appears in the tooltip breakdown with no code change (a segment run shows `box`, `seg`, `cls` and `l1`, plus `dfl` where the model has it). **`sem` is excluded** from both sums and from the tooltip grid (default; it is about 7.7 in training and exactly 0.0 in validation on YOLO26-seg, so including it would put the Train line about 7.7 above Validation for no real reason). When the stream carries `sem`, the caption reads `charts.loss.captionNoSem` instead of `charts.loss.caption`.
 - **Tooltip:** one row per series, mask rows first, then box rows, each with its dash swatch and the suffix in the label; three decimals; "—" for a missing value. The loss breakdown grid is unchanged apart from `seg`. The tooltip has no max width, so the longer labels never truncate.
-- **Legend height:** in segment runs the legend row of all three panels has `min-height: 40` (two lines at 309 px column width), so the three plots stay aligned. Older segment runs recorded before box metrics were emitted show only the mask series and no box legend items.
+- **Legend height:** in segment runs the legend row of all three panels has `min-height: 40` (two lines at the grid-derived column width of about 309 px, see Spacing Scale Exceptions), so the three plots stay aligned. Older segment runs recorded before box metrics were emitted show only the mask series and no box legend items.
 - Resume markers, skeletons, reconnect note and the stream-unavailable note are unchanged (P5).
 
 ### Training: Final results, running card, history, verdict (D-14)
@@ -417,7 +431,7 @@ Binding rules: `P`, `S` and `Enter` are new rows in `SHORTCUTS` (`usePhysicalKey
 - The canvas stays pointer-driven for drawing (documented P3 limitation). Keyboard users can select, change class, hide, delete and navigate through the object list and shortcuts; vertex editing and click-to-segment need a pointer.
 - Polygon vertex and midpoint handles, segmentation points and the preview are canvas shapes: they are not in the accessibility tree. The tool panel's live status line, the object list rows and the self-crossing `role="img"` icon carry the text equivalents.
 - Meaning never relies on color alone: points carry `+` / `−` glyphs, the self-crossing warning has an icon with text, chart box lines are dashed and labeled "(boxes)", mask lines are labeled "(masks)".
-- Focus: Enter and Esc act on the canvas only when it has focus (the existing canvas takes focus on pointer down); Mantine `Slider` and the panel buttons are normal tab stops with default focus rings. `Accept` and `Discard` show their `Kbd` hints.
+- Focus: Enter and Esc act on the canvas only when it has focus (the existing canvas takes focus on pointer down); Mantine `Slider` and the panel buttons are normal tab stops with default focus rings. `Accept mask` and `Discard mask` show their `Kbd` hints.
 - Text meets 4.5:1 and chart/canvas shapes 3:1 on their surfaces using the Color tokens; the orange and green point discs have black glyphs and a white ring.
 - No custom animations: Mantine `Loader` and transitions only, chart animation off, canvas redraws immediate.
 
@@ -445,11 +459,11 @@ Applicable state considerations resolved: 34 covered, 5 backstop, 0 unresolved; 
 | loading | SegmentPanel | ✅ covered | Downloading, loading the model and preparing the image each show their own state line with a 12px Loader; clicks while the service is not ready are ignored and the cursor is `progress` |
 | error | SegmentPanel | ✅ covered | A not-running service, a weights failure or a failed request shows a red Alert with the API message and "Try again"; the points stay on the image and every other tool keeps working |
 | empty | SegmentPanel | ✅ covered | Before the first point the panel gives the click instructions; a mask with no object shows "No object found here" and keeps the points |
-| populated | SegmentPanel | ✅ covered | A preview shows the dashed outline (box in a detect project), the Detail slider with a live point count (segment projects), `Discard` and the single filled `Accept` |
+| populated | SegmentPanel | ✅ covered | A preview shows the dashed outline (box in a detect project), the Detail slider with a live point count (segment projects), `Discard mask` and the single filled `Accept mask` |
 | partial | SegmentPanel | ✅ covered | While a newer request is in flight the previous preview drops to 50% opacity, only the latest points are sent, and a response for outdated points is ignored |
 | zero-one-many | SegmentPanel points | ✅ covered | One point uses the best of several candidate masks, two or more points refine one mask, and the 21st point is refused with "At most 20 points per object." |
 | long-text | SegmentPanel error | ✅ covered | A long API or weights-download message wraps inside the 560px panel (`white-space: pre-wrap`, `overflow-wrap: anywhere`) without widening it |
-| overflow | SegmentPanel | 🧪 backstop | At 1024px in ru the panel wraps its state line and keeps `Discard` and `Accept` fully visible inside `min(560px, canvas width - 32px)`; held-out visual check |
+| overflow | SegmentPanel | 🧪 backstop | At 1024px in ru the panel wraps its state line and keeps `Discard mask` and `Accept mask` fully visible inside `min(560px, canvas width - 32px)`; held-out visual check |
 | populated | ToolBar | ✅ covered | A detect project shows Select, Box and Click-to-segment; a segment project shows Select, Box, Polygon and Click-to-segment; Undo and Redo are unchanged |
 | error | ToolBar | ✅ covered | In read-only states all drawing tools are disabled with the reason tooltip and Undo and Redo are disabled (P3) |
 | empty | ObjectList | ✅ covered | A segment project with zero objects shows "No objects on this image" and the polygon-and-segment body; a detect project shows the box-and-segment body |
@@ -459,7 +473,7 @@ Applicable state considerations resolved: 34 covered, 5 backstop, 0 unresolved; 
 | populated | RunCharts (segment) | ✅ covered | A segment run shows four lines on the mAP and precision/recall charts, mask solid and box dashed in the same hue, a labeled legend, and `seg` in the loss breakdown |
 | partial | RunCharts (segment) | ✅ covered | A segment run without box metrics (older data) shows only the mask series and no box legend items; detect runs are unchanged |
 | zero-one-many | RunCharts loss components | ✅ covered | Up to 10 loss components render in the breakdown; `sem` is excluded from both sums and the grid and the caption says so |
-| overflow | RunCharts legend (segment) | 🧪 backstop | At 1200px and wider the four legend items wrap to two lines in a 309px column and all three plots stay aligned (legend `min-height` 40), in en and ru; held-out visual check at 1024 and 1280 |
+| overflow | RunCharts legend (segment) | 🧪 backstop | At 1200px and wider the four legend items wrap to two lines in a grid-derived column of about 309px (content-driven, not a declared size) and all three plots stay aligned (legend `min-height` 40), in en and ru; held-out visual check at 1024 and 1280 |
 | long-text | ChartTooltip (segment) | ✅ covered | Series labels with "(masks)" and "(boxes)" make the tooltip wider but it has no max width and never truncates |
 | populated | FinalResultsCard (segment) | ✅ covered | Four mask tiles labeled "(masks)", the mask verdict with its basis text, and a second line with the box numbers |
 | partial | FinalResultsCard (segment) | ✅ covered | A missing box metric shows "—" in the box line, the line is hidden when no box metrics exist, and a missing tile shows "—" |
@@ -495,7 +509,7 @@ No third-party shadcn registries are declared, so the registry view/vetting gate
 1. The Phase 3 rule "neither the editor nor the API looks at the project's task type (D-18)" is reversed: the tool bar, the default tool, the object-list copy and the server all follow the task type. The stale comment in `EditorPage.tsx` must be replaced.
 2. The tool bar grows from two tools to three or four. Box keeps its slot; Polygon and Click-to-segment are added; the P3 note "a third slot for the future Polygon tool is not rendered now" is now fulfilled.
 3. A new canvas overlay, the tool options panel, is added at the top center of the canvas. It shares the slot of the P3 "no classes" chip.
-4. Accent gains one reserved use: the filled "Accept" button of the segment panel. The Detail slider deliberately does not use accent.
+4. Accent gains one reserved use: the filled "Accept mask" button of the segment panel. The Detail slider deliberately does not use accent.
 5. Three inline SVG icons are added (`PolygonIcon`, `SegmentIcon`, `WarningIcon`); the "no new inline SVGs" rule belonged to Phase 5 only.
 6. Two canvas data colors are added for segmentation points (Mantine green-5 `#51CF66` and orange-5 `#FF922B`), outside the 60/30/10 table like the P3 class-derived colors. Orange, not red, marks "not object" because red is reserved for destructive and error states.
 7. The object list gains a warning cell (24 wide) in polygon rows.
