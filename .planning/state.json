@@ -31,7 +31,7 @@
     {
       "number": "6",
       "name": "Polygons & Segmentation Projects",
-      "status": "pending"
+      "status": "in_progress"
     },
     {
       "number": "7",
@@ -66,8 +66,8 @@
   ],
   "next": {
     "command": "/gsd:progress --next",
-    "label": "Advance to the next step (plan phase 6)",
-    "reason": "Phase 6 of 12 — needs a plan"
+    "label": "Advance to the next step",
+    "reason": "Phase 06 of 12 · 42% · executing"
   },
-  "updated_at": "2026-10-19T06:47:21.997Z"
+  "updated_at": "2026-10-21T05:12:25.244Z"
 }
