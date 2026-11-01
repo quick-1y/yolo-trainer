@@ -73,6 +73,26 @@
   pointer-events: none;
 }
 
+/*
+ * Split pill (D-02a): the box count's box mirrored to the bottom-right corner, neutral
+ * on purpose (the text is the signal). The longest label, "Валидация", needs about 80px of
+ * the 168px left beside the box count.
+ */
+.splitPill {
+  position: absolute;
+  top: 152px;
+  right: 4px;
+  height: 20px;
+  padding: 0 8px;
+  border-radius: 4px;
+  background: rgba(20, 20, 20, 0.8);
+  color: var(--mantine-color-dark-1);
+  font-size: 12px;
+  line-height: 20px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
 /* Shown instead of the <img> when the thumbnail fails to load. */
 .noPreview {
   display: flex;

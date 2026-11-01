@@ -9,6 +9,9 @@ import {
 import { apiRequest } from "./client";
 import { projectKeys } from "./projects";
 
+/** The dataset split an image is assigned to; `null` on an image means unassigned. */
+export type ImageSplit = "train" | "valid" | "test";
+
 /** One image as the server lists it, annotation state included. */
 export interface ImageItem extends ImageAnnotationState {
   id: number;
@@ -17,6 +20,7 @@ export interface ImageItem extends ImageAnnotationState {
   height: number;
   size_bytes: number;
   created_at: string;
+  split: ImageSplit | null;
 }
 
 export interface ImagePage {
@@ -88,6 +92,14 @@ export interface NextUnannotated {
   image_id: number | null;
 }
 
+/** Images per split; `none` counts the unassigned ones, so the four add up to the total. */
+export interface SplitCounts {
+  train: number;
+  valid: number;
+  test: number;
+  none: number;
+}
+
 /** GET /projects/{p}/images/status-counts: the whole project, whatever the search. */
 export interface StatusCounts {
   total: number;
@@ -95,6 +107,7 @@ export interface StatusCounts {
   annotated: number;
   reviewed: number;
   background: number;
+  splits: SplitCounts;
 }
 
 export const PAGE_SIZE = 100;

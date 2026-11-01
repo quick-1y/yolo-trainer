@@ -107,3 +107,47 @@ describe("ImageTile box count", () => {
     await i18n.changeLanguage("en");
   });
 });
+
+describe("ImageTile split pill", () => {
+  afterEach(async () => {
+    await i18n.changeLanguage("en");
+  });
+
+  it("shows the translated split name as a pill with an aria-label", () => {
+    renderTile(makeImageItem({ split: "valid" }));
+
+    const pill = screen.getByLabelText("Split: Valid");
+    expect(pill).toHaveTextContent(/^Valid$/);
+    expect(pill).toHaveAttribute("role", "img");
+  });
+
+  it.each([
+    ["train", "Train"],
+    ["valid", "Valid"],
+    ["test", "Test"],
+  ] as const)("names the %s split", (split, label) => {
+    renderTile(makeImageItem({ split }));
+
+    expect(screen.getByLabelText(`Split: ${label}`)).toHaveTextContent(label);
+  });
+
+  it("shows no pill for an unassigned image", () => {
+    renderTile(makeImageItem({ split: null }));
+
+    expect(screen.queryByLabelText(/^Split:/)).toBeNull();
+  });
+
+  it("reads Валидация in Russian", async () => {
+    renderTile(makeImageItem({ split: "valid" }), "ru");
+
+    expect(await screen.findByLabelText("Выборка: Валидация")).toHaveTextContent(/^Валидация$/);
+  });
+
+  it("keeps the tile name and the box-count pill as they were", () => {
+    renderTile(makeImageItem({ id: 1, split: "train", box_count: 3, status: "annotated" }));
+
+    expect(screen.getByRole("button", { name: "img-1.jpg, Annotated" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Objects: 3")).toHaveTextContent(/^3$/);
+    expect(screen.getByLabelText("Split: Train")).toBeInTheDocument();
+  });
+});

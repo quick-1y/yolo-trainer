@@ -39,3 +39,6 @@ data/
 
 # Planning tool caches
 .planning/research/.cache/
+
+# GSD runtime state -- never commit (see project instructions)
+/.gsd/

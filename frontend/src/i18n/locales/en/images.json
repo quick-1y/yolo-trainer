@@ -36,7 +36,8 @@
     "dismiss": "Dismiss",
     "progress": "Annotated: {{done}} of {{total}}",
     "reviewed": "Reviewed: {{count}}",
-    "allDone": "All images are annotated."
+    "allDone": "All images are annotated.",
+    "splits": "Split — Train: {{train}} · Valid: {{valid}} · Test: {{test}} · No split: {{none}}"
   },
   "reject": {
     "unsupported": "Not a supported image (JPG, PNG, WEBP, BMP).",
@@ -63,7 +64,10 @@
   "selection": {
     "count": "Selected: {{count}}",
     "clear": "Clear selection",
-    "delete": "Delete"
+    "delete": "Delete",
+    "setSplit": "Set split",
+    "splitDone": "Images updated: {{count}}. Split: {{value}}.",
+    "splitPartial": "Updated: {{done}} of {{total}} images. {{message}}"
   },
   "delete": {
     "title": "Delete images",
@@ -75,6 +79,39 @@
     "title": "No matching images",
     "body": "No filenames contain \"{{query}}\". Try a different search.",
     "clear": "Clear search"
+  },
+  "split": {
+    "label": "Split",
+    "value": {
+      "train": "Train",
+      "valid": "Valid",
+      "test": "Test",
+      "none": "No split"
+    },
+    "aria": "Split: {{value}}"
+  },
+  "autoSplit": {
+    "open": "Split dataset",
+    "openDisabled": "All images already have a split.",
+    "title": "Split dataset automatically",
+    "body": "Only images without a split are assigned. Images you already assigned stay where they are.",
+    "unannotatedNote": "Images that are not annotated yet are included. They are not used for training until you annotate them.",
+    "field": {
+      "train": "Train, %",
+      "valid": "Valid, %",
+      "test": "Test, %"
+    },
+    "total": "Total: {{sum}}%",
+    "error": {
+      "sum": "Ratios must add up to 100.",
+      "required": "Train and Valid must be above 0."
+    },
+    "preview": {
+      "unassigned": "Images without a split: {{count}}",
+      "result": "Result — Train: {{train}} · Valid: {{valid}} · Test: {{test}}"
+    },
+    "apply": "Apply split",
+    "done": "Split applied. Train: {{train}} · Valid: {{valid}} · Test: {{test}}."
   },
   "annotateNext": "Annotate next",
   "status": {

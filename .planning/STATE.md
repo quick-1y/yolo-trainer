@@ -1,44 +1,44 @@
 ---
 gsd_state_version: "1.0"
-current_phase: 4
-current_phase_name: Train & Download
-status: planning
-stopped_at: Phase 3 complete, ready to plan Phase 4
-last_updated: "2026-10-04T16:47:22.315Z"
-last_activity: 2026-10-04
-last_activity_desc: Phase 3 complete, transitioned to Phase 4
-state_head: ea02447f737fb7da3dd3d556540e0f839e935f0f
+current_phase: 06
+current_phase_name: polygons-segmentation-projects
+status: executing
+stopped_at: Phase 6 UI-SPEC approved
+last_updated: "2026-10-21T05:12:25.180Z"
+last_activity: 2026-10-19
+last_activity_desc: Phase 05 complete, transitioned to Phase 6
+state_head: 51234ac4008057403532f6a49387cf992328a956
 progress:
   total_phases: 12
-  completed_phases: 3
-  total_plans: 36
-  completed_plans: 36
-  percent: 25
+  completed_phases: 5
+  total_plans: 81
+  completed_plans: 57
+  percent: 42
 ---
 
 # Project State
 
 ## Project Reference
 
-See: .planning/PROJECT.md (updated 2026-10-04)
+See: .planning/PROJECT.md (updated 2026-10-19)
 
 **Core value:** The full loop works end-to-end in the browser: upload images → annotate → train with configurable settings → download a working `.pt`
-**Current focus:** Phase 4 — Train & Download
+**Current focus:** Phase 6 — Polygons & Segmentation Projects
 
 ## Current Position
 
-Phase: 4 — Train & Download
+Phase: 06 (polygons-segmentation-projects) — READY TO EXECUTE
 Plan: Not started
-Status: Ready to plan
-Last activity: 2026-10-04 — Phase 3 complete, transitioned to Phase 4
+Status: Ready to execute
+Last activity: 2026-10-19 — Phase 05 complete, transitioned to Phase 6
 
-Progress: [███░░░░░░░] 25%
+Progress: [████░░░░░░] 42%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 36
+- Total plans completed: 57
 - Average duration: -
 - Total execution time: 0.0 hours
 
@@ -49,6 +49,8 @@ Progress: [███░░░░░░░] 25%
 | 01 | 10 | - | - |
 | 02 | 13 | - | - |
 | 3 | 13 | - | - |
+| 04 | 11 | - | - |
+| 05 | 10 | - | - |
 
 **Recent Trend:**
 
@@ -95,6 +97,7 @@ Progress: [███░░░░░░░] 25%
 | Phase 03 P11 | 19 min | 2 tasks | 19 files |
 | Phase 03 P12 | 22 min | 3 tasks | 19 files |
 | Phase 03 P13 | 28 min | 2 tasks | 12 files |
+| Phase 04 P01 | 13 min | 2 tasks | 30 files |
 
 ## Accumulated Context
 
@@ -115,7 +118,7 @@ Recent decisions affecting current work:
 - [Phase 01]: check_cli_run_git_clean.py cleans up via rglob('hygiene-check') under runs/, not a fixed path — Ultralytics nests output as runs/<task>/<project>/<name>/ when project is already a relative runs/... path, matching the pre-existing runs/detect/runs/train/... nesting pattern
 - [Phase 01]: WorkerSettings.heartbeat_interval_seconds uses a pydantic validation_alias (WORKER_HEARTBEAT_INTERVAL_SECONDS) plus populate_by_name=True so both the env var and direct keyword construction work.
 - [Phase 01]: MSYS_NO_PATHCONV=1 must be scoped per-command in compose_smoke_test.sh, not exported globally - a global export broke the pre-existing curl -o /dev/null burst-write stage on Git Bash/Windows. Bug found and fixed while wiring the new worker torch/ultralytics-version and torch-free-api assertions (Rule 1).
-- [Phase 4 follow-up]: Ultralytics usage analytics must be disabled in the worker (settings.update sync=False or equivalent) before it runs real training/inference jobs - not yet live in Phase 1 since the worker only imports torch/ultralytics and heartbeats.
+- [Phase 1 → resolved in Phase 4]: Ultralytics usage analytics must be disabled in the worker (settings.update sync=False or equivalent) before it runs real training/inference jobs - not yet live in Phase 1 since the worker only imports torch/ultralytics and heartbeats.
 - [Phase 01]: Phase 01: changeAppLanguage uses a dynamic import of ./index inside language.ts to avoid a static circular dependency with index.ts (which imports resolveInitialLanguage/getStoredLanguage from language.ts).
 - [Phase 01]: Phase 01: T-07-02 threat mitigation (localStorage access resilience) required guarding BOTH the read (index.ts init) and write (changeAppLanguage) paths; only the write was guarded initially - fixed via getStoredLanguage().
 - [Phase 01]: pageNotFound.* keys added to the project i18n namespace (not common) for the generic 404 page, and both not-found views reuse project:notFound.back — avoids touching Plan 07's common locale files. — Plan 08 interface note: put new strings in the new project namespace; do not touch Plan 07's common files.
@@ -162,6 +165,9 @@ Recent decisions affecting current work:
 - [Phase 03]: Plan 03-12: Reload and the 422 resync call resetQueries on the annotation set (not invalidate) after discardEditor; a 404 on save also discards the entry; read-only is one boolean in Workspace fanned out to tools, canvas, keys, class panel, object list and top bar toggles — The cached set is the last saved copy, so invalidating would rebuild an editable stale view first; a gone image must not keep the beforeunload guard on; one flag keeps every reason (conflict, orientation mismatch, load failure) consistent
 - [Phase 03]: 03-13: POINTER_GESTURES is a separate display-only list so zoom/pan rows appear in the shortcut reference but never become hotkeys — Keeps buildHotkeys driven only by SHORTCUTS rows
 - [Phase 03]: 03-13: jsdom popover content is queried with hidden:true; floating-ui hide middleware marks zero-size references clipped, so Mantine sets display:none (root cause of the ClassRow flake, not a timeout) — A 300 ms delay after the click reproduced the failure deterministically; asyncUtilTimeout raised to 8000 as well
+- [Phase 04]: 04-01: images.split added via one portable ALTER TABLE ADD COLUMN with named CHECK (no batch rebuild); all seven run statuses in the CHECK from migration 0005
+- [Phase 04]: 04-01: worker polls SQLite with one atomic UPDATE...RETURNING claim guarded by NOT EXISTS(running); the supervisor is the single writer of run state, train_job never opens the DB
+- [Phase 04]: 04-01: Task 2 tests were written against Task 1's already-correct tracer (resumed run), committed as characterization tests; train_job no-ops ultralytics check_font so a run's only outbound access is the weights download
 
 ### Pending Todos
 
@@ -170,11 +176,19 @@ None yet.
 ### Blockers/Concerns
 
 - [Phase 12]: GPU-path acceptance (DEPL-02 and GPU memory freed after cancel) needs separate NVIDIA hardware, because the dev machine has none. It does not block Phases 1-11.
-- [Phase 4]: How jobs cross from the API container to the worker is undecided. The API cannot `Popen` into another container; resolve this during planning.
 - [Phase 6]: Prior research does not cover click-to-segment (SAM). It needs phase research on model choice and CPU latency.
 - [Phase 03 known limitations, accepted in UAT 2026-10-04]: a store-registry entry in conflict state counts as not dirty and can be evicted past MAX_ENTRIES = 30 (03-REVIEW WR-02); 408/429 on save are treated as rejections and resync instead of retrying (WR-03).
 - [Phase 03 UI review]: minor spacing follow-ups (ZoomOverlay gap 4 vs 8, background button icon gap, ClassPanel add-form spacing) — see 03-UI-REVIEW.md, 23/24.
+- [Phase 05 known limitation, accepted in UAT 2026-10-19]: deleting a project removes its models even when another project's active run uses one as its base model; that run then fails with 'The base model file is missing.' (05-REVIEW WR-01).
+- [Phase 05 UI review, 19/24]: open follow-ups: a user cancel can end as `failed` (WR-03), browser-clock drift in Duration/Training time (WR-05), and `Divider my={6}` in ChartTooltip.tsx should be `my={8}`. See 05-UI-REVIEW.md.
 - [Phase 02 follow-up]: CSRF hardening of `POST /images/delete` (02-REVIEW WR-03) is still open; the route relies on the JSON CORS preflight (accepted as T-02-13-05).
+
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Status | Directory |
+|---|-------------|------|--------|--------|-----------|
+| 261004-rnk | Добавить GitHub Actions CI (backend uv+pytest+ruff, frontend npm test+build) и бейдж в README | 2026-10-04 | 430efec | Verified | [261004-rnk-dobavit-github-actions-ci-backend-uv-pyt](./quick/261004-rnk-dobavit-github-actions-ci-backend-uv-pyt/) |
+| 261004-squ | Очистка и упорядочивание репозитория (ignore .gsd/, полный layout в README, удаление кэшей инструментов) | 2026-10-04 | 9459faa | Verified | [261004-squ-repository-cleanup-and-organization-per-](./quick/261004-squ-repository-cleanup-and-organization-per-/) |
 
 ## Deferred Items
 
@@ -186,6 +200,6 @@ Items acknowledged and deferred at milestone close, most recent first:
 
 ## Session Continuity
 
-Last session: 2026-10-04
-Stopped at: Phase 3 complete, ready to plan Phase 4
-Resume file: None
+Last session: 2026-10-20T06:30:17.356Z
+Stopped at: Phase 6 UI-SPEC approved
+Resume file: .planning/phases/06-polygons-segmentation-projects/06-UI-SPEC.md

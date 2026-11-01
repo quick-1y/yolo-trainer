@@ -4,6 +4,8 @@
     "overview": "Overview",
     "images": "Images",
     "classes": "Classes",
+    "training": "Training",
+    "trainingRunning": "Training in progress",
     "settings": "Settings"
   },
   "overview": {
@@ -35,7 +37,10 @@
     "warning": "This will permanently delete \"{{name}}\", its images and its classes, and cannot be undone.",
     "typeToConfirm": "Type \"{{name}}\" to confirm",
     "confirm": "Delete permanently",
-    "done": "Project \"{{name}}\" was deleted."
+    "done": "Project \"{{name}}\" was deleted.",
+    "runs": "Training runs that will be deleted with it: {{count}}.",
+    "models": "Models that will be deleted with it: {{count}}.",
+    "blocked": "A training run is active or queued for this project. Wait for it to finish or remove it from the queue before deleting the project."
   },
   "notFound": {
     "title": "Project not found",

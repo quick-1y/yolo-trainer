@@ -21,7 +21,7 @@ import {
 } from "../../api/annotations";
 import { ApiError } from "../../api/client";
 import { type ProjectClassItem, classKeys, useClasses } from "../../api/classes";
-import { fileUrl, imageKeys, useImage, useNeighbors } from "../../api/images";
+import { type ImageSplit, fileUrl, imageKeys, useImage, useNeighbors } from "../../api/images";
 import { useProject } from "../../api/projects";
 import { ProjectNotFound } from "../project/ProjectNotFound";
 import { ConflictBanner } from "./ConflictBanner";
@@ -259,6 +259,7 @@ function LoadedEditor({ projectId, imageId }: { projectId: number; imageId: numb
       projectId={projectId}
       imageId={imageId}
       filename={image.data?.filename ?? ""}
+      split={image.data?.split ?? null}
       imageSize={
         image.data === undefined ? null : { width: image.data.width, height: image.data.height }
       }
@@ -297,6 +298,8 @@ interface WorkspaceProps {
   projectId: number;
   imageId: number;
   filename: string;
+  /** The image's dataset split; null when it has none or the detail is missing. */
+  split: ImageSplit | null;
   /** The stored (EXIF-oriented) size; null while the image detail is missing. */
   imageSize: { width: number; height: number } | null;
   /** Undefined while the classes load. */
@@ -322,6 +325,7 @@ function Workspace({
   projectId,
   imageId,
   filename,
+  split,
   imageSize,
   classes,
   classesError,
@@ -575,6 +579,7 @@ function Workspace({
           projectId={projectId}
           imageId={imageId}
           filename={filename}
+          split={split}
           store={entry.store}
           navigation={navigation}
           onNextUnannotated={goNextUnannotated}

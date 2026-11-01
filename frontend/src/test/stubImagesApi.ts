@@ -38,6 +38,7 @@ export function handleImagesSideRequest(
       reviewed: 0,
       background: 0,
       ...options.counts,
+      splits: { train: 0, valid: 0, test: 0, none: 0, ...options.counts?.splits },
     };
     return json(counts);
   }

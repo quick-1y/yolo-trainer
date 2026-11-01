@@ -34,6 +34,14 @@ if [ -d "$DATA_DIR" ]; then
   rm -rf "$DATA_DIR"
 fi
 
+# The first training run downloads its official weights unless they are already
+# cached under DATA_DIR/weights; reuse the git-ignored copy in the repo root so the
+# smoke test does not depend on the internet (Phase 4).
+if [ -f yolo26n.pt ]; then
+  mkdir -p "$DATA_DIR/weights"
+  cp yolo26n.pt "$DATA_DIR/weights/yolo26n.pt"
+fi
+
 echo "==> Building and starting the stack..."
 docker compose up -d --build --wait --wait-timeout 600
 
@@ -262,6 +270,423 @@ for IMAGE_FILE in \
   fi
 done
 
+echo "==> Training a detect project through the worker (Phase 4 tracer)..."
+TRAIN_CREATE=$(curl -fsS -X POST "${BASE_URL}/api/projects" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "smoke-train", "task_type": "detect"}')
+TRAIN_PROJECT_ID=$(printf '%s' "$TRAIN_CREATE" | sed -n 's/.*"id":\([0-9][0-9]*\).*/\1/p')
+if [ -z "$TRAIN_PROJECT_ID" ]; then
+  echo "FAIL: could not parse the training project id from: $TRAIN_CREATE" >&2
+  exit 1
+fi
+TRAIN_URL="${BASE_URL}/api/projects/${TRAIN_PROJECT_ID}"
+TRAIN_CLASS=$(curl -fsS -X POST "${TRAIN_URL}/classes" -H "Content-Type: application/json" -d '{"name": "box"}')
+TRAIN_CLASS_ID=$(printf '%s' "$TRAIN_CLASS" | sed -n 's/.*"id":\([0-9][0-9]*\).*/\1/p')
+if [ -z "$TRAIN_CLASS_ID" ]; then
+  echo "FAIL: could not parse the training class id from: $TRAIN_CLASS" >&2
+  exit 1
+fi
+
+# Four distinct 96x96 PNGs (a solid background with a filled rectangle each),
+# generated inside the api container (Pillow is in that image) and read back
+# from stdout. Scoped MSYS_NO_PATHCONV, see the version check further down.
+TRAIN_BOXES=(
+  '"x":0.104167,"y":0.104167,"w":0.416667,"h":0.416667'
+  '"x":0.416667,"y":0.125,"w":0.479167,"h":0.458333'
+  '"x":0.145833,"y":0.458333,"w":0.479167,"h":0.458333'
+  '"x":0.520833,"y":0.520833,"w":0.416667,"h":0.416667'
+)
+TRAIN_IDS=()
+for N in 0 1 2 3; do
+  MSYS_NO_PATHCONV=1 docker compose exec -T api /app/.venv/bin/python -c "
+import sys
+from PIL import Image, ImageDraw
+n = int(sys.argv[1])
+rects = [(10, 10, 50, 50), (40, 12, 86, 56), (14, 44, 60, 88), (50, 50, 90, 90)]
+colors = [(220, 40, 40), (40, 200, 60), (40, 80, 220), (230, 200, 30)]
+backgrounds = [(20, 20, 40), (40, 30, 20), (25, 45, 30), (45, 25, 45)]
+image = Image.new('RGB', (96, 96), backgrounds[n])
+ImageDraw.Draw(image).rectangle(rects[n], fill=colors[n])
+image.save(sys.stdout.buffer, 'PNG')
+" "$N" > "${SMOKE_TMP}/train-${N}.png"
+  UPLOADED=$(cd "$SMOKE_TMP" && curl -fsS -H "X-Requested-With: yolo-trainer" -F "files=@train-${N}.png;type=image/png" "${TRAIN_URL}/images")
+  case "$UPLOADED" in
+    *'"status":"added"'*) ;;
+    *)
+      echo "FAIL: training image ${N} was not added (got: $UPLOADED)" >&2
+      exit 1
+      ;;
+  esac
+  IMAGE_N_ID=$(printf '%s' "$UPLOADED" | sed -n 's/.*"image":{"id":\([0-9][0-9]*\).*/\1/p')
+  if [ -z "$IMAGE_N_ID" ]; then
+    echo "FAIL: could not parse the id of training image ${N} from: $UPLOADED" >&2
+    exit 1
+  fi
+  TRAIN_IDS+=("$IMAGE_N_ID")
+  BOX_N_PAYLOAD="{\"base_version\":0,\"is_background\":false,\"is_reviewed\":false,\"boxes\":[{\"id\":\"3f2b8c1e-5d4a-4e7b-9c6d-1a2b3c4d5e6${N}\",\"class_id\":${TRAIN_CLASS_ID},${TRAIN_BOXES[$N]}}]}"
+  BOX_N_BODY=$(curl -sS -X PUT "${TRAIN_URL}/images/${IMAGE_N_ID}/annotations" \
+    -H "Content-Type: application/json" -H "X-Requested-With: yolo-trainer" -d "$BOX_N_PAYLOAD")
+  case "$BOX_N_BODY" in
+    *'"box_count":1'*) ;;
+    *)
+      echo "FAIL: saving the box of training image ${N} failed (got: $BOX_N_BODY)" >&2
+      exit 1
+      ;;
+  esac
+done
+
+SPLIT_URL="${TRAIN_URL}/images/split"
+SPLIT_NOXHR=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$SPLIT_URL" \
+  -H "Content-Type: application/json" -d "{\"ids\":[${TRAIN_IDS[0]}],\"split\":\"train\"}")
+if [ "$SPLIT_NOXHR" != "403" ]; then
+  echo "FAIL: POST /images/split without X-Requested-With returned HTTP ${SPLIT_NOXHR} (expected 403)" >&2
+  exit 1
+fi
+SPLIT_TRAIN=$(curl -fsS -X POST "$SPLIT_URL" -H "Content-Type: application/json" \
+  -H "X-Requested-With: yolo-trainer" \
+  -d "{\"ids\":[${TRAIN_IDS[0]},${TRAIN_IDS[1]},${TRAIN_IDS[2]}],\"split\":\"train\"}")
+SPLIT_VALID=$(curl -fsS -X POST "$SPLIT_URL" -H "Content-Type: application/json" \
+  -H "X-Requested-With: yolo-trainer" -d "{\"ids\":[${TRAIN_IDS[3]}],\"split\":\"valid\"}")
+case "${SPLIT_TRAIN}${SPLIT_VALID}" in
+  *'"updated":3'*'"updated":1'*) ;;
+  *)
+    echo "FAIL: assigning splits did not update 3 + 1 images (got: ${SPLIT_TRAIN} ${SPLIT_VALID})" >&2
+    exit 1
+    ;;
+esac
+
+RUN_RESPONSE=$(curl -sS -w '\n%{http_code}' -X POST "${TRAIN_URL}/runs" \
+  -H "Content-Type: application/json" -H "X-Requested-With: yolo-trainer" \
+  -d '{"name":null,"base":{"kind":"official","name":"yolo26n"},"epochs":1,"imgsz":64,"batch":2,"device":"cpu"}')
+RUN_STATUS=$(printf '%s' "$RUN_RESPONSE" | tail -n 1)
+RUN_BODY=$(printf '%s' "$RUN_RESPONSE" | sed '$d')
+if [ "$RUN_STATUS" != "201" ]; then
+  echo "FAIL: starting a run returned HTTP ${RUN_STATUS} (expected 201; body: $RUN_BODY)" >&2
+  exit 1
+fi
+case "$RUN_BODY" in
+  *'"status":"preparing"'*'"name":"run-1"'* | *'"name":"run-1"'*'"status":"preparing"'*) ;;
+  *)
+    echo "FAIL: the new run is not preparing / run-1 (got: $RUN_BODY)" >&2
+    exit 1
+    ;;
+esac
+TRAIN_RUN_ID=$(printf '%s' "$RUN_BODY" | sed -n 's/^{"id":\([0-9][0-9]*\).*/\1/p')
+if [ -z "$TRAIN_RUN_ID" ]; then
+  echo "FAIL: could not parse the run id from: $RUN_BODY" >&2
+  exit 1
+fi
+TRAIN_RUN_URL="${TRAIN_URL}/runs/${TRAIN_RUN_ID}"
+
+echo "    waiting for run ${TRAIN_RUN_ID} to finish (up to ${SMOKE_TRAIN_TIMEOUT:-600}s)..."
+TRAIN_DEADLINE=$(( $(date +%s) + ${SMOKE_TRAIN_TIMEOUT:-600} ))
+RUN_NOW=""
+RUN_STATE=""
+while :; do
+  RUN_NOW=$(curl -fsS "$TRAIN_RUN_URL")
+  RUN_STATE=$(printf '%s' "$RUN_NOW" | sed -n 's/^{"id":[0-9]*,"project_id":[0-9]*,"name":"[^"]*","status":"\([a-z]*\)".*/\1/p')
+  case "$RUN_STATE" in
+    completed) break ;;
+    failed | interrupted | cancelled)
+      echo "FAIL: the run ended as ${RUN_STATE}: ${RUN_NOW}" >&2
+      exit 1
+      ;;
+  esac
+  if [ "$(date +%s)" -ge "$TRAIN_DEADLINE" ]; then
+    echo "FAIL: the run is still ${RUN_STATE} after ${SMOKE_TRAIN_TIMEOUT:-600}s: ${RUN_NOW}" >&2
+    exit 1
+  fi
+  sleep 3
+done
+
+echo "    reading the progress stream of the finished run through nginx..."
+if ! curl -sS -N --max-time 30 -D "${SMOKE_TMP}/stream.headers" -o "${SMOKE_TMP}/stream.body" "${TRAIN_RUN_URL}/stream"; then
+  echo "FAIL: the progress stream did not finish within 30s (a terminal run must end its stream): $(cat "${SMOKE_TMP}/stream.headers" 2>/dev/null)" >&2
+  exit 1
+fi
+if ! grep -qi '^content-type:.*text/event-stream' "${SMOKE_TMP}/stream.headers"; then
+  echo "FAIL: the progress stream is not text/event-stream: $(cat "${SMOKE_TMP}/stream.headers")" >&2
+  exit 1
+fi
+if ! grep -q 'event: progress' "${SMOKE_TMP}/stream.body"; then
+  echo "FAIL: the progress stream carries no 'event: progress' frame: $(head -c 400 "${SMOKE_TMP}/stream.body")" >&2
+  exit 1
+fi
+if ! grep -q 'event: end' "${SMOKE_TMP}/stream.body"; then
+  echo "FAIL: the progress stream of a completed run did not end with 'event: end': $(tail -c 400 "${SMOKE_TMP}/stream.body")" >&2
+  exit 1
+fi
+
+for DATASET_FILE in data.yaml manifest.json; do
+  if [ ! -f "${DATA_DIR}/runs/${TRAIN_RUN_ID}/dataset/${DATASET_FILE}" ]; then
+    echo "FAIL: ${DATA_DIR}/runs/${TRAIN_RUN_ID}/dataset/${DATASET_FILE} does not exist on the host" >&2
+    exit 1
+  fi
+done
+TRAIN_IMAGE_COUNT=$(find "${DATA_DIR}/runs/${TRAIN_RUN_ID}/dataset/train/images" -type f | wc -l | tr -d ' ')
+if [ "$TRAIN_IMAGE_COUNT" != "3" ]; then
+  echo "FAIL: the run dataset holds ${TRAIN_IMAGE_COUNT} train images (expected 3)" >&2
+  exit 1
+fi
+
+TRAIN_MODEL_ID=$(printf '%s' "$RUN_NOW" | sed -n 's/.*"model":{"id":\([0-9][0-9]*\).*/\1/p')
+if [ -z "$TRAIN_MODEL_ID" ]; then
+  echo "FAIL: the completed run has no registered model: ${RUN_NOW}" >&2
+  exit 1
+fi
+MODEL_URL="${BASE_URL}/api/models/${TRAIN_MODEL_ID}/download"
+DOWNLOAD_STATUS=$(curl -sS -D "${SMOKE_TMP}/download.headers" -o "${SMOKE_TMP}/download.pt" -w "%{http_code}" "$MODEL_URL")
+if [ "$DOWNLOAD_STATUS" != "200" ]; then
+  echo "FAIL: downloading the model returned HTTP ${DOWNLOAD_STATUS} (expected 200)" >&2
+  exit 1
+fi
+if ! grep -qi 'content-disposition:.*smoke-train_run-1_best\.pt' "${SMOKE_TMP}/download.headers"; then
+  echo "FAIL: the download lacks a Content-Disposition naming smoke-train_run-1_best.pt: $(cat "${SMOKE_TMP}/download.headers")" >&2
+  exit 1
+fi
+DOWNLOAD_BYTES=$(wc -c < "${SMOKE_TMP}/download.pt" | tr -d ' ')
+if [ "$DOWNLOAD_BYTES" -le 1000000 ]; then
+  echo "FAIL: the downloaded model is only ${DOWNLOAD_BYTES} bytes" >&2
+  exit 1
+fi
+
+echo "==> Loading the trained model with plain YOLO(path) in the worker container..."
+PREDICT_OUTPUT=$(MSYS_NO_PATHCONV=1 docker compose exec -T worker /app/.venv/bin/python -c "
+import glob
+from ultralytics import settings
+settings.update({'sync': False})
+from ultralytics import YOLO
+model = YOLO('/data/models/${TRAIN_MODEL_ID}.pt')
+print(model.task)
+print(list(model.names.values()))
+image = sorted(glob.glob('/data/runs/${TRAIN_RUN_ID}/dataset/train/images/*'))[0]
+model.predict(image, imgsz=64, device='cpu', verbose=False)
+print('PREDICT_OK')
+" 2>&1)
+for EXPECTED in detect box PREDICT_OK; do
+  case "$PREDICT_OUTPUT" in
+    *"$EXPECTED"*) ;;
+    *)
+      echo "FAIL: loading the model in the worker did not print '${EXPECTED}' (got: $PREDICT_OUTPUT)" >&2
+      exit 1
+      ;;
+  esac
+done
+
+if ! grep -rEq '"sync": *false' "${DATA_DIR}/worker/ultralytics"; then
+  echo "FAIL: Ultralytics sync (analytics) is not disabled under ${DATA_DIR}/worker/ultralytics" >&2
+  exit 1
+fi
+
+echo "==> Cancel, no orphan, next run, resume (Phase 5 tracer, TRAN-05..TRAN-08)..."
+# Helpers for this stage. The run JSON starts with id, project_id, name, status (the
+# RunSummary field order), so the same sed extraction as the training stage works.
+smoke_run_status() {
+  printf '%s' "$1" | sed -n 's/^{"id":[0-9]*,"project_id":[0-9]*,"name":"[^"]*","status":"\([a-z]*\)".*/\1/p'
+}
+# An integer field of a run JSON; the leading quote keeps "epoch" apart from "resume_epoch"
+# and "epochs". Prints nothing when the field is null or absent.
+smoke_run_int() {
+  printf '%s' "$1" | sed -n "s/.*\"$2\":\([0-9][0-9]*\).*/\1/p"
+}
+# Starts a tiny CPU run on the smoke-train project and sets SMOKE_RUN_ID.
+start_smoke_run() {
+  local response status body
+  response=$(curl -sS -w '\n%{http_code}' -X POST "${TRAIN_URL}/runs" \
+    -H "Content-Type: application/json" -H "X-Requested-With: yolo-trainer" \
+    -d "{\"name\":\"$1\",\"base\":{\"kind\":\"official\",\"name\":\"yolo26n\"},\"epochs\":$2,\"imgsz\":64,\"batch\":2,\"device\":\"cpu\"}")
+  status=$(printf '%s' "$response" | tail -n 1)
+  body=$(printf '%s' "$response" | sed '$d')
+  if [ "$status" != "201" ]; then
+    echo "FAIL: starting run $1 returned HTTP ${status} (expected 201; body: $body)" >&2
+    exit 1
+  fi
+  SMOKE_RUN_ID=$(printf '%s' "$body" | sed -n 's/^{"id":\([0-9][0-9]*\).*/\1/p')
+  if [ -z "$SMOKE_RUN_ID" ]; then
+    echo "FAIL: could not parse the id of run $1 from: $body" >&2
+    exit 1
+  fi
+}
+# Waits until the run JSON at $1 reports status $2 within $3 seconds; any other terminal
+# status is a failure. The last answer stays in SMOKE_RUN_NOW.
+wait_for_run_status() {
+  local deadline state
+  deadline=$(( $(date +%s) + $3 ))
+  while :; do
+    SMOKE_RUN_NOW=$(curl -fsS "$1")
+    state=$(smoke_run_status "$SMOKE_RUN_NOW")
+    if [ "$state" = "$2" ]; then
+      return 0
+    fi
+    case "$state" in
+      completed | failed | interrupted | cancelled)
+        echo "FAIL: waiting for ${2}, the run ended as ${state}: ${SMOKE_RUN_NOW}" >&2
+        exit 1
+        ;;
+    esac
+    if [ "$(date +%s)" -ge "$deadline" ]; then
+      echo "FAIL: the run is still ${state} (not ${2}) after ${3}s: ${SMOKE_RUN_NOW}" >&2
+      exit 1
+    fi
+    sleep 1
+  done
+}
+
+start_smoke_run "smoke-cancel" 50
+CANCEL_RUN_ID=$SMOKE_RUN_ID
+CANCEL_RUN_URL="${TRAIN_URL}/runs/${CANCEL_RUN_ID}"
+
+echo "    waiting for run ${CANCEL_RUN_ID} to save a checkpoint while running (up to ${SMOKE_TRAIN_TIMEOUT:-600}s)..."
+CANCEL_DEADLINE=$(( $(date +%s) + ${SMOKE_TRAIN_TIMEOUT:-600} ))
+while :; do
+  SMOKE_RUN_NOW=$(curl -fsS "$CANCEL_RUN_URL")
+  CANCEL_STATE=$(smoke_run_status "$SMOKE_RUN_NOW")
+  case "$CANCEL_STATE" in
+    completed | failed | interrupted | cancelled)
+      echo "FAIL: the run to cancel ended as ${CANCEL_STATE} before it could be cancelled: ${SMOKE_RUN_NOW}" >&2
+      exit 1
+      ;;
+  esac
+  if [ "$CANCEL_STATE" = "running" ] && [ -n "$(smoke_run_int "$SMOKE_RUN_NOW" resume_epoch)" ]; then
+    break
+  fi
+  if [ "$(date +%s)" -ge "$CANCEL_DEADLINE" ]; then
+    echo "FAIL: the run is ${CANCEL_STATE} without a checkpoint after ${SMOKE_TRAIN_TIMEOUT:-600}s: ${SMOKE_RUN_NOW}" >&2
+    exit 1
+  fi
+  sleep 1
+done
+
+CANCEL_NOXHR=$(curl -s -o /dev/null -w "%{http_code}" -X POST "${CANCEL_RUN_URL}/cancel")
+if [ "$CANCEL_NOXHR" != "403" ]; then
+  echo "FAIL: POST /cancel without X-Requested-With returned HTTP ${CANCEL_NOXHR} (expected 403)" >&2
+  exit 1
+fi
+CANCEL_STATUS=$(curl -sS -o "${SMOKE_TMP}/cancel.body" -w "%{http_code}" -X POST "${CANCEL_RUN_URL}/cancel" \
+  -H "X-Requested-With: yolo-trainer")
+if [ "$CANCEL_STATUS" != "200" ]; then
+  echo "FAIL: POST /cancel returned HTTP ${CANCEL_STATUS} (expected 200; body: $(cat "${SMOKE_TMP}/cancel.body"))" >&2
+  exit 1
+fi
+wait_for_run_status "$CANCEL_RUN_URL" cancelled 30
+# The checkpoint epoch and the last finished epoch at the moment of the cancel: the resumed
+# run must get past both.
+CANCEL_RESUME_EPOCH=$(smoke_run_int "$SMOKE_RUN_NOW" resume_epoch)
+CANCEL_EPOCH=$(smoke_run_int "$SMOKE_RUN_NOW" epoch)
+if [ -z "$CANCEL_RESUME_EPOCH" ]; then
+  echo "FAIL: the cancelled run lost its resume_epoch: ${SMOKE_RUN_NOW}" >&2
+  exit 1
+fi
+CANCEL_BASELINE=$CANCEL_RESUME_EPOCH
+if [ -n "$CANCEL_EPOCH" ] && [ "$CANCEL_EPOCH" -gt "$CANCEL_BASELINE" ]; then
+  CANCEL_BASELINE=$CANCEL_EPOCH
+fi
+
+echo "    checking that no training process is left in the worker container..."
+# No process-listing tool is in the slim worker image: scan /proc with the venv Python. The needle is built
+# from two parts so this scanner's own command line (which holds the source text) never matches.
+ORPHAN_COUNT=$(MSYS_NO_PATHCONV=1 docker compose exec -T worker /app/.venv/bin/python -c "
+import glob
+needle = b'yolo_trainer_worker.' + b'train_job'
+count = 0
+for path in glob.glob('/proc/[0-9]*/cmdline'):
+    try:
+        with open(path, 'rb') as handle:
+            if needle in handle.read():
+                count += 1
+    except OSError:
+        pass
+print(count)
+" | tr -d '\r\n')
+if [ "$ORPHAN_COUNT" != "0" ]; then
+  echo "FAIL: ${ORPHAN_COUNT} yolo_trainer_worker.train_job process(es) left in the worker after the cancel" >&2
+  exit 1
+fi
+
+echo "    starting the next run to prove the queue moved on..."
+start_smoke_run "smoke-next" 1
+NEXT_RUN_URL="${TRAIN_URL}/runs/${SMOKE_RUN_ID}"
+wait_for_run_status "$NEXT_RUN_URL" completed "${SMOKE_TRAIN_TIMEOUT:-600}"
+
+echo "    resuming the cancelled run..."
+RESUME_NOXHR=$(curl -s -o /dev/null -w "%{http_code}" -X POST "${CANCEL_RUN_URL}/resume")
+if [ "$RESUME_NOXHR" != "403" ]; then
+  echo "FAIL: POST /resume without X-Requested-With returned HTTP ${RESUME_NOXHR} (expected 403)" >&2
+  exit 1
+fi
+RESUME_STATUS=$(curl -sS -o "${SMOKE_TMP}/resume.body" -w "%{http_code}" -X POST "${CANCEL_RUN_URL}/resume" \
+  -H "X-Requested-With: yolo-trainer")
+RESUME_BODY=$(cat "${SMOKE_TMP}/resume.body")
+if [ "$RESUME_STATUS" != "200" ]; then
+  echo "FAIL: POST /resume returned HTTP ${RESUME_STATUS} (expected 200; body: ${RESUME_BODY})" >&2
+  exit 1
+fi
+case "$RESUME_BODY" in
+  *'"status":"queued"'*) ;;
+  *)
+    echo "FAIL: the resumed run is not queued (got: ${RESUME_BODY})" >&2
+    exit 1
+    ;;
+esac
+
+echo "    waiting for the resumed run to get past epoch ${CANCEL_BASELINE} (up to ${SMOKE_TRAIN_TIMEOUT:-600}s)..."
+RESUME_DEADLINE=$(( $(date +%s) + ${SMOKE_TRAIN_TIMEOUT:-600} ))
+while :; do
+  SMOKE_RUN_NOW=$(curl -fsS "$CANCEL_RUN_URL")
+  RESUME_STATE=$(smoke_run_status "$SMOKE_RUN_NOW")
+  case "$RESUME_STATE" in
+    completed | failed | interrupted | cancelled)
+      echo "FAIL: the resumed run ended as ${RESUME_STATE} before passing epoch ${CANCEL_BASELINE}: ${SMOKE_RUN_NOW}" >&2
+      exit 1
+      ;;
+  esac
+  RESUME_EPOCH_NOW=$(smoke_run_int "$SMOKE_RUN_NOW" epoch)
+  if [ "$RESUME_STATE" = "running" ] && [ -n "$RESUME_EPOCH_NOW" ] && [ "$RESUME_EPOCH_NOW" -gt "$CANCEL_BASELINE" ]; then
+    break
+  fi
+  if [ "$(date +%s)" -ge "$RESUME_DEADLINE" ]; then
+    echo "FAIL: the resumed run is ${RESUME_STATE} at epoch ${RESUME_EPOCH_NOW:-none} after ${SMOKE_TRAIN_TIMEOUT:-600}s: ${SMOKE_RUN_NOW}" >&2
+    exit 1
+  fi
+  sleep 1
+done
+case "$SMOKE_RUN_NOW" in
+  *'"resume_count":1'*) ;;
+  *)
+    echo "FAIL: the resumed run does not report resume_count 1: ${SMOKE_RUN_NOW}" >&2
+    exit 1
+    ;;
+esac
+
+# Keep the smoke short: cancel the resumed run too, so no run is active afterwards.
+curl -fsS -o /dev/null -X POST "${CANCEL_RUN_URL}/cancel" -H "X-Requested-With: yolo-trainer"
+wait_for_run_status "$CANCEL_RUN_URL" cancelled 30
+
+CANCEL_PROGRESS="${DATA_DIR}/runs/${CANCEL_RUN_ID}/progress.jsonl"
+if [ ! -f "$CANCEL_PROGRESS" ]; then
+  echo "FAIL: ${CANCEL_PROGRESS} does not exist on the host" >&2
+  exit 1
+fi
+TRAIN_START_COUNT=$(grep -c '"event": "train_start"' "$CANCEL_PROGRESS" || true)
+if [ "${TRAIN_START_COUNT:-0}" -lt 2 ]; then
+  echo "FAIL: ${CANCEL_PROGRESS} has ${TRAIN_START_COUNT:-0} train_start line(s) (expected at least 2)" >&2
+  exit 1
+fi
+if ! grep -q '"resumed": true' "$CANCEL_PROGRESS"; then
+  echo "FAIL: ${CANCEL_PROGRESS} has no '\"resumed\": true' train_start" >&2
+  exit 1
+fi
+
+echo "    reading the stream of the cancelled run through nginx..."
+if ! curl -sS -N --max-time 30 -o "${SMOKE_TMP}/cancel-stream.body" "${CANCEL_RUN_URL}/stream"; then
+  echo "FAIL: the stream of a cancelled run did not finish within 30s" >&2
+  exit 1
+fi
+if ! grep -q 'event: end' "${SMOKE_TMP}/cancel-stream.body"; then
+  echo "FAIL: the stream of a cancelled run did not end with 'event: end': $(tail -c 400 "${SMOKE_TMP}/cancel-stream.body")" >&2
+  exit 1
+fi
+
 echo "==> Restarting the stack (down/up) to check persistence..."
 docker compose down
 docker compose up -d --wait --wait-timeout 600
@@ -323,6 +748,21 @@ case "$ANNOTATIONS_AFTER_RESTART" in
     exit 1
     ;;
 esac
+
+echo "==> Checking the trained run and its download survived down/up (TRAN-04)..."
+RUN_AFTER_RESTART=$(curl -fsS "$TRAIN_RUN_URL")
+case "$RUN_AFTER_RESTART" in
+  *'"status":"completed"'*) ;;
+  *)
+    echo "FAIL: the run is not completed after down/up (got: $RUN_AFTER_RESTART)" >&2
+    exit 1
+    ;;
+esac
+DOWNLOAD_AFTER_RESTART=$(curl -sS -o /dev/null -w "%{http_code}" "$MODEL_URL")
+if [ "$DOWNLOAD_AFTER_RESTART" != "200" ]; then
+  echo "FAIL: the model download returned HTTP ${DOWNLOAD_AFTER_RESTART} after down/up (expected 200)" >&2
+  exit 1
+fi
 
 echo "==> Checking upload limits through nginx (D-03, MAX_UPLOAD_MB=2)..."
 NGINX_CONF=$(docker compose exec -T web nginx -T 2>/dev/null)

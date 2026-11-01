@@ -13,14 +13,18 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 from yolo_trainer_api.db import checkpoint_wal, create_engine_for, create_sessionmaker
 from yolo_trainer_api.errors import register_error_handlers
 from yolo_trainer_api.migrate import run_migrations
-from yolo_trainer_api.models import Image, Project
+from yolo_trainer_api.models import Image, Project, TrainedModel, TrainingRun
 from yolo_trainer_api.routers.annotations import router as annotations_router
 from yolo_trainer_api.routers.classes import router as classes_router
 from yolo_trainer_api.routers.config import router as config_router
 from yolo_trainer_api.routers.images import router as images_router
+from yolo_trainer_api.routers.models import router as models_router
 from yolo_trainer_api.routers.projects import router as projects_router
+from yolo_trainer_api.routers.runs import router as runs_router
+from yolo_trainer_api.routers.splits import router as splits_router
 from yolo_trainer_api.settings import Settings, validate_data_dir
 from yolo_trainer_api.storage import reconcile_orphans
+from yolo_trainer_api.training.reconcile import reconcile_runs_on_startup
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +36,11 @@ async def _cleanup_orphans(app: FastAPI, settings: Settings) -> None:
             project_ids = set((await session.execute(select(Project.id))).scalars().all())
             image_rows = await session.execute(select(Image.project_id, Image.id, Image.ext))
             image_keys = {(row.project_id, row.id, row.ext) for row in image_rows.all()}
-        await asyncio.to_thread(reconcile_orphans, settings, project_ids, image_keys)
+            run_ids = set((await session.execute(select(TrainingRun.id))).scalars().all())
+            model_ids = set((await session.execute(select(TrainedModel.id))).scalars().all())
+        await asyncio.to_thread(
+            reconcile_orphans, settings, project_ids, image_keys, run_ids, model_ids
+        )
     except Exception:
         logger.exception("Orphan file cleanup failed; continuing startup")
 
@@ -54,6 +62,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         app.state.engine = engine
         app.state.sessionmaker = create_sessionmaker(engine)
 
+        # Runs a restart left in `preparing`/`running` get an honest final status (D-13).
+        await reconcile_runs_on_startup(app.state.sessionmaker, settings)
         await _cleanup_orphans(app, settings)
 
         yield
@@ -80,6 +90,9 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(images_router)
     app.include_router(annotations_router)
     app.include_router(classes_router)
+    app.include_router(splits_router)
+    app.include_router(runs_router)
+    app.include_router(models_router)
     app.include_router(config_router)
 
     return app

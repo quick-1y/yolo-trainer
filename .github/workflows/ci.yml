@@ -1,0 +1,84 @@
+# CI: backend (uv, pytest, ruff) and frontend (npm, vitest, build) checks.
+# Runs on every push and pull request to dev or main.
+name: CI
+
+on:
+  push:
+    branches: [dev, main]
+  pull_request:
+    branches: [dev, main]
+
+# Least-privilege token: the jobs only read the repository.
+permissions:
+  contents: read
+
+# Superseded PR runs are cancelled; pushes to dev/main always run to completion.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  backend:
+    name: backend
+    runs-on: ubuntu-latest
+    timeout-minutes: 30  # the first run downloads torch
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Same uv version as docker/Dockerfile.backend (the one that produced uv.lock).
+      - name: Install uv
+        uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7  # v10.2.0
+        with:
+          version: "0.12.19"
+          enable-cache: true
+
+      # Python 3.12 comes from .python-version; --locked fails on a stale uv.lock.
+      - name: Install dependencies
+        id: sync
+        run: uv sync --locked
+
+      - name: Run backend tests
+        run: uv run pytest backend/tests
+
+      - name: Ruff lint
+        if: ${{ !cancelled() && steps.sync.conclusion == 'success' }}
+        run: uv run ruff check backend
+
+      - name: Ruff format check
+        if: ${{ !cancelled() && steps.sync.conclusion == 'success' }}
+        run: uv run ruff format --check backend
+
+  frontend:
+    name: frontend
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Node version comes from frontend/package.json (engines.node).
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020  # v7.0.0
+        with:
+          node-version-file: frontend/package.json
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        id: install
+        run: npm ci
+
+      - name: Run frontend tests
+        run: npm run test -- --run
+
+      - name: Build
+        if: ${{ !cancelled() && steps.install.conclusion == 'success' }}
+        run: npm run build

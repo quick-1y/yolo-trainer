@@ -13,6 +13,12 @@ export interface Project {
   updated_at: string;
   image_count: number;
   class_count: number;
+  /** Training runs of the project, all statuses (shown in the delete dialog). */
+  run_count: number;
+  /** Registered models of the project. */
+  model_count: number;
+  /** Runs that are preparing, queued or running; a project with one cannot be deleted. */
+  active_run_count: number;
 }
 
 export interface ProjectCreateInput {

@@ -5,12 +5,14 @@ import { cleanup, configure } from "@testing-library/react";
 import { afterEach, beforeEach } from "vitest";
 
 import i18n from "./i18n";
+import { FakeEventSource, resetFakeEventSources } from "./test/fakeEventSource";
 
 // `test.globals` is off (tests import from "vitest" explicitly), so
 // Testing Library's own auto-cleanup (which only registers when it finds a
 // global `afterEach`) never fires - register it explicitly instead, or a
 // modal from one test leaks into the next test's DOM.
 afterEach(cleanup);
+afterEach(resetFakeEventSources);
 
 // findBy*/waitFor default to 1 s; 4 s (set earlier) still expired under full-suite load
 // (50 jsdom workers, ClassRow/ImagesUrlState/ImagesSelection flakes failing at ~4.6 s).
@@ -41,6 +43,12 @@ if (!("ResizeObserver" in window)) {
   }
   // @ts-expect-error - jsdom has no ResizeObserver; a minimal stub is enough for tests.
   window.ResizeObserver = ResizeObserverPolyfill;
+}
+
+// jsdom has no `EventSource`; tests drive this stub through `latestEventSource()`.
+if (!("EventSource" in window)) {
+  // @ts-expect-error - a test double with the parts of EventSource the app uses.
+  window.EventSource = FakeEventSource;
 }
 
 // Mantine's autosizing Textarea listens on `document.fonts` (FontFaceSet),

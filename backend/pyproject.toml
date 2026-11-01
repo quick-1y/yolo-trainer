@@ -26,7 +26,10 @@ packages = ["src/yolo_trainer_api", "src/yolo_trainer_common", "src/yolo_trainer
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-ra"
+addopts = "-ra -m 'not training'"
+markers = [
+    "training: real CPU training with Ultralytics (slow; needs yolo26n.pt in the repo root or internet access)",
+]
 
 [tool.ruff]
 line-length = 100

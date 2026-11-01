@@ -1,5 +1,7 @@
 # YOLO Trainer Platform
 
+[![CI](https://github.com/quick-1y/yolo-trainer/actions/workflows/ci.yml/badge.svg)](https://github.com/quick-1y/yolo-trainer/actions/workflows/ci.yml)
+
 [Русская версия](README.ru.md)
 
 ## What it is
@@ -49,6 +51,10 @@ Everything the app stores (the SQLite database today; images, models, and traini
 - Can be **backed up** by stopping the stack (`docker compose down`) and copying the folder.
 - On Linux, files inside it are owned by `root`, because the containers run as root.
 - Holds uploaded images in `data/projects/<project id>/images/`, with thumbnails in `data/projects/<project id>/thumbs/`. Originals are stored exactly as uploaded.
+- Holds each training run in `data/runs/<run id>/`: the dataset snapshot (hard-linked images, labels, `data.yaml`, `manifest.json`), the progress and log files, and the run's weights.
+- Holds every model you can download in `data/models/<model id>.pt`.
+- Holds the official base weights the service downloaded (for example `yolo26n.pt`) in `data/weights/`.
+- Deletes a project's runs and models together with the project.
 - Has **no disk quota**: uploading many large images can fill the disk, so keep an eye on free space.
 
 ## Annotating images
@@ -61,6 +67,89 @@ Open an image by clicking its tile on the project's **Images** page; the grid's 
 - **Image statuses:** *unannotated* (no boxes), *annotated* (at least one box, or marked as background), *reviewed* (you marked it as checked) and *background*. Only images you explicitly mark as **background** (`G`) count as "no objects" for training; an unannotated image is **not** background, and a later training export will not treat it as one.
 - An image can have at most 2000 boxes.
 - If the editor reports an **orientation mismatch** for an image, your browser shows it rotated differently from how it was stored (for example a WebP with EXIF rotation), so boxes would land in the wrong place and that image cannot be annotated in that browser.
+
+## Training a model
+
+### Assigning splits
+
+Every image belongs to one split: **Train**, **Valid**, **Test**, or none. Training needs annotated images in both Train and Valid.
+
+- **By hand:** select images on the Images grid and use **Set split**, or change a single image's split from the menu in the editor's top bar (this does not touch its save indicator or status).
+- **Automatically:** **Split dataset** shows a ratio preview and asks for confirmation before it assigns anything.
+- Only images with at least one box, or explicitly marked as background, are used for training. Unannotated images are left out even if they have a split, and images without a split are left out too.
+
+### Starting a run
+
+Open the project's **Training** section and click **New training**. The defaults are: base model `yolo26n` (`yolo26n-seg` for a `segment` project), 100 epochs, image size 640, batch size **Auto** (16 on a CPU) and device **Automatic**. A model you trained earlier in this service can be the base instead of an official one. **Start training** stays disabled, with the reasons shown, until Train and Valid both have annotated images.
+
+- **One run at a time.** Other runs wait in the queue, in order, and can be removed while they are queued.
+- **Closing the browser does not affect a run.** Reopen the run page to see the progress.
+- **Restarts:** restarting the worker (or the whole stack) marks a running run **interrupted** and keeps the queued runs. Restarting only the `api` does not interrupt a running run. An interrupted run can be resumed, see [Cancelling and resuming a run](#cancelling-and-resuming-a-run).
+- **First use of an official model downloads it** into `data/weights/`. On a host without internet access, place the file there yourself first, for example `data/weights/yolo26n.pt`.
+- **Training on a CPU is slow.** For a first try use a small model, few epochs and a small image size.
+- Ultralytics usage analytics are switched off for training runs.
+
+### Watching a run
+
+Open a run from the **Training** list to watch it. The page updates by itself, there is nothing to refresh.
+
+- **Three live charts** grow after every epoch: loss (the sum of all loss components, hover for the breakdown), mAP (mAP50 and mAP50-95, with the best epoch marked) and precision with recall. Train and validation curves are drawn separately.
+- **The status line** shows the epoch ("Epoch 7 of 100"), a **batch bar** that moves inside the epoch ("Batch 3 of 12"), the training time and the estimated **time left**. While the time left cannot be estimated yet it reads "—".
+- **After the last epoch** the status line reads "Final validation…" while the best checkpoint is checked on the validation images and the model is registered. Never "Epoch 101 of 100". When it is done, the **"Final results (best.pt)"** card shows precision, recall, mAP50 and mAP50-95 with the verdict.
+- **Reloading keeps the history.** The full chart history comes back from the run's `progress.jsonl` and then continues live. If the live connection drops the page shows "Reconnecting…" and, if it cannot recover, keeps the charts up to the last update.
+- **Charts stay for past runs.** A completed, failed, cancelled or interrupted run shows the charts it produced, so you can compare how runs went.
+
+### Cancelling and resuming a run
+
+- **Cancel is immediate.** It is offered on the run page only, with a confirmation that names the epoch. The page shows "Cancelling…" and the run becomes **cancelled** within seconds; the next queued run starts right after. The epoch that was in progress is lost, every finished epoch is kept. In Docker and on Linux the worker sends `SIGTERM` to the whole training process group and `SIGKILL` after 10 seconds if it is still alive.
+- **Resume continues the same run.** It keeps the run, its settings (device, batch size, image size), its folder and its charts, continues from the last saved epoch, and joins the **end of the queue**. The charts show a "Resumed" marker, the run's `progress.jsonl` gains a second `train_start` event with `"resumed": true`, and "Times resumed" on the run page counts the resumes. To change any setting, start a new run.
+- **Resume is offered for every interrupted, cancelled or failed run whose checkpoint (`out/train/weights/last.pt`) is still on disk.** This includes runs from before this update.
+- **Resume is disabled, with the reason shown as text on the run page, in exactly three cases:** no checkpoint was saved yet (`no_checkpoint`; start a new run), all epochs were already trained (`finished`; there is nothing left to resume), or the worker already refused this run's checkpoint because it is missing, damaged or training had already finished (`not_resumable`; it is shown as the failure's own hint after a resume attempt failed, start a new run instead).
+- **A queued resume can be cancelled** with **Cancel resume** without losing progress: the run goes back to cancelled and keeps its checkpoint and charts.
+- **No automatic resume.** After a restart an interrupted run stays interrupted until you press **Resume training**.
+- **Native Windows limitation.** When the worker runs natively on Windows (not in Docker), a cancel is an abrupt hard stop (`TerminateProcess`) and not a graceful `SIGTERM`. With DataLoader workers above 0 (the GPU path), worker child processes may survive and must be ended manually in the Task Manager. Whether GPU memory is released after a cancel is verified in Phase 12, on NVIDIA hardware.
+
+### When a run fails
+
+A failed run shows a title, a hint with the next step, **the original message and the log, always**. The title and hint come from one of these codes; anything unrecognized is shown as `unknown`.
+
+| Code | Title | What to do |
+|---|---|---|
+| `out_of_memory` | Out of memory | Start a new run with a smaller batch size or image size, or pick a smaller model. |
+| `disk_full` | Disk is full | Free up disk space in the data folder (`DATA_DIR`), then resume this run or start a new one. |
+| `invalid_dataset` | Invalid dataset | Check that the images and annotations are valid, then start a new run. |
+| `weights_download` | Could not download model weights | Check the worker's internet connection or place the weights file in `DATA_DIR/weights/`, then start a new run. |
+| `process_killed` | Training process was killed | The system stopped the process, most often because it ran out of memory. Give Docker more memory or use a smaller batch or image size, then resume or start a new run. |
+| `not_resumable` | Cannot resume | The saved checkpoint is missing, damaged, or training had already finished. Start a new run instead. |
+| `unknown` | Unexpected error | Open the log on the run page for details. If it keeps happening, start a new run. |
+
+### Run history
+
+The **Training** list is the history of all runs of the project: duration, epochs, key settings, final (or, for unfinished runs, last-epoch) mAP, dataset size, and a download for the model.
+
+- **Sort and filter.** Click a column header to sort by it (click again to reverse) and use the status filter to show only, for example, the failed runs. The sort and the filter are kept in the page address, so a reload or a bookmark keeps them.
+- **Delete a finished run** (completed, failed, interrupted or cancelled) with **Delete run**. After a confirmation that names the model, its folder (dataset snapshot, checkpoints, charts, logs) **and its model** are removed. This cannot be undone. A run that is still preparing or training must be cancelled first, and a run whose model is the **base of an active run** cannot be deleted until that run finishes. A run that is only waiting in the queue is removed with **Remove from queue**.
+- **Interim `best.pt`.** A failed, interrupted or cancelled run offers **Download interim best.pt**: the best epoch saved so far. It is **incomplete** and is never added to your models or offered as a base model; only a completed run produces a model.
+
+### Downloading the model
+
+When a run completes, download its model from the run page or from the run list as `<project>_<run>_best.pt`. Load it the same way the downstream project loads `trained_models/best.pt`:
+
+```python
+from ultralytics import YOLO
+
+YOLO("plates_run-3_best.pt").predict("image.jpg")
+```
+
+Check a downloaded file with the same plain `YOLO(path)` load and one prediction:
+```bash
+uv run python scripts/verify_model_download.py plates_run-3_best.pt --image image.jpg
+```
+It prints the model's task and class names and ends with `OK`. Without `--image` it predicts on a blank frame.
+
+- The downstream project needs an Ultralytics version that supports the base model family. The file records the Ultralytics version that trained it (8.4.159); YOLO26 needs Ultralytics 8.4 or newer.
+- The `.pt` embeds the server's internal file paths (dataset, project and model locations) in its training arguments. This is harmless for loading and only informational.
+- A `.pt` file is a pickle and can execute code when loaded — see the [security notice](#security-notice--read-before-you-run-this).
 
 ## Configuration
 
@@ -127,10 +216,14 @@ bash scripts/fresh_clone_check.sh
 Individual checks:
 ```bash
 uv run pytest backend/tests                    # backend unit/API tests
+uv run pytest -m training backend/tests         # real CPU training tests (need yolo26n.pt in the repo root, or internet)
 uv run ruff check backend                       # backend lint
 uv run ruff format --check backend              # backend format check
 uv run ruff check scripts/seed_images.py        # seed script lint
 uv run ruff format --check scripts/seed_images.py  # seed script format check
+uv run ruff check scripts/verify_model_download.py        # model check script lint
+uv run ruff format --check scripts/verify_model_download.py  # model check script format check
+uv run python scripts/verify_model_download.py <file.pt> --image <image>  # load a downloaded model with YOLO(path) and predict once
 npm --prefix frontend run test -- --run         # frontend unit tests
 npm --prefix frontend run build                 # frontend type-check + production build
 bash scripts/compose_smoke_test.sh              # full Docker stack end-to-end check (its own data dir, port 18080)
@@ -170,6 +263,12 @@ Known limitations:
 3. Add `SQLITE_JOURNAL_MODE=DELETE` to `.env` (trades some concurrent-read throughput for removing the cross-VM WAL coherency dependency)
 4. Restart: `docker compose up`
 
+`SQLITE_JOURNAL_MODE` in `.env` applies to both the `api` and the `worker`, so both always use the same mode. On macOS hosts, if the database reports corruption, set it to `DELETE`.
+
+**"The training worker is not responding"** — A run is queued but nothing picks it up. Check that the worker is up with `docker compose ps`, then read its output with `docker compose logs worker`. Restarting it with `docker compose restart worker` is safe: queued runs are kept.
+
+**A run failed with "Could not download …"** — The worker could not fetch the official base weights. Either give the host internet access, or place the file in `data/weights/` yourself (for example `data/weights/yolo26n.pt`) and start the run again.
+
 **Port 8080 already in use** — Set a different `PORT` in `.env` and restart.
 
 **"Invalid host header" (HTTP 400)** — Add the host/IP you're connecting from to `ALLOWED_HOSTS` in `.env`.
@@ -180,9 +279,15 @@ Known limitations:
 backend/     FastAPI app, worker entrypoint, shared helper module, tests, pyproject.toml
 frontend/    React + Vite + Mantine single-page app
 docker/      Dockerfiles and nginx config
-scripts/     Smoke-test, full-suite, and fresh-clone check scripts
+scripts/     Full-suite, compose smoke-test, fresh-clone, legacy CLI git-clean check, large-project seed, and downloaded-model check (`verify_model_download.py`) scripts
 config/      config.ini for the legacy CLI scripts
 docs/        Background/reference documentation
+spikes/      Phase 0 architecture-validation spike scripts (results in docs/phase-0-decisions.md)
+example_ready_dataset/   Sample Roboflow detect dataset; only data.yaml and its two README files are tracked, the images and labels are git-ignored
+.github/     CI workflow (backend and frontend checks)
 .planning/   Project planning artifacts (roadmap, requirements, phase plans)
+docker-compose.yml   Docker Compose stack (api, worker, web services)
+pyproject.toml, uv.lock, .python-version   uv workspace root (Python 3.12, locked dependencies)
+.env.example Template for .env settings
 train_yolo.py, finetune_yolo.py, gpu_test.py   Legacy CLI scripts (see above)
 ```

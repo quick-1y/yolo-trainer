@@ -275,9 +275,11 @@ def test_list_is_newest_first_with_total(client: TestClient) -> None:
         "box_count",
         "is_background",
         "is_reviewed",
+        "split",
         "status",
     }
     assert body["items"][0]["created_at"].endswith("Z")
+    assert body["items"][0]["split"] is None
     assert body["items"][0]["box_count"] == 0
     assert body["items"][0]["status"] == "unannotated"
 

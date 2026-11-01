@@ -34,7 +34,14 @@ const CONFIG = {
   accepted_extensions: ["jpg", "jpeg", "png", "webp", "bmp"],
 };
 
-const COUNTS: StatusCounts = { total: 5, unannotated: 3, annotated: 1, reviewed: 1, background: 0 };
+const COUNTS: StatusCounts = {
+  total: 5,
+  unannotated: 3,
+  annotated: 1,
+  reviewed: 1,
+  background: 0,
+  splits: { train: 0, valid: 0, test: 0, none: 5 },
+};
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {

@@ -18,8 +18,8 @@ Decimal phases appear between their surrounding integers in numeric order.
 - [x] **Phase 1: Runnable Skeleton & Projects** - Clean reproducible repo plus a `docker compose up` web app where the user creates and manages detect/segment projects (completed 2026-09-29)
 - [x] **Phase 2: Image Upload & Classes** - User uploads images from the browser, browses them in a fast grid, and defines the project's classes (completed 2026-10-03)
 - [x] **Phase 3: Box Annotation Editor** - User annotates images one by one with bounding boxes, autosave, undo/redo, shortcuts, and image status (completed 2026-10-04)
-- [ ] **Phase 4: Train & Download** - User splits the dataset, trains from the browser in a background worker, and downloads a working `.pt` (core loop complete)
-- [ ] **Phase 5: Live Training Monitoring & Control** - User watches live metrics charts, cancels/resumes runs, sees run history and understandable failures
+- [x] **Phase 4: Train & Download** - User splits the dataset, trains from the browser in a background worker, and downloads a working `.pt` (core loop complete) (completed 2026-10-11)
+- [x] **Phase 5: Live Training Monitoring & Control** - User watches live metrics charts, cancels/resumes runs, sees run history and understandable failures (completed 2026-10-19)
 - [ ] **Phase 6: Polygons & Segmentation Projects** - User annotates with polygons and click-to-segment, and segment projects train end-to-end
 - [ ] **Phase 7: Model Library** - User uploads their own `.pt`, manages models, gets task-type protection, and test-predicts on an image
 - [ ] **Phase 8: AI-Assisted Annotation** - A chosen model proposes shapes on the current image; user accepts, edits, or rejects them
@@ -220,7 +220,38 @@ Plans:
   4. When the run finishes, its model is registered automatically with metrics, classes, task type, and source run; the user downloads the `.pt`, and it loads and predicts via `YOLO(path)` in a plain Python script, the same way the downstream project uses `trained_models/best.pt`
   5. Each run stores a snapshot of its settings and the exact dataset (images, labels, splits, classes) it trained on; later annotation edits do not change what the run records it was trained with
 
-**Plans**: TBD
+**Plans:** 11/11 plans complete
+
+Plans:
+**Wave 1**
+
+- [x] 04-01-PLAN.md — Tracer: split -> start a run -> INSERT-first snapshot -> hard-linked dataset -> worker claims from SQLite -> train_job subprocess with callbacks -> best.pt registered -> `.pt` download loads with `YOLO(path)` (migration 0005, compose smoke training stage, fake-trainer pipeline test) (wave 1)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [x] 04-02-PLAN.md — Training section in the browser: run list, run page with polling and download, start form with standard defaults; options endpoint and quality verdict (wave 2)
+- [x] 04-03-PLAN.md — Manual splits: tile pill, per-split counts, "Set split" for selections (chunked), editor top bar split menu (wave 2)
+- [x] 04-04-PLAN.md — Snapshot integrity: label/data.yaml/manifest tests, hard links + copy fallback, immutability after edits, consistent capture, 0004 -> head migration test (wave 2)
+- [x] 04-05-PLAN.md — Worker robustness: FIFO/atomic claim, api + worker restart sweeps, SIGTERM -> interrupted, failure evidence, heartbeat active_run_id, real CPU training test (`-m training`) (wave 2)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [x] 04-06-PLAN.md — Auto-split: seeded ratio preview + confirmed apply (409 on drift), "Split dataset" dialog on the Images page (wave 3)
+- [x] 04-07-PLAN.md — Run page complete: failed log, interrupted/cancelled views, settings card, remove from queue; download contract tests (wave 3)
+- [x] 04-09-PLAN.md — Project delete with runs/models (blocked while active), orphan cleanup of data/runs and data/models, dialog counts (wave 3)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [x] 04-08-PLAN.md — Start form complete: dataset summary, blockers with fixes, warnings, models trained here as a base (task-type protected), run-name rules (wave 4)
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
+- [x] 04-10-PLAN.md — Global active-run indicator in the header and the editor, sidebar loader, test-harness opt-in for the poller (wave 5)
+
+**Wave 6** *(blocked on Wave 5 completion)*
+
+- [x] 04-11-PLAN.md — `verify_model_download.py`, README training docs (en/ru), full-suite gate with real training, end-of-phase checklist (wave 6)
+
 **UI hint**: yes
 **Notes**:
 
@@ -243,7 +274,49 @@ Plans:
   4. User sees a history of all runs in a project with status, settings, duration, and final metrics
   5. A failing run (e.g. out of memory, invalid dataset) ends in a failed state with an understandable error message in the UI, not a silent stop
 
-**Plans**: TBD
+**Plans:** 10/10 plans complete
+
+Plans:
+**Wave 1**
+
+- [x] 05-01-PLAN.md — Tracer: live mAP chart over SSE (progress.jsonl tail with byte-offset ids, Last-Event-ID, compaction, status/end frames, no DB session held), useRunStream + Recharts, nginx smoke stage, graceful-shutdown timeout (wave 1)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [x] 05-02-PLAN.md — Three charts (loss sums, mAP, precision/recall) live and for every past run; tooltip, best epoch, resume markers, skeleton/reconnecting/unavailable states, safety polling (wave 2)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [x] 05-03-PLAN.md — Progress events v2 (train_start, throttled batch_progress, last_epoch, fitness); batch bar + ETA; "Final validation…" and the "Final results (best.pt)" card (wave 3)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [x] 05-04-PLAN.md — Categorized failures: migration 0006, shared classifier, category in error.json and the supervisor, localized FailureAlert (wave 4)
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
+- [x] 05-05-PLAN.md — Cancel: migration 0007, DB-flag cancel read by the supervisor tick, races and restart sweeps, Cancel dialog and "Cancelling…", native-Windows note (wave 5)
+
+**Wave 6** *(blocked on Wave 5 completion)*
+
+- [x] 05-06-PLAN.md — Resume in place: migration 0008, resume route, claim/FIFO by queued_at, --resume with validated checkpoint and pinned save_dir, real CPU cancel-then-resume test (wave 6)
+
+**Wave 7** *(blocked on Wave 6 completion)*
+
+- [x] 05-07-PLAN.md — Active-time durations across segments, resume gates and reasons, device re-check, "Cancel resume" for queued resumed runs (wave 7)
+
+**Wave 8** *(blocked on Wave 7 completion)*
+
+- [x] 05-08-PLAN.md — History table: migration 0009 (last mAP50-95), 11 columns, sort and status filter in the URL (wave 8)
+
+**Wave 9** *(blocked on Wave 8 completion)*
+
+- [x] 05-09-PLAN.md — One-way decision checkpoint, then run delete with folder and model (shared removal helper, base-in-use guard) and the interim best.pt download (wave 9)
+
+**Wave 10** *(blocked on Wave 9 completion)*
+
+- [x] 05-10-PLAN.md — Real-stack smoke: cancel, no orphan, next run, resume; README en/ru; full gate with real CPU training; end-of-phase UAT list (wave 10)
+
 **UI hint**: yes
 **Notes**:
 
@@ -265,7 +338,72 @@ Plans:
   3. Tools follow the project task type: a detect project stores boxes; a segment project stores polygons and converts a drawn box into a 4-point polygon; the server refuses geometry that violates the project's task type
   4. A segment project annotated in the UI trains end-to-end, and its live charts show mask metrics, using exact keys captured from this first real segment run
 
-**Plans**: TBD
+**Plans:** 24 plans
+
+Plans:
+**Wave 1**
+
+- [ ] 06-01-PLAN.md — Tracer, server half: polygons saved and returned through the whole-set CAS save (migration 0010 points column, derived bbox); validation, caps and idempotent retry (wave 1)
+- [ ] 06-07-PLAN.md — Click-to-segment service slice: api routes -> HTTP -> segmenter app with an injectable engine; integer-only wire, error mapping, torch-free api (wave 1)
+
+**Wave 2** *(blocked on Wave 1 completion)*
+
+- [ ] 06-14-PLAN.md — Tracer, browser half: stored polygons load, render (closed outline + chip) and survive every editor save; store `createPolygon` within the caps (wave 2)
+- [ ] 06-05-PLAN.md — Segment dataset from stored polygon points (label rows, snapshot, manifest v2) and genuine-polygon test helpers (wave 2)
+- [ ] 06-17-PLAN.md — Real MobileSAM engine (SHA-256 pinned to GitHub's published asset digest, checked before the pin is committed, cached embedding, largest contour) and the worker-hosted segmenter process with compose wiring (wave 2)
+- [ ] 06-18-PLAN.md — Browser segmentation client: api module, one-in-flight latest-wins request loop, outline simplification (RDP, Detail) (wave 2)
+
+**Wave 3** *(blocked on Wave 2 completion)*
+
+- [ ] 06-15-PLAN.md — Polygon tool: click vertices, close on the first point, autosave, back after a reload; tool bar follows the task type (D-01, D-10) (wave 3)
+- [ ] 06-10-PLAN.md — Segmenter hardening (busy 429, huge/exotic/unreadable images, crash backoff) and the real MobileSAM latency/IoU proof (D-06) (wave 3)
+- [ ] 06-24-PLAN.md — Real CPU yolo26n-seg run from polygons through the app; captured metric keys fixture, default-suite pin and Phase 0 docs (D-13) (wave 3)
+
+**Wave 4** *(blocked on Wave 3 completion)*
+
+- [ ] 06-02-PLAN.md — Drawing keys (Enter, Backspace, Esc, P), double-click and tiny-contour guards, shortcut reference group (D-01) (wave 4)
+- [ ] 06-11-PLAN.md — Segment run stream and mAP chart: `secondary` box metrics from Python, fold box fields, mask solid / box dashed mAP lines (D-13) (wave 4)
+
+**Wave 5** *(blocked on Wave 4 completion)*
+
+- [ ] 06-16-PLAN.md — Box drawn in a segment project saved as a 4-point polygon (D-11), polygon helper unit tests, tool options panel, limits, default tool per task type (wave 5)
+- [ ] 06-23-PLAN.md — Segment precision/recall chart, tooltip for every series, seg in the loss breakdown, sem excluded with its caption (D-13) (wave 5)
+- [ ] 06-21-PLAN.md — History table of segment projects: "(masks)" headers, 112/128 px columns, 1360 px minimum (D-14) (wave 5)
+
+**Wave 6** *(blocked on Wave 5 completion)*
+
+- [ ] 06-03-PLAN.md — Vertex editing, reshape: select a polygon, drag vertices, pull a vertex from a midpoint handle, move the whole polygon (D-02) (wave 6)
+- [ ] 06-06-PLAN.md — Confirmation-only checkpoint for the one-way D-09 door, then migration 0011 (segment boxes to polygons, D-09) and the pre-CAS wrong-kind 422 (D-12) (wave 6)
+- [ ] 06-12-PLAN.md — Run page uses mask metrics: `box_metrics` in the run API, Final results card, verdict and running caption with a box line (D-14) (wave 6)
+
+**Wave 7** *(blocked on Wave 6 completion)*
+
+- [ ] 06-22-PLAN.md — Vertex editing, finish: Alt/right-click vertex delete (min 3), class change, delete, selected-polygon hint and vertex gesture rows (D-02) (wave 7)
+
+**Wave 8** *(blocked on Wave 7 completion)*
+
+- [ ] 06-04-PLAN.md — Object list rows for polygons, self-crossing warning (D-03), task-type empty state and "object" wording (wave 8)
+
+**Wave 9** *(blocked on Wave 8 completion)*
+
+- [ ] 06-08-PLAN.md — Click-to-segment tool: click, preview, Enter/Accept saves a polygon (segment) or box (detect, D-10), Discard (wave 9)
+
+**Wave 10** *(blocked on Wave 9 completion)*
+
+- [ ] 06-19-PLAN.md — Click-to-segment Esc and reset paths, inert shapes, read-only rules, S key (wave 10)
+
+**Wave 11** *(blocked on Wave 10 completion)*
+
+- [ ] 06-09-PLAN.md — Not-object points, Backspace, 20-point cap and empty-answer copy, stale previews, complete shortcut reference (D-05) (wave 11)
+
+**Wave 12** *(blocked on Wave 11 completion)*
+
+- [ ] 06-20-PLAN.md — Segmentation panel: download/load/prepare/working/slow states, point-limit and empty lines, prewarm, training note (D-07), errors with Try again, Detail slider (D-08) (wave 12)
+
+**Wave 13** *(blocked on Wave 12 completion)*
+
+- [ ] 06-13-PLAN.md — Real-stack smoke (polygons, refusals, click-to-segment, segment training through nginx), README en/ru, full gate, UAT list (wave 13)
+
 **UI hint**: yes
 **Notes**:
 
@@ -418,9 +556,9 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5 → 6 → 7 → 8 →
 | 1. Runnable Skeleton & Projects | 10/10 | Complete    | 2026-09-29 |
 | 2. Image Upload & Classes | 13/13 | Complete    | 2026-10-03 |
 | 3. Box Annotation Editor | 13/13 | Complete    | 2026-10-04 |
-| 4. Train & Download | 0/TBD | Not started | - |
-| 5. Live Training Monitoring & Control | 0/TBD | Not started | - |
-| 6. Polygons & Segmentation Projects | 0/TBD | Not started | - |
+| 4. Train & Download | 11/11 | Complete    | 2026-10-11 |
+| 5. Live Training Monitoring & Control | 10/10 | Complete    | 2026-10-19 |
+| 6. Polygons & Segmentation Projects | 0/21 | Planned | - |
 | 7. Model Library | 0/TBD | Not started | - |
 | 8. AI-Assisted Annotation | 0/TBD | Not started | - |
 | 9. Dataset Import & Export | 0/TBD | Not started | - |

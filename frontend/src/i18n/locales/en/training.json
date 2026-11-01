@@ -1,0 +1,353 @@
+{
+  "page": {
+    "title": "Training",
+    "count": "Runs: {{count}}",
+    "countFiltered": "Shown: {{shown}} of {{total}}",
+    "new": "New training"
+  },
+  "list": {
+    "columns": {
+      "name": "Name",
+      "status": "Status",
+      "base": "Base model",
+      "created": "Created",
+      "duration": "Duration",
+      "epochs": "Epochs",
+      "settings": "Settings",
+      "map50": "mAP50",
+      "map5095": "mAP50-95",
+      "images": "Images",
+      "imagesTitle": "Images in the dataset snapshot"
+    },
+    "settingsTitle": "Image size {{imgsz}} · Batch size {{batch}} · Device {{device}}",
+    "lastEpochValue": "Value from the last completed epoch",
+    "sortAria": "Sort by: {{column}}",
+    "filter": {
+      "aria": "Filter by status",
+      "all": "All statuses"
+    },
+    "filteredEmpty": {
+      "title": "No matching runs",
+      "body": "No runs have this status.",
+      "reset": "Show all runs"
+    },
+    "downloadAria": "Download {{file}}",
+    "empty": {
+      "title": "No training runs yet",
+      "body": "Train a model on your annotated images. First assign images to the Train and Valid splits, then start a run."
+    }
+  },
+  "status": {
+    "preparing": "Preparing",
+    "queued": "In queue",
+    "running": "Running",
+    "completed": "Completed",
+    "failed": "Failed",
+    "interrupted": "Interrupted",
+    "cancelled": "Cancelled",
+    "queuedPosition": "In queue: {{position}}",
+    "runningEpoch": "Epoch {{epoch}} of {{epochs}}",
+    "cancelling": "Cancelling…"
+  },
+  "run": {
+    "back": "Training",
+    "download": "Download .pt",
+    "notFound": {
+      "title": "Run not found",
+      "body": "This run does not exist in this project or was removed.",
+      "back": "Back to training"
+    },
+    "preparing": {
+      "title": "Preparing the dataset…",
+      "body": "Linking images and writing labels. Large datasets can take a few minutes."
+    },
+    "queued": {
+      "title": "In queue: position {{position}}",
+      "body": "The run starts automatically when the worker is free. You can close this page.",
+      "resumeBody": "The run continues from epoch {{epoch}} when the worker is free. You can close this page."
+    },
+    "running": {
+      "starting": "Starting…",
+      "startingHint": "The first use of an official model downloads its weights.",
+      "epoch": "Epoch {{epoch}} of {{epochs}}",
+      "elapsed": "Training time: {{time}}",
+      "eta": "Time left: ~{{time}}",
+      "etaUnknown": "Time left: —",
+      "batch": "Batch {{batch}} of {{total}}",
+      "resumedNote": "Resumed from epoch {{epoch}}.",
+      "map50": "Latest mAP50: {{value}}",
+      "finalValidation": "Final validation…",
+      "finalValidationHint": "Checking the best model on the validation images. The model is registered right after.",
+      "closeHint": "You can close this page. Training continues in the background."
+    },
+    "completed": {
+      "title": "Training complete",
+      "duration": "Duration: {{time}}",
+      "earlyStop": "Training stopped early at epoch {{epoch}} of {{epochs}} because the metrics stopped improving."
+    },
+    "failed": {
+      "title": "Training failed",
+      "noMessage": "The training process stopped without an error message. Check the log below."
+    },
+    "log": {
+      "show": "Show log",
+      "hide": "Hide log",
+      "title": "Last log lines",
+      "copy": "Copy log",
+      "copied": "Copied",
+      "empty": "The log is empty."
+    },
+    "interrupted": {
+      "title": "Run interrupted",
+      "body": "The service was restarted while this run was training.",
+      "action": "Resume it to continue from the last saved epoch, or start a new run."
+    },
+    "reached": "Last completed epoch: {{epoch}} of {{epochs}}.",
+    "cancelled": {
+      "title": "Run cancelled",
+      "body": "This run was cancelled before it finished."
+    },
+    "cancelling": {
+      "title": "Cancelling…",
+      "body": "Stopping the training process. This takes a few seconds."
+    },
+    "cancel": {
+      "open": "Cancel training",
+      "title": "Cancel training",
+      "confirm": "Cancel training",
+      "keep": "Keep training",
+      "body": "Training will stop at epoch {{epoch}}. You can resume it from the last checkpoint.",
+      "bodyNoCheckpoint": "Training will stop now. No checkpoint has been saved yet, so this run cannot be resumed.",
+      "note": "The epoch in progress is not saved."
+    },
+    "resume": {
+      "open": "Resume training",
+      "done": "Run \"{{name}}\" was queued to resume.",
+      "hint": "Resuming continues from epoch {{epoch}} with the same settings. To change settings, start a new run.",
+      "hintUnknown": "Resuming continues from the last saved checkpoint with the same settings. To change settings, start a new run.",
+      "blocked": {
+        "no_checkpoint": "No checkpoint saved yet — start a new run.",
+        "finished": "All epochs were already trained, so there is nothing left to resume."
+      }
+    },
+    "cancelResume": {
+      "open": "Cancel resume",
+      "done": "The resume was cancelled. The run keeps its saved progress."
+    },
+    "remove": {
+      "open": "Remove from queue",
+      "title": "Remove from queue",
+      "body": "Run \"{{name}}\" will be removed from the queue and its prepared dataset will be deleted. This cannot be undone.",
+      "confirm": "Remove",
+      "done": "Run \"{{name}}\" was removed from the queue."
+    },
+    "interim": {
+      "download": "Download interim best.pt",
+      "note": "Incomplete: the best epoch so far. It is not added to your models."
+    },
+    "delete": {
+      "open": "Delete run",
+      "title": "Delete run",
+      "confirm": "Delete run",
+      "keep": "Keep run",
+      "body": "Run \"{{name}}\" will be deleted together with its dataset snapshot, checkpoints, charts and logs. This cannot be undone.",
+      "bodyModel": "The model \"{{model}}\" trained by this run will be deleted too. Models trained from it keep its name as plain text.",
+      "done": "Run \"{{name}}\" was deleted."
+    }
+  },
+  "settings": {
+    "title": "Settings used",
+    "base": "Base model",
+    "epochs": "Epochs",
+    "imgsz": "Image size",
+    "batch": "Batch size",
+    "device": "Device",
+    "task": "Task type",
+    "dataset": "Dataset",
+    "classes": "Classes",
+    "created": "Created",
+    "started": "Started",
+    "finished": "Finished",
+    "resumes": "Times resumed",
+    "auto": "Auto ({{value}})",
+    "autoPending": "Auto",
+    "dataset_counts": "Train {{train}} · Valid {{valid}} · Test {{test}}"
+  },
+  "metrics": {
+    "precision": "Precision",
+    "recall": "Recall",
+    "map50": "mAP50",
+    "map5095": "mAP50-95",
+    "maskNote": "Metrics are measured on masks."
+  },
+  "quality": {
+    "excellent": "Excellent model",
+    "good": "Good result",
+    "fair": "Average quality, can be improved",
+    "poor": "Needs more training",
+    "basis": "Verdict is based on mAP50."
+  },
+  "charts": {
+    "loss": {
+      "title": "Loss",
+      "caption": "Sum of all loss components. Hover for the breakdown."
+    },
+    "map": {
+      "title": "mAP",
+      "best": "Best epoch: {{epoch}} (mAP50-95 {{value}})"
+    },
+    "pr": {
+      "title": "Precision and recall"
+    },
+    "legend": {
+      "train": "Train",
+      "val": "Validation",
+      "resumed": "Resumed"
+    },
+    "tooltip": {
+      "epoch": "Epoch {{epoch}}",
+      "best": "Best epoch"
+    },
+    "waiting": "Charts appear after the first epoch finishes.",
+    "stream": {
+      "reconnecting": "Reconnecting…",
+      "unavailable": "Live updates are unavailable. Charts show data up to the last update."
+    },
+    "xAxis": "Epoch",
+    "latest": "Latest, epoch {{epoch}}: {{values}}"
+  },
+  "model": {
+    "file": "Model file: {{file}} · {{size}}",
+    "usage": "Load it in Python with <code>{{code}}</code>.",
+    "version": "Trained with Ultralytics {{version}}. Use the same or a newer version to load it."
+  },
+  "newRun": {
+    "title": "New training",
+    "back": "Training",
+    "name": {
+      "label": "Run name",
+      "hint": "Also the name of the resulting model."
+    },
+    "base": {
+      "label": "Base model",
+      "official": "Official Ultralytics models",
+      "trained": "Models trained here",
+      "trainedMeta": "mAP50 {{map50}} · classes: {{classes}}",
+      "classesDiffer": "This model's classes differ from this project's classes. Training adapts it to this project's classes, but what it learned about its own classes may be lost.",
+      "size": {
+        "n": "Smallest and fastest",
+        "s": "Small",
+        "m": "Medium",
+        "l": "Large",
+        "x": "Largest and most accurate"
+      }
+    },
+    "epochs": {
+      "label": "Epochs",
+      "hint": "How many passes over the training images. 100 is the Ultralytics default."
+    },
+    "imgsz": {
+      "label": "Image size",
+      "hint": "Images are resized to this many pixels on the longer side. Must be a multiple of 32."
+    },
+    "batch": {
+      "label": "Batch size",
+      "auto": "Auto",
+      "custom": "Custom",
+      "hint": "Auto picks the largest batch that fits the GPU, and uses 16 on CPU."
+    },
+    "device": {
+      "label": "Device",
+      "auto": "Automatic (GPU if available, otherwise CPU)",
+      "cpu": "CPU",
+      "gpu": "GPU {{index}}: {{name}}",
+      "noGpu": "No GPU was detected, so training runs on the CPU.",
+      "cpuHint": "Training on a CPU is slow. For a first try, use a small model, few epochs and a small image size."
+    },
+    "worker": {
+      "stale": "The training worker is not responding. The run will wait in the queue until it starts."
+    },
+    "validation": {
+      "name": {
+        "required": "Name is required.",
+        "tooLong": "Name must be at most 100 characters."
+      },
+      "epochs": "Epochs must be a whole number from 1 to 1000.",
+      "imgsz": "Image size must be a multiple of 32, from 32 to 2048.",
+      "batch": "Batch size must be a whole number from 1 to 512."
+    },
+    "cannotStart": {
+      "title": "Cannot start yet"
+    },
+    "submit": "Start training",
+    "cancel": "Cancel"
+  },
+  "notes": {
+    "blocker": {
+      "noClasses": "This project has no classes. Add at least one class first.",
+      "noClassesLink": "Go to Classes",
+      "trainEmpty": "No annotated images are assigned to Train. Assign images to it or split the dataset automatically.",
+      "validEmpty": "No annotated images are assigned to Valid. Assign images to it or split the dataset automatically."
+    },
+    "warning": {
+      "unannotated": "Unannotated images that will not be used: {{count}}.",
+      "unassigned": "Images without a split that will not be used: {{count}}.",
+      "classesMissingTrain": "No examples in Train for these classes: {{names}}.",
+      "classesMissingValid": "No examples in Valid for these classes: {{names}}."
+    },
+    "more": "…and {{count}} more"
+  },
+  "summary": {
+    "title": "Dataset",
+    "columns": {
+      "split": "Split",
+      "used": "Used",
+      "unannotated": "Not annotated"
+    },
+    "noSplit": "Images without a split (not used): {{count}}",
+    "classes": "Classes: {{count}}",
+    "testOptional": "Test is optional.",
+    "autoSplit": "Split dataset",
+    "manualHint": "Or assign images by hand on the <pagelink>Images page</pagelink>."
+  },
+  "indicator": {
+    "full": "Training: {{project}} / {{run}}, epoch {{epoch}}/{{epochs}}",
+    "starting": "Training: {{project}} / {{run}}, starting",
+    "short": "{{epoch}}/{{epochs}}"
+  },
+  "finalResults": {
+    "title": "Final results (best.pt)",
+    "caption": "Final validation of the best checkpoint on the validation images."
+  },
+  "failure": {
+    "raw": "Original message",
+    "out_of_memory": {
+      "title": "Out of memory",
+      "hint": "The GPU or the system ran out of memory. Start a new run with a smaller batch size or image size, or pick a smaller model."
+    },
+    "disk_full": {
+      "title": "Disk is full",
+      "hint": "There is no free space left for training files. Free up disk space in the data folder (DATA_DIR), then resume this run or start a new one."
+    },
+    "invalid_dataset": {
+      "title": "Invalid dataset",
+      "hint": "Training could not read the dataset. Check that the images and annotations are valid, then start a new run."
+    },
+    "weights_download": {
+      "title": "Could not download model weights",
+      "hint": "Official model weights are downloaded on first use. Check the worker's internet connection or place the weights file in DATA_DIR/weights/, then start a new run."
+    },
+    "process_killed": {
+      "title": "Training process was killed",
+      "hint": "The system stopped the training process, most often because it ran out of memory. Give Docker more memory or use a smaller batch or image size, then resume or start a new run."
+    },
+    "not_resumable": {
+      "title": "Cannot resume",
+      "hint": "The saved checkpoint is missing, damaged, or training had already finished. Start a new run instead."
+    },
+    "unknown": {
+      "title": "Unexpected error",
+      "hint": "Open the log below for details. If it keeps happening, start a new run."
+    }
+  }
+}

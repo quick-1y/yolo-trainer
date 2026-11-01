@@ -32,7 +32,8 @@ interface ImageTileProps {
  * tile and its caption stay, and the tile stays clickable. The whole tile is a
  * button: click or Enter opens the annotation editor on this image. The selection
  * checkbox is a separate tab stop whose clicks never reach the tile (D-11). The top-right
- * chip shows the annotation status and the bottom-left pill the box count (D-17).
+ * chip shows the annotation status, the bottom-left pill the box count (D-17) and the
+ * bottom-right pill the dataset split (D-02a); an unassigned image has no split pill.
  */
 export const ImageTile = memo(function ImageTile({
   projectId,
@@ -104,6 +105,15 @@ export const ImageTile = memo(function ImageTile({
           aria-label={t("tile.boxCountAria", { count: image.box_count })}
         >
           {image.box_count}
+        </div>
+      )}
+      {image.split !== null && (
+        <div
+          className={classes.splitPill}
+          role="img"
+          aria-label={t("split.aria", { value: t(`split.value.${image.split}`) })}
+        >
+          {t(`split.value.${image.split}`)}
         </div>
       )}
       <div className={classes.badgeSlot} data-testid="status-badge-slot">

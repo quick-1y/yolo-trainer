@@ -17,6 +17,7 @@ export function makeImageItem(overrides: Partial<ImageItem> = {}): ImageItem {
     is_background: false,
     is_reviewed: false,
     status: "unannotated",
+    split: null,
     ...overrides,
   };
 }

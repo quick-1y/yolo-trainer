@@ -77,7 +77,7 @@ describe("ProjectOverviewPage", () => {
     expect(await screen.findByText(i18n.t("project:overview.noDescription"))).toBeInTheDocument();
   });
 
-  it("shows the back link, Overview, and Settings - but no unbuilt-section links", async () => {
+  it("shows the back link, Overview, Training and Settings - but no unbuilt-section links", async () => {
     const project: StubProject = {
       id: 9,
       name: "Planes",
@@ -94,11 +94,12 @@ describe("ProjectOverviewPage", () => {
 
     expect(await screen.findByText(`← ${i18n.t("project:nav.back")}`)).toBeInTheDocument();
     expect(screen.getByText(i18n.t("project:nav.overview"))).toBeInTheDocument();
-    // D-11: Settings, Images and Classes are real, built sections - only
-    // Training and Models remain unbuilt at this point.
+    // D-11: Settings, Images, Classes and Training are real, built sections - only
+    // Models remains unbuilt at this point.
     expect(screen.getByText(i18n.t("project:nav.settings"))).toBeInTheDocument();
+    expect(screen.getByText(i18n.t("project:nav.training"))).toBeInTheDocument();
     const navLinks = screen.getAllByRole("link").map((link) => link.textContent ?? "");
-    expect(navLinks.some((text) => /training|models/i.test(text))).toBe(false);
+    expect(navLinks.some((text) => /models/i.test(text))).toBe(false);
   });
 
   it("shows the image and class counts and no upload shortcut once the project has images", async () => {
